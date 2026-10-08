@@ -1,0 +1,29 @@
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Environment files
+.env
+.env.*
+
+# Personal data
+data/cv/*
+data/jobs/*
+data/applications/*
+
+# Browser authentication
+browser-state/
+playwright/.auth/
+storage-state.json
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
