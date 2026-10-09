@@ -1,0 +1,14 @@
+[
+  {
+    "id": "example:role-001",
+    "source": "example",
+    "source_id": "role-001",
+    "title": "Example Operations Coordinator",
+    "company": "Example Company",
+    "location": "Stockholm, Sweden",
+    "description": "Coordinate operations, maintain accurate records, communicate with stakeholders, and improve daily workflows.",
+    "published_at": "",
+    "source_url": "https://example.com/careers/role-001",
+    "apply_url": "https://example.com/careers/role-001"
+  }
+]

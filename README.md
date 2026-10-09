@@ -7,12 +7,22 @@ CareerMate is a local-first, open-source job discovery and CV-matching workspace
 - Read PDF, DOCX, and TXT CVs locally.
 - Extract a structured candidate profile using Ollama.
 - Review and edit the profile before matching.
-- Search Arbetsförmedlingen's public JobAd Links API.
+- Search Arbetsförmedlingen's public JobAd Links API for up to five roles per search.
+- Optionally include employer-specific Greenhouse, Lever, and Teamtailor boards configured locally.
+- Paginate results and apply local work-mode classification where listing metadata or brief text supports it.
 - Save normalized job listings in local JSON files.
+- Expose `/api/jobs/sources` to report configured source counts without returning credentials.
 - Compare selected jobs to the profile using a local model and show evidence coverage.
 - Cache successful match analyses locally to reduce repeated model calls.
+- Use a focused workspace with separate Overview, Find jobs, Match insights, and My profile views.
+- Open full job details in a side drawer while keeping search results compact.
+- See processing states and transient success/error notifications without losing the current view.
 
 Application form automation and application submission are not implemented in this version.
+
+## UI and user experience
+
+The frontend separates job discovery, match reports, and profile maintenance so the CV fields do not appear below the job results in one long page. Overview provides quick status and recent opportunities; Find jobs keeps search filters alongside compact results; selecting a job opens a detail drawer; My profile contains the editable CV-derived profile. Processing states remain visible in the workspace header, and success/error messages appear as dismissible, auto-closing notifications. The layout adapts to mobile screens. See [`docs/ui-redesign.md`](docs/ui-redesign.md) for UX decisions and the research references used.
 
 ## Requirements
 
@@ -89,7 +99,35 @@ The UI does not call a cloud LLM. Job search sends the user's search terms to th
 
 ## Job data source
 
-CareerMate currently uses the public Arbetsförmedlingen JobAd Links search API. Ads may contain brief descriptions and link to a separate provider's original listing. Always open the original listing to confirm that the job is current and review the complete requirements.
+CareerMate currently uses the public Arbetsförmedlingen JobAd Links search API. It is a Swedish job-data source; other countries are not connected yet. The API advertises free-text search and filtering, but this implementation sends each job role and city as a free-text query. City is therefore not an exact structured location filter. Work-mode classification is inferred conservatively from available fields and short descriptions; unknown listings remain visible when `Any / not specified` is selected and are excluded when a specific work mode is requested. This may miss listings when descriptions are brief. The total across multiple roles can include duplicate provider hits, so it is labelled approximate. Ads may contain brief descriptions and link to a separate provider's original listing. Always open the original listing to confirm that the job is current and review the complete requirements.
+
+## Optional employer career boards (Step 10)
+
+CareerMate can search the public listings from specific employers that use Greenhouse or Lever, plus Teamtailor accounts for which you have a Public Read API key. These are employer-specific connections; they do **not** create a global search across all companies using these platforms. JobTech remains enabled independently.
+
+1. Copy the template to a private local configuration file from the repository root:
+
+   ```powershell
+   Copy-Item data/sources.example.json data/sources.json
+   ```
+
+2. In `data/sources.json`, set `enabled` to `true` for a company you want to include and replace the example identifier. Greenhouse uses the job-board token from the employer's Greenhouse career-board URL. Lever uses the site slug from its hosted job-board URL; set `region` to `global` or `eu`. `country` is an optional fallback when a board omits its country in job data.
+
+3. Teamtailor requires a company API key with **Public Read** permissions. Keep the key out of JSON and Git. Set the environment variable named by `api_key_env` in the same PowerShell window before starting the backend, for example:
+
+   ```powershell
+   cd backend
+   $env:CAREERMATE_TEAMTAILOR_EXAMPLE_API_KEY = "paste-your-local-key-here"
+   uvicorn app.main:app --reload
+   ```
+
+   Use the environment-variable name you configured in `sources.json`. You need the employer's permission to create/access its Teamtailor API key; do not use a key you are not authorized to use.
+
+4. Restart the backend and refresh the frontend after changing configuration. Check <http://127.0.0.1:8000/api/jobs/sources> to confirm which adapters are configured. Configured and ready sources become selectable in the **Job sources** checkboxes; unconfigured sources remain disabled. This endpoint reports counts, whether a key is required, and whether the configured Teamtailor environment variables are present; it never returns key values.
+
+The adapters fetch public or explicitly authorized read-only job data, normalize it into CareerMate's shared job format, then filter employer-board results locally by title/description, city, country information, and known work mode. Employer boards may expose incomplete location or remote-work metadata, so a result can be missed or its location/work mode can remain unknown. Open the original advert to verify it before applying. The private `data/sources.json` is ignored by Git; only `data/sources.example.json` belongs in the repository.
+
+Official documentation: [Greenhouse Job Board API](https://docs.greenhouse.io/job-board.html), [Lever Postings API](https://github.com/lever/postings-api), and [Teamtailor API](https://docs.teamtailor.com/).
 
 ## Matching score
 

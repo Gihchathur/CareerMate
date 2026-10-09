@@ -41,6 +41,23 @@ export type CvStatus = {
   profile_saved: boolean;
 };
 
+export type WorkMode = "any" | "remote" | "hybrid" | "on_site";
+export type DetectedWorkMode = Exclude<WorkMode, "any"> | "unknown";
+export type JobSourceId = "jobtech_links" | "greenhouse" | "lever" | "teamtailor";
+
+export type JobSourceStatus = {
+  configured: boolean;
+  employers: number | null;
+  requires_api_key: boolean;
+  credentials_ready?: boolean;
+  missing_credentials?: number;
+};
+
+export type JobSourcesResponse = {
+  success: boolean;
+  sources: Record<JobSourceId, JobSourceStatus>;
+};
+
 export type JobResult = {
   id: string;
   source: string;
@@ -52,6 +69,45 @@ export type JobResult = {
   published_at: string;
   source_url: string;
   apply_url: string;
+  city?: string;
+  country?: string;
+  work_mode?: DetectedWorkMode;
+  search_roles?: string[];
+};
+
+export type JobSearchCriteria = {
+  roles: string[];
+  country: string;
+  city: string;
+  work_mode: WorkMode;
+  sources: JobSourceId[];
+  limit: number;
+};
+
+export type JobSearchOptions = JobSearchCriteria & {
+  offset: number;
+};
+
+export type JobSearchResponse = {
+  success: boolean;
+  roles: string[];
+  country: string;
+  city: string;
+  work_mode: WorkMode;
+  sources: JobSourceId[];
+  configured_employer_boards: number;
+  total_reported: number;
+  total_is_approximate: boolean;
+  offset: number;
+  limit: number;
+  returned: number;
+  has_more: boolean;
+  filtered_out: number;
+  role_searches: number;
+  warnings: string[];
+  filter_note: string;
+  saved_total: number;
+  jobs: JobResult[];
 };
 
 export type RequirementCategory =

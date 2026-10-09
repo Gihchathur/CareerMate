@@ -35,3 +35,10 @@ FastAPI (127.0.0.1:8000)
 - JobAd Links offers shortened descriptions and links to the provider's full advert; users must open the original listing to verify requirements and application details.
 - OCR for image-only CVs is not implemented.
 - Semantic retrieval, application form assistance, application tracking and application submission are future features, not current capabilities.
+
+
+## Job source adapters
+
+The discovery service consumes `JobPosting` objects from normalized source adapters. The public JobAd Links adapter performs role-specific free-text search and pagination. The optional employer adapter registry in `app/services/job_search.py` reads `data/sources.json` and invokes Greenhouse, Lever, and Teamtailor adapters for explicitly configured employer boards. It then applies local role/location/work-mode matching, merges search-role provenance, and deduplicates by listing URL where possible.
+
+The private source configuration is local JSON, not a database. API keys are referenced by environment-variable name only and are never stored in the source JSON or returned by `/api/jobs/sources`. Individual employer-board failures become warnings so one board does not stop successful results from other sources. There is no global ATS crawl or job-application submission.

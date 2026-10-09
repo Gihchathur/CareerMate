@@ -1,29 +1,45 @@
 # Python
 backend/.venv/
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
 
-# Node
+# Node / Vite
 frontend/node_modules/
 frontend/dist/
+frontend/.vite/
 
-# Environment files
+# Environment / secrets
 .env
 .env.*
+!.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
 
-# Personal data
+# Private local application data (examples and keep files are safe to commit)
 data/cv/*
+!data/cv/.gitkeep
+!data/cv/profile.example.json
 data/jobs/*
+!data/jobs/.gitkeep
+!data/jobs/jobs.example.json
+data/jobs/match_cache.example.json
+data/sources.json
+!data/sources.example.json
 data/applications/*
+!data/applications/.gitkeep
+!data/applications/applications.example.json
 
-# Browser authentication
+# Browser authentication and downloads
 browser-state/
 playwright/.auth/
 storage-state.json
+models/
 
-# Logs
+# Logs and OS files
 *.log
-
-# OS
 .DS_Store
 Thumbs.db

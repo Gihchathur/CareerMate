@@ -2,6 +2,7 @@ import logging
 import os
 from pathlib import Path
 from uuid import uuid4
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,7 +12,9 @@ from app.models.candidate import CandidateProfile
 from app.services.cv_analyzer import CVAnalyzerError, analyze_cv
 from app.services.cv_parser import CVParserError, extract_cv_text
 from app.services.job_matcher import score_job
-from app.services.job_sources.jobtech_links import JobSourceError, search_jobs
+from app.services.job_discovery import JobDiscoveryError, search_multiple_roles
+from app.services.job_sources.base import JobSourceError
+from app.services.job_search import source_status
 from app.services.job_storage import load_saved_jobs, save_jobs
 
 logger = logging.getLogger(__name__)
@@ -172,30 +175,56 @@ def save_candidate_profile(profile: CandidateProfile) -> dict[str, object]:
 
 @app.get("/api/jobs/search")
 def search_job_listings(
-    query: str = Query(..., min_length=2, max_length=100),
+    roles: list[str] = Query(default=[]),
+    query: str | None = Query(default=None, min_length=2, max_length=100),
+    country: str = Query(default="Sweden", max_length=80),
+    city: str = Query(default="", max_length=100),
     location: str = Query(default="", max_length=100),
-    limit: int = Query(default=20, ge=1, le=100),
+    work_mode: Literal["any", "remote", "hybrid", "on_site"] = Query(default="any"),
+    sources: list[str] | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=40),
     offset: int = Query(default=0, ge=0, le=2000),
 ) -> dict[str, object]:
-    """Search the public JobAd Links API and persist results to local JSON."""
-    search_terms = " ".join(value.strip() for value in (query, location) if value.strip())
+    """Search one or more roles, apply transparent local filters, and save results."""
+    role_values = roles or ([query] if query else [])
+    effective_city = city.strip() or location.strip()
+
     try:
-        total, jobs = search_jobs(query=search_terms, limit=limit, offset=offset)
-        saved_total = save_jobs([job.model_dump() for job in jobs])
+        result = search_multiple_roles(
+            roles=role_values,
+            country=country,
+            city=effective_city,
+            work_mode=work_mode,
+            limit=limit,
+            sources=sources,
+            offset=offset,
+        )
+        jobs = result["jobs"]
+        job_payload = [job.model_dump() for job in jobs]  # type: ignore[union-attr]
+        saved_total = save_jobs(job_payload)
+
         return {
             "success": True,
-            "query": search_terms,
-            "total": total,
-            "offset": offset,
-            "returned": len(jobs),
+            **{key: value for key, value in result.items() if key != "jobs"},
             "saved_total": saved_total,
-            "jobs": [job.model_dump() for job in jobs],
+            "jobs": job_payload,
         }
+    except JobDiscoveryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except JobSourceError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except RuntimeError as exc:
         logger.exception("Could not save job search results")
         raise HTTPException(status_code=500, detail="Could not save job listings locally.") from exc
+
+
+@app.get("/api/jobs/sources")
+def get_job_sources() -> dict[str, object]:
+    """Report which job sources are configured without exposing credentials."""
+    try:
+        return {"success": True, "sources": source_status()}
+    except JobSourceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/jobs")

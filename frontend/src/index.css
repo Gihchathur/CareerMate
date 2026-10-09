@@ -229,3 +229,40 @@ code { padding: 2px 5px; border-radius: 4px; color: #495aca; background: #f0f2ff
 .requirement-list li strong { display: block; color: #5c687e; font-size: 10px; font-weight: 700; }
 .requirement-evidence { display: block; margin-top: 4px; color: #16805b; font-size: 10px; line-height: 1.6; text-decoration: none; overflow-wrap: anywhere; }
 .requirement-explanation { display: block; margin-top: 3px; color: #9099aa; font-size: 9px; line-height: 1.6; }
+
+/* Step 9: structured job-search preferences and pagination */
+.search-preferences-grid { gap: 0 14px; }
+.search-panel .field select { min-height: 42px; cursor: pointer; }
+.search-panel .field select:disabled { cursor: not-allowed; color: #8d97a9; background: #f8f9fc; }
+.search-filter-note { margin: 10px 0 0; color: #7e899d; font-size: 10px; line-height: 1.65; }
+.job-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 2px; }
+.job-mode-badge, .job-role-badge { display: inline-flex; align-items: center; min-height: 23px; padding: 4px 8px; border: 1px solid #e2e7f0; border-radius: 7px; color: #65718a; background: #f6f8fc; font-size: 9px; line-height: 1.3; }
+.mode-remote { color: #146d52; border-color: #ccebdc; background: #eefaf4; }
+.mode-hybrid { color: #815d19; border-color: #f1e2ba; background: #fff9e9; }
+.mode-on_site { color: #4c5a9b; border-color: #d7def8; background: #f1f4ff; }
+.mode-unknown { color: #68748b; border-color: #e2e7f0; background: #f6f8fc; }
+.job-role-badge { color: #4959b9; border-color: #e1e5ff; background: #f4f5ff; }
+.search-pagination { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 14px; margin-top: 24px; padding-top: 18px; border-top: 1px solid #edf0f5; }
+.search-pagination > div:first-child { display: flex; flex-direction: column; gap: 5px; }
+.search-pagination strong { color: #34415b; font-size: 12px; }
+.pagination-buttons { margin-top: 0; }
+.pagination-buttons .button { min-width: 100px; }
+@media (max-width: 650px) {
+  .search-pagination { align-items: stretch; flex-direction: column; }
+  .pagination-buttons { width: 100%; flex-direction: row; }
+  .pagination-buttons .button { flex: 1; }
+}
+
+/* Step 10: selectable, locally configured job sources */
+.source-picker { min-width: 0; margin: 8px 0 18px; padding: 13px; border: 1px solid var(--line); border-radius: 11px; }
+.source-picker legend { padding: 0 6px; color: #424e66; font-size: 12px; font-weight: 800; }
+.source-option-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.source-option { display: flex; align-items: flex-start; gap: 8px; min-width: 0; padding: 9px; border: 1px solid #e8ecf4; border-radius: 9px; background: #fbfcff; color: #424e66; cursor: pointer; }
+.source-option input { flex: 0 0 auto; width: 15px; height: 15px; margin: 2px 0 0; accent-color: var(--blue); }
+.source-option-copy { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.source-option-copy strong { color: #34415b; font-size: 11px; font-weight: 800; }
+.source-option-copy small { color: #8791a5; font-size: 9px; line-height: 1.4; overflow-wrap: anywhere; }
+.source-option-disabled { opacity: .58; cursor: not-allowed; background: #f8f9fc; }
+.source-option-disabled input { cursor: not-allowed; }
+.source-picker .helper-text { margin: 10px 0 0; }
+@media (max-width: 420px) { .source-option-grid { grid-template-columns: 1fr; } }

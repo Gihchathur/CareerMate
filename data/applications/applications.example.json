@@ -1,0 +1,9 @@
+[
+  {
+    "job_id": "example:role-001",
+    "company": "Example Company",
+    "title": "Example Operations Coordinator",
+    "status": "saved",
+    "notes": "Synthetic example only."
+  }
+]

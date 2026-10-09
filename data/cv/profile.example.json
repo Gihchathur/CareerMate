@@ -1,0 +1,17 @@
+{
+  "personal": {
+    "name": "Example Candidate",
+    "email": "candidate@example.com",
+    "phone": "",
+    "location": "Stockholm, Sweden",
+    "linkedin": "",
+    "github": "",
+    "portfolio": ""
+  },
+  "summary": "Example professional summary for local development only.",
+  "skills": ["Project coordination", "Customer service", "Data analysis"],
+  "experience": [],
+  "education": [],
+  "certifications": [],
+  "languages": ["English"]
+}

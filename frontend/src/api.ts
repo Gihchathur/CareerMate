@@ -3,6 +3,9 @@ import type {
   CvStatus,
   JobMatchResult,
   JobResult,
+  JobSearchOptions,
+  JobSearchResponse,
+  JobSourcesResponse,
 } from "./types";
 
 const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
@@ -80,12 +83,19 @@ export async function getSavedJobs(): Promise<JobResult[]> {
   return result.jobs ?? [];
 }
 
-export async function searchJobs(
-  query: string,
-  location: string,
-  limit = 20,
-): Promise<{ jobs: JobResult[]; total: number; returned: number; saved_total: number }> {
-  const params = new URLSearchParams({ query, location, limit: String(limit) });
+export async function getJobSources(): Promise<JobSourcesResponse> {
+  return request<JobSourcesResponse>("/api/jobs/sources");
+}
+
+export async function searchJobs(options: JobSearchOptions): Promise<JobSearchResponse> {
+  const params = new URLSearchParams();
+  options.roles.forEach((role) => params.append("roles", role));
+  options.sources.forEach((source) => params.append("sources", source));
+  params.set("country", options.country);
+  params.set("city", options.city);
+  params.set("work_mode", options.work_mode);
+  params.set("limit", String(options.limit));
+  params.set("offset", String(options.offset));
   return request(`/api/jobs/search?${params.toString()}`);
 }
 

@@ -1,0 +1,28 @@
+{
+  "greenhouse": [
+    {
+      "enabled": false,
+      "board_token": "example-board-token",
+      "company": "Example AB",
+      "country": "Sweden"
+    }
+  ],
+  "lever": [
+    {
+      "enabled": false,
+      "site": "example-company",
+      "company": "Example AB",
+      "region": "eu",
+      "country": "Sweden"
+    }
+  ],
+  "teamtailor": [
+    {
+      "enabled": false,
+      "company": "Example AB",
+      "api_key_env": "CAREERMATE_TEAMTAILOR_EXAMPLE_API_KEY",
+      "region": "eu",
+      "country": "Sweden"
+    }
+  ]
+}
