@@ -10,6 +10,7 @@ import httpx
 from app.models.job import JobPosting
 from app.services.job_sources.base import (
     JobSourceError,
+    get_with_retries,
     classify_work_mode,
     clean_html,
     infer_country,
@@ -75,7 +76,7 @@ def fetch_board_jobs(
         raise JobSourceError("A valid Greenhouse board token is required.")
     url = f"{API_ROOT}/{quote(token, safe='')}/jobs"
     try:
-        response = httpx.get(
+        response = get_with_retries(
             url,
             params={"content": "true"},
             headers={"accept": "application/json", "user-agent": "CareerMate-local/0.1"},
@@ -90,8 +91,8 @@ def fetch_board_jobs(
     except (httpx.RequestError, ValueError) as exc:
         raise JobSourceError(f"Could not retrieve valid Greenhouse data for board '{token}'.") from exc
 
-    if not isinstance(payload, dict) or not isinstance(payload.get("jobs", []), list):
-        raise JobSourceError(f"Greenhouse board '{token}' returned an unexpected response format.")
+    if not isinstance(payload, dict) or not isinstance(payload.get("jobs"), list):
+        raise JobSourceError(f"Greenhouse board '{token}' returned an unexpected response format (expected a jobs array).")
 
     return [
         normalize_job(item, board_token=token, company_name=company_name, default_country=default_country)

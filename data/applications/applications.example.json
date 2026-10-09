@@ -1,9 +1,20 @@
 [
   {
+    "id": "application:example-role-001",
     "job_id": "example:role-001",
     "company": "Example Company",
     "title": "Example Operations Coordinator",
+    "location": "Stockholm, Sweden",
+    "source": "example",
+    "job_url": "https://example.com/careers/role-001",
+    "job_description": "Synthetic example description only.",
     "status": "saved",
-    "notes": "Synthetic example only."
+    "notes": "Synthetic example only.",
+    "follow_up_date": "",
+    "cover_letter": "",
+    "answers": [],
+    "created_at": "2026-01-01T10:00:00+00:00",
+    "updated_at": "2026-01-01T10:00:00+00:00",
+    "applied_at": ""
   }
 ]

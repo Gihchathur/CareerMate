@@ -9,6 +9,7 @@ import httpx
 from app.models.job import JobPosting
 from app.services.job_sources.base import (
     JobSourceError,
+    get_with_retries,
     classify_work_mode,
     clean_html,
     infer_country,
@@ -88,7 +89,7 @@ def fetch_company_jobs(
     jobs: list[JobPosting] = []
     for page in range(1, max_pages + 1):
         try:
-            response = httpx.get(
+            response = get_with_retries(
                 API_ROOTS[region_key],
                 params={
                     "page[size]": page_size,
@@ -116,9 +117,9 @@ def fetch_company_jobs(
         except (httpx.RequestError, ValueError) as exc:
             raise JobSourceError(f"Could not retrieve valid Teamtailor data for '{company_name}'.") from exc
 
-        if not isinstance(payload, dict) or not isinstance(payload.get("data", []), list):
-            raise JobSourceError(f"Teamtailor account '{company_name}' returned an unexpected response format.")
-        data = [item for item in payload.get("data", []) if isinstance(item, dict)]
+        if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+            raise JobSourceError(f"Teamtailor account '{company_name}' returned an unexpected response format (expected a data array).")
+        data = [item for item in payload["data"] if isinstance(item, dict)]
         included = payload.get("included", [])
         location_by_id: dict[str, str] = {}
         if isinstance(included, list):

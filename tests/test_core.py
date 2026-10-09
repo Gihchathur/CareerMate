@@ -547,3 +547,191 @@ def test_search_rejects_unknown_source_identifier() -> None:
         assert "Unsupported job source" in str(exc)
     else:
         raise AssertionError("Unknown source IDs should be rejected clearly")
+
+
+# Step 11: source reliability and configuration validation.
+def test_http_source_request_retries_transient_status_then_succeeds(monkeypatch) -> None:
+    import httpx
+    from app.services.job_sources import base
+
+    request = httpx.Request("GET", "https://example.test/jobs")
+    responses = [
+        httpx.Response(503, headers={"Retry-After": "0"}, request=request),
+        httpx.Response(200, json={"ready": True}, request=request),
+    ]
+    calls: list[str] = []
+    delays: list[float] = []
+
+    def fake_get(url, **_kwargs):
+        calls.append(url)
+        return responses.pop(0)
+
+    monkeypatch.setattr(base.httpx, "get", fake_get)
+    monkeypatch.setattr(base.time, "sleep", lambda seconds: delays.append(seconds))
+
+    response = base.get_with_retries("https://example.test/jobs")
+
+    assert response.status_code == 200
+    assert response.json() == {"ready": True}
+    assert calls == ["https://example.test/jobs", "https://example.test/jobs"]
+    assert delays == [0.0]
+
+
+def test_http_source_request_does_not_retry_non_transient_client_error(monkeypatch) -> None:
+    import httpx
+    from app.services.job_sources import base
+
+    request = httpx.Request("GET", "https://example.test/jobs")
+    calls: list[int] = []
+
+    def fake_get(_url, **_kwargs):
+        calls.append(1)
+        return httpx.Response(401, request=request)
+
+    monkeypatch.setattr(base.httpx, "get", fake_get)
+
+    try:
+        base.get_with_retries("https://example.test/jobs")
+    except httpx.HTTPStatusError as exc:
+        assert exc.response.status_code == 401
+    else:
+        raise AssertionError("A 401 response should be raised, not treated as success")
+
+    assert len(calls) == 1
+
+
+def test_greenhouse_malformed_payload_is_not_reported_as_zero_jobs(monkeypatch) -> None:
+    import httpx
+    from app.services.job_sources import greenhouse
+    from app.services.job_sources.base import JobSourceError
+
+    request = httpx.Request("GET", "https://boards-api.greenhouse.io/v1/boards/example/jobs")
+    monkeypatch.setattr(
+        greenhouse.httpx,
+        "get",
+        lambda *_args, **_kwargs: httpx.Response(200, json={"unexpected": []}, request=request),
+    )
+
+    try:
+        greenhouse.fetch_board_jobs("example")
+    except JobSourceError as exc:
+        assert "jobs array" in str(exc)
+    else:
+        raise AssertionError("A malformed Greenhouse payload should not look like an empty result")
+
+
+def test_enabled_source_configuration_requires_provider_identifiers(tmp_path, monkeypatch) -> None:
+    from app.services import job_search
+    from app.services.job_sources.base import JobSourceError
+
+    config_path = tmp_path / "sources.json"
+    config_path.write_text(
+        '{"greenhouse": [{"enabled": true, "company": "Example AB"}]}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(job_search, "SOURCE_CONFIG_PATH", config_path)
+
+    try:
+        job_search.load_source_config()
+    except JobSourceError as exc:
+        assert "board_token" in str(exc)
+    else:
+        raise AssertionError("An enabled employer source without its identifier should be rejected")
+
+
+def test_selected_source_without_enabled_boards_returns_warning(tmp_path, monkeypatch) -> None:
+    from app.services import job_search
+
+    config_path = tmp_path / "sources.json"
+    config_path.write_text('{"greenhouse": [], "lever": [], "teamtailor": []}', encoding="utf-8")
+    monkeypatch.setattr(job_search, "SOURCE_CONFIG_PATH", config_path)
+
+    jobs, warnings, configured_count = job_search.fetch_configured_jobs(["greenhouse"])
+
+    assert jobs == []
+    assert configured_count == 0
+    assert any("No enabled Greenhouse employer boards" in warning for warning in warnings)
+
+
+def test_one_failed_employer_board_does_not_discard_other_board_results(monkeypatch, tmp_path) -> None:
+    from app.models.job import JobPosting
+    from app.services import job_search
+    from app.services.job_sources.base import JobSourceError
+
+    config_path = tmp_path / "sources.json"
+    config_path.write_text(
+        '{"greenhouse": ['
+        '{"enabled": true, "board_token": "broken", "company": "Broken AB"},'
+        '{"enabled": true, "board_token": "working", "company": "Working AB"}'
+        '], "lever": [], "teamtailor": []}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(job_search, "SOURCE_CONFIG_PATH", config_path)
+
+    working_job = JobPosting(
+        id="greenhouse:working:1",
+        source="greenhouse",
+        source_id="working:1",
+        title="Platform Engineer",
+        company="Working AB",
+        location="Stockholm, Sweden",
+        description="Operate platform services.",
+        published_at="2026-10-01",
+        source_url="https://boards.greenhouse.io/working/jobs/1",
+        apply_url="https://boards.greenhouse.io/working/jobs/1",
+        country="Sweden",
+    )
+
+    def fake_fetch(token, **_kwargs):
+        if token == "broken":
+            raise JobSourceError("HTTP 503 after retries")
+        return [working_job]
+
+    monkeypatch.setattr(job_search, "fetch_board_jobs", fake_fetch)
+
+    jobs, warnings, configured_count = job_search.fetch_configured_jobs(["greenhouse"])
+
+    assert [job.company for job in jobs] == ["Working AB"]
+    assert configured_count == 2
+    assert len(warnings) == 1
+    assert "Broken AB" in warnings[0]
+
+
+def test_jobtech_malformed_payload_requires_hits_array(monkeypatch) -> None:
+    import httpx
+    from app.services.job_sources import jobtech_links
+    from app.services.job_sources.base import JobSourceError
+
+    request = httpx.Request("GET", jobtech_links.API_URL)
+    monkeypatch.setattr(
+        jobtech_links.httpx,
+        "get",
+        lambda *_args, **_kwargs: httpx.Response(200, json={"total": {"value": 0}}, request=request),
+    )
+
+    try:
+        jobtech_links.search_jobs("Platform Engineer")
+    except JobSourceError as exc:
+        assert "unexpected jobs format" in str(exc)
+    else:
+        raise AssertionError("JobTech response without hits should be treated as malformed")
+
+
+def test_teamtailor_malformed_payload_requires_data_array(monkeypatch) -> None:
+    import httpx
+    from app.services.job_sources import teamtailor
+    from app.services.job_sources.base import JobSourceError
+
+    request = httpx.Request("GET", teamtailor.API_ROOTS["eu"])
+    monkeypatch.setattr(
+        teamtailor.httpx,
+        "get",
+        lambda *_args, **_kwargs: httpx.Response(200, json={"included": []}, request=request),
+    )
+
+    try:
+        teamtailor.fetch_company_jobs(api_key="not-a-real-key", company_name="Example AB")
+    except JobSourceError as exc:
+        assert "data array" in str(exc)
+    else:
+        raise AssertionError("Teamtailor response without data should be treated as malformed")

@@ -10,6 +10,7 @@ import httpx
 from app.models.job import JobPosting
 from app.services.job_sources.base import (
     JobSourceError,
+    get_with_retries,
     classify_work_mode,
     clean_html,
     infer_country,
@@ -100,7 +101,7 @@ def fetch_site_jobs(
     jobs: list[JobPosting] = []
     for page in range(max_pages):
         try:
-            response = httpx.get(
+            response = get_with_retries(
                 f"{API_ROOTS[region_key]}/{quote(site_slug, safe='')}",
                 params={"mode": "json", "skip": page * page_size, "limit": page_size},
                 headers={"accept": "application/json", "user-agent": "CareerMate-local/0.1"},

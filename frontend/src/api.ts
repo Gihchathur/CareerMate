@@ -1,4 +1,8 @@
 import type {
+  ApplicationRecord,
+  ApplicationsResponse,
+  ApplicationStatus,
+  ApplicationAnswer,
   CandidateProfile,
   CvStatus,
   JobMatchResult,
@@ -106,4 +110,64 @@ export async function matchJobs(
   const params = new URLSearchParams({ limit: String(limit) });
   jobIds.forEach((id) => params.append("job_ids", id));
   return request(`/api/jobs/matches?${params.toString()}`);
+}
+
+
+export async function getApplications(): Promise<ApplicationsResponse> {
+  return request<ApplicationsResponse>("/api/applications");
+}
+
+export async function createApplication(
+  jobId: string,
+  notes = "",
+): Promise<{ created: boolean; message: string; application: ApplicationRecord }> {
+  return request("/api/applications", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ job_id: jobId, notes }),
+  });
+}
+
+export async function updateApplication(
+  applicationId: string,
+  changes: {
+    status?: ApplicationStatus;
+    notes?: string;
+    follow_up_date?: string;
+    cover_letter?: string;
+    answers?: ApplicationAnswer[];
+  },
+): Promise<ApplicationRecord> {
+  const result = await request<{ success: boolean; application: ApplicationRecord }>(
+    `/api/applications/${encodeURIComponent(applicationId)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(changes),
+    },
+  );
+  return result.application;
+}
+
+export async function generateCoverLetter(applicationId: string): Promise<ApplicationRecord> {
+  const result = await request<{ success: boolean; application: ApplicationRecord }>(
+    `/api/applications/${encodeURIComponent(applicationId)}/draft-cover-letter`,
+    { method: "POST" },
+  );
+  return result.application;
+}
+
+export async function generateApplicationAnswer(
+  applicationId: string,
+  question: string,
+): Promise<ApplicationRecord> {
+  const result = await request<{ success: boolean; application: ApplicationRecord }>(
+    `/api/applications/${encodeURIComponent(applicationId)}/draft-answer`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    },
+  );
+  return result.application;
 }

@@ -4,15 +4,66 @@ from __future__ import annotations
 
 import html
 import re
+import time
 from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urlparse
+
+import httpx
 
 from app.models.job import WorkMode
 
 
 class JobSourceError(Exception):
     """Raised when an external job source cannot be queried or parsed."""
+
+
+_RETRYABLE_HTTP_STATUS_CODES = {429, 500, 502, 503, 504}
+_DEFAULT_TIMEOUT = httpx.Timeout(20.0, connect=8.0)
+
+def get_with_retries(
+    url: str,
+    *,
+    params: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: httpx.Timeout | float | None = None,
+    max_attempts: int = 3,
+) -> httpx.Response:
+    """Perform a bounded GET with retries for transient network failures.
+
+    Retries are deliberately limited to timeouts/transport errors and common
+    transient HTTP responses. Authentication and other client errors are not
+    retried. A short, bounded delay avoids hammering a provider that is
+    rate-limiting the local application.
+    """
+    if not 1 <= max_attempts <= 5:
+        raise ValueError("max_attempts must be between 1 and 5")
+
+    request_timeout = timeout if timeout is not None else _DEFAULT_TIMEOUT
+    for attempt in range(max_attempts):
+        try:
+            response = httpx.get(
+                url, params=params, headers=headers, timeout=request_timeout
+            )
+            response.raise_for_status()
+            return response
+        except httpx.HTTPStatusError as exc:
+            retryable = exc.response.status_code in _RETRYABLE_HTTP_STATUS_CODES
+            if not retryable or attempt + 1 >= max_attempts:
+                raise
+            retry_after = exc.response.headers.get("Retry-After", "")
+            try:
+                delay = min(2.0, max(0.0, float(retry_after)))
+            except (TypeError, ValueError):
+                delay = 0.25 * (2 ** attempt)
+            time.sleep(delay)
+        except httpx.RequestError:
+            if attempt + 1 >= max_attempts:
+                raise
+            time.sleep(0.25 * (2 ** attempt))
+
+    # The loop either returns or re-raises; this is an unreachable guard.
+    raise RuntimeError("HTTP retry loop ended unexpectedly")
 
 
 class _TextExtractor(HTMLParser):

@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 import httpx
 
 from app.models.job import JobPosting, WorkMode
-from app.services.job_sources.base import JobSourceError
+from app.services.job_sources.base import JobSourceError, get_with_retries
 
 API_URL = "https://links.api.jobtechdev.se/joblinks"
 
@@ -212,7 +212,7 @@ def search_jobs(
         raise JobSourceError("Offset must be between 0 and 2000.")
 
     try:
-        response = httpx.get(
+        response = get_with_retries(
             API_URL,
             params={"q": query.strip(), "limit": limit, "offset": offset},
             headers={"accept": "application/json", "user-agent": "CareerMate-local/0.1"},
@@ -232,7 +232,7 @@ def search_jobs(
     if not isinstance(payload, dict):
         raise JobSourceError("Unexpected response format from the job source.")
 
-    raw_hits = payload.get("hits", [])
+    raw_hits = payload.get("hits")
     total_data = payload.get("total", {})
     if not isinstance(raw_hits, list):
         raise JobSourceError("The job source returned an unexpected jobs format.")

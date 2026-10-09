@@ -16,3 +16,8 @@ Copy `data/sources.example.json` to `data/sources.json`, configure company ident
 All adapters return the shared `JobPosting` model. Listings are matched locally against job title/description and available location/work-mode fields. This is intentionally conservative and does not guarantee complete matching where providers omit data. Pagination for employer-board results is local to CareerMate because board APIs do not provide a global cross-company search.
 
 The UI uses `GET /api/jobs/sources` to enable only configured and ready adapters. The endpoint returns safe configuration metadata only. Users can select which enabled providers to query for each search.
+
+
+## Reliability and troubleshooting
+
+Transient HTTP/network failures use a bounded retry policy. Bad credentials and invalid board identifiers are not retried, and malformed provider responses are surfaced as warnings/errors rather than empty results. See [`job-source-reliability.md`](job-source-reliability.md) for the retry policy and test coverage.

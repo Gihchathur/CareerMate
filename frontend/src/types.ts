@@ -142,3 +142,45 @@ export type JobMatchResult = JobResult & {
   match_explanation: string;
   score_note: string;
 };
+
+
+export type ApplicationStatus =
+  | "saved"
+  | "preparing"
+  | "applied"
+  | "interview"
+  | "offer"
+  | "rejected"
+  | "withdrawn";
+
+export type ApplicationAnswer = {
+  question: string;
+  answer: string;
+  updated_at: string;
+};
+
+export type ApplicationRecord = {
+  id: string;
+  job_id: string;
+  company: string;
+  title: string;
+  location: string;
+  source: string;
+  job_url: string;
+  job_description: string;
+  status: ApplicationStatus;
+  notes: string;
+  follow_up_date: string;
+  cover_letter: string;
+  answers: ApplicationAnswer[];
+  created_at: string;
+  updated_at: string;
+  applied_at: string;
+};
+
+export type ApplicationsResponse = {
+  success: boolean;
+  total: number;
+  status_counts: Record<string, number>;
+  applications: ApplicationRecord[];
+};

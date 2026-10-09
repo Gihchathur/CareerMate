@@ -19,7 +19,7 @@ SUPPORTED_ATS = ("greenhouse", "lever", "teamtailor")
 
 
 def load_source_config() -> dict[str, Any]:
-    """Load private per-user source settings from data/sources.json."""
+    """Load and validate private per-user source settings from data/sources.json."""
     if not SOURCE_CONFIG_PATH.exists():
         return {}
     try:
@@ -36,12 +36,35 @@ def load_source_config() -> dict[str, Any]:
         ) from exc
     if not isinstance(payload, dict):
         raise JobSourceError("data/sources.json must contain a JSON object.")
-    for key in SUPPORTED_ATS:
-        value = payload.get(key, [])
-        if not isinstance(value, list):
-            raise JobSourceError(f"The '{key}' setting in data/sources.json must be a list.")
-        if not all(isinstance(item, dict) for item in value):
-            raise JobSourceError(f"Each '{key}' entry in data/sources.json must be an object.")
+
+    schema = {
+        "greenhouse": {"required": ("board_token",), "regions": None},
+        "lever": {"required": ("site",), "regions": {"global", "eu"}},
+        "teamtailor": {"required": ("company", "api_key_env"), "regions": {"eu", "na", "apac"}},
+    }
+    for source, rules in schema.items():
+        entries = payload.get(source, [])
+        if not isinstance(entries, list):
+            raise JobSourceError(f"The '{source}' setting in data/sources.json must be a list.")
+        for index, item in enumerate(entries, start=1):
+            if not isinstance(item, dict):
+                raise JobSourceError(f"Entry {index} under '{source}' must be an object.")
+            if item.get("enabled") is not True:
+                continue
+            for field in rules["required"]:
+                value = item.get(field)
+                if not isinstance(value, str) or not value.strip():
+                    raise JobSourceError(
+                        f"Enabled {source} entry {index} requires a non-empty '{field}' value."
+                    )
+            allowed_regions = rules["regions"]
+            if allowed_regions is not None:
+                region = str(item.get("region", "global" if source == "lever" else "eu")).strip().casefold()
+                if region not in allowed_regions:
+                    allowed = ", ".join(sorted(allowed_regions))
+                    raise JobSourceError(
+                        f"Enabled {source} entry {index} has an unsupported region '{region}'. Use {allowed}."
+                    )
     return payload
 
 
@@ -84,6 +107,21 @@ def fetch_configured_jobs(
     jobs: list[JobPosting] = []
     warnings: list[str] = []
     configured_count = 0
+    initial_counts = {
+        source: sum(
+            1 for item in config.get(source, [])
+            if item.get("enabled") is True
+            and (
+                bool(str(item.get("board_token", "")).strip()) if source == "greenhouse"
+                else bool(str(item.get("site", "")).strip()) if source == "lever"
+                else bool(str(item.get("api_key_env", "")).strip())
+            )
+        )
+        for source in SUPPORTED_ATS
+    }
+    for source in sorted(selected.intersection(SUPPORTED_ATS)):
+        if initial_counts[source] == 0:
+            warnings.append(f"No enabled {source.title()} employer boards are configured in data/sources.json.")
 
     if "greenhouse" in selected:
         for item in config.get("greenhouse", []):

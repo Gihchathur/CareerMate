@@ -41,4 +41,11 @@ FastAPI (127.0.0.1:8000)
 
 The discovery service consumes `JobPosting` objects from normalized source adapters. The public JobAd Links adapter performs role-specific free-text search and pagination. The optional employer adapter registry in `app/services/job_search.py` reads `data/sources.json` and invokes Greenhouse, Lever, and Teamtailor adapters for explicitly configured employer boards. It then applies local role/location/work-mode matching, merges search-role provenance, and deduplicates by listing URL where possible.
 
-The private source configuration is local JSON, not a database. API keys are referenced by environment-variable name only and are never stored in the source JSON or returned by `/api/jobs/sources`. Individual employer-board failures become warnings so one board does not stop successful results from other sources. There is no global ATS crawl or job-application submission.
+The private source configuration is local JSON, not a database. API keys are referenced by environment-variable name only and are never stored in the source JSON or returned by `/api/jobs/sources`. Provider GETs share a short timeout and bounded transient-error retry policy. Enabled board entries and provider response shapes are validated; individual board failures become warnings so one board does not stop successful results from other sources. There is no global ATS crawl or job-application submission.
+
+
+## Application tracking and draft generation (Step 12)
+
+The Applications view calls the FastAPI application routes. Tracking a job snapshots its title, company, location, public listing URL and description from `data/jobs/jobs.json` into `data/applications/applications.json`. Records are deduplicated by `job_id` and atomically rewritten as JSON. No SQL database or cloud state is added.
+
+Draft-generation endpoints pass the saved profile's professional facts and the application's job snapshot to the configured local Ollama endpoint. Contact fields are omitted. The generated cover letter or question answer is persisted as a draft for manual review. No browser automation, automatic form filling, or unattended submission occurs.

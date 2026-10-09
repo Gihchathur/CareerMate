@@ -9,7 +9,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 
 from app.models.candidate import CandidateProfile
+from app.models.application import (
+    ApplicationAnswer, ApplicationCreateRequest, ApplicationRecord, ApplicationUpdateRequest,
+    DraftAnswerRequest,
+)
 from app.services.cv_analyzer import CVAnalyzerError, analyze_cv
+from app.services.application_drafts import (
+    DraftGenerationError, generate_application_answer, generate_cover_letter,
+)
+from app.services.application_storage import (
+    create_application, load_applications, update_application, utc_now,
+)
 from app.services.cv_parser import CVParserError, extract_cv_text
 from app.services.job_matcher import score_job
 from app.services.job_discovery import JobDiscoveryError, search_multiple_roles
@@ -22,18 +32,20 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="CareerMate API",
     description="Local-first job search and application assistant",
-    version="0.2.0",
+    version="0.4.0",
 )
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = BASE_DIR / "data"
 CV_DIR = DATA_DIR / "cv"
 JOBS_DIR = DATA_DIR / "jobs"
+APPLICATIONS_DIR = DATA_DIR / "applications"
 PROFILE_PATH = CV_DIR / "profile.json"
 EXTRACTED_TEXT_PATH = CV_DIR / "extracted_text.txt"
 
 CV_DIR.mkdir(parents=True, exist_ok=True)
 JOBS_DIR.mkdir(parents=True, exist_ok=True)
+APPLICATIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_CV_UPLOAD_BYTES = 10 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
@@ -235,6 +247,174 @@ def get_saved_job_listings() -> dict[str, object]:
     except RuntimeError as exc:
         logger.exception("Could not load saved jobs")
         raise HTTPException(status_code=500, detail="Could not load saved job listings.") from exc
+
+
+@app.get("/api/applications")
+def get_applications() -> dict[str, object]:
+    """List the local application tracker records."""
+    try:
+        records = load_applications()
+    except RuntimeError as exc:
+        logger.exception("Could not load application records")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    status_counts: dict[str, int] = {}
+    for item in records:
+        status = str(item.get("status", "saved"))
+        status_counts[status] = status_counts.get(status, 0) + 1
+    return {
+        "success": True,
+        "total": len(records),
+        "status_counts": status_counts,
+        "applications": records,
+    }
+
+
+@app.post("/api/applications")
+def add_application(request: ApplicationCreateRequest) -> dict[str, object]:
+    """Add a saved job to the tracker, idempotently."""
+    try:
+        saved_jobs = load_saved_jobs()
+        job = next((item for item in saved_jobs if str(item.get("id", "")) == request.job_id), None)
+        if job is None:
+            raise HTTPException(
+                status_code=404,
+                detail="This job is not in your saved jobs yet. Search for it again before tracking it.",
+            )
+
+        now = utc_now()
+        job_url = str(job.get("apply_url") or job.get("source_url") or "")
+        if not job_url.startswith(("https://", "http://")):
+            job_url = ""
+        record = ApplicationRecord(
+            id=f"application:{uuid4().hex}",
+            job_id=request.job_id,
+            company=str(job.get("company", ""))[:300],
+            title=str(job.get("title", ""))[:500],
+            location=str(job.get("location", ""))[:300],
+            source=str(job.get("source", ""))[:100],
+            job_url=job_url[:2000],
+            job_description=str(job.get("description", ""))[:30000],
+            status="saved",
+            notes=request.notes,
+            created_at=now,
+            updated_at=now,
+        ).model_dump()
+        saved_record, created = create_application(record)
+        return {
+            "success": True,
+            "created": created,
+            "message": "Added to your application tracker." if created else "This job is already in your application tracker.",
+            "application": saved_record,
+        }
+    except HTTPException:
+        raise
+    except RuntimeError as exc:
+        logger.exception("Could not create application record")
+        raise HTTPException(status_code=500, detail="Could not save the application locally.") from exc
+
+
+@app.put("/api/applications/{application_id}")
+def edit_application(
+    application_id: str,
+    request: ApplicationUpdateRequest,
+) -> dict[str, object]:
+    """Save reviewed status, notes, follow-up dates and edited drafts."""
+    try:
+        updates = request.model_dump(exclude_unset=True, exclude_none=True)
+        if not updates:
+            raise HTTPException(status_code=400, detail="No application changes were provided.")
+        if updates.get("status") == "applied":
+            records = load_applications()
+            existing = next((item for item in records if item["id"] == application_id), None)
+            if existing is None:
+                raise HTTPException(status_code=404, detail="Application record not found.")
+            if not existing.get("applied_at"):
+                updates["applied_at"] = utc_now()
+        saved_record = update_application(application_id, updates)
+    except HTTPException:
+        raise
+    except RuntimeError as exc:
+        logger.exception("Could not update application record")
+        raise HTTPException(status_code=500, detail="Could not update the application locally.") from exc
+
+    if saved_record is None:
+        raise HTTPException(status_code=404, detail="Application record not found.")
+    return {"success": True, "application": saved_record, "message": "Application updated locally."}
+
+
+def _load_draft_inputs(application_id: str) -> tuple[ApplicationRecord, CandidateProfile]:
+    try:
+        if not PROFILE_PATH.exists():
+            raise HTTPException(
+                status_code=400,
+                detail="Review and save your CV profile before generating application drafts.",
+            )
+        profile = CandidateProfile.model_validate_json(PROFILE_PATH.read_text(encoding="utf-8"))
+        applications = load_applications()
+        record = next((item for item in applications if item["id"] == application_id), None)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Application record not found.")
+        return ApplicationRecord.model_validate(record), profile
+    except HTTPException:
+        raise
+    except (OSError, ValidationError, ValueError, RuntimeError) as exc:
+        logger.exception("Could not load application draft inputs")
+        raise HTTPException(status_code=500, detail="Could not load the profile or application record.") from exc
+
+
+@app.post("/api/applications/{application_id}/draft-cover-letter")
+def draft_cover_letter(application_id: str) -> dict[str, object]:
+    """Generate and persist a reviewable cover-letter draft with local Ollama."""
+    application, profile = _load_draft_inputs(application_id)
+    try:
+        content = generate_cover_letter(application, profile)
+        updated = update_application(application_id, {"cover_letter": content})
+        if updated is None:
+            raise HTTPException(status_code=404, detail="Application record not found.")
+        return {
+            "success": True,
+            "message": "Cover-letter draft generated locally. Review it carefully before using it.",
+            "application": updated,
+        }
+    except DraftGenerationError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        logger.exception("Could not save cover-letter draft")
+        raise HTTPException(status_code=500, detail="Could not save the generated draft locally.") from exc
+
+
+@app.post("/api/applications/{application_id}/draft-answer")
+def draft_application_answer(
+    application_id: str,
+    request: DraftAnswerRequest,
+) -> dict[str, object]:
+    """Generate and persist an answer draft for one employer question."""
+    application, profile = _load_draft_inputs(application_id)
+    try:
+        answer_text = generate_application_answer(application, profile, request.question)
+        records = [item for item in application.answers if item.question.casefold() != request.question.casefold()]
+        if len(records) >= 50:
+            raise HTTPException(
+                status_code=400,
+                detail="This application has reached the 50-answer limit. Remove an old answer before adding another.",
+            )
+        records.append(ApplicationAnswer(question=request.question, answer=answer_text, updated_at=utc_now()))
+        updated = update_application(application_id, {"answers": [item.model_dump() for item in records]})
+        if updated is None:
+            raise HTTPException(status_code=404, detail="Application record not found.")
+        return {
+            "success": True,
+            "message": "Answer draft generated locally. Review it before submitting.",
+            "application": updated,
+        }
+    except HTTPException:
+        raise
+    except DraftGenerationError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        logger.exception("Could not save application answer")
+        raise HTTPException(status_code=500, detail="Could not save the answer draft locally.") from exc
 
 
 @app.get("/api/jobs/matches")

@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState, type FormEvent, type HTMLInputTypeAttribute } from "react";
 import {
   analyzeCv,
+  createApplication,
+  generateApplicationAnswer,
+  generateCoverLetter,
+  getApplications,
   getCvStatus,
   getProfile,
   getSavedJobs,
@@ -8,9 +12,13 @@ import {
   matchJobs,
   saveProfile,
   searchJobs,
+  updateApplication,
   uploadCv,
 } from "./api";
 import type {
+  ApplicationAnswer,
+  ApplicationRecord,
+  ApplicationStatus,
   CandidatePersonal,
   CandidateProfile,
   Education,
@@ -37,6 +45,16 @@ const SOURCE_OPTIONS: { id: JobSourceId; title: string }[] = [
   { id: "lever", title: "Lever" },
   { id: "teamtailor", title: "Teamtailor" },
 ];
+
+const APPLICATION_STATUS_LABELS: Record<ApplicationStatus, string> = {
+  saved: "Saved",
+  preparing: "Preparing",
+  applied: "Applied",
+  interview: "Interview",
+  offer: "Offer",
+  rejected: "Rejected",
+  withdrawn: "Withdrawn",
+};
 
 const EMPTY_SOURCE_STATUS: Record<JobSourceId, JobSourceStatus> = {
   jobtech_links: { configured: true, employers: null, requires_api_key: false },
@@ -138,7 +156,7 @@ function Icon({ name }: { name: "search" | "file" | "sparkles" | "briefcase" | "
   return <svg aria-hidden="true" className="icon" viewBox="0 0 24 24" fill="none"><path d={paths[name]} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
-type WorkspaceView = "overview" | "discover" | "matches" | "profile";
+type WorkspaceView = "overview" | "discover" | "matches" | "applications" | "profile";
 
 function App() {
   const [file, setFile] = useState<File | null>(null);
@@ -172,6 +190,17 @@ function App() {
   const [activeView, setActiveView] = useState<WorkspaceView>("overview");
   const [selectedJob, setSelectedJob] = useState<JobResult | null>(null);
   const [jobFilter, setJobFilter] = useState("");
+  const [applications, setApplications] = useState<ApplicationRecord[]>([]);
+  const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
+  const [applicationStatus, setApplicationStatus] = useState<ApplicationStatus>("saved");
+  const [applicationNotes, setApplicationNotes] = useState("");
+  const [applicationFollowUpDate, setApplicationFollowUpDate] = useState("");
+  const [applicationCoverLetter, setApplicationCoverLetter] = useState("");
+  const [applicationAnswers, setApplicationAnswers] = useState<ApplicationAnswer[]>([]);
+  const [applicationQuestion, setApplicationQuestion] = useState("");
+  const [applicationSaving, setApplicationSaving] = useState(false);
+  const [draftingCoverLetter, setDraftingCoverLetter] = useState(false);
+  const [draftingAnswer, setDraftingAnswer] = useState(false);
 
   const refreshStatus = useCallback(async () => {
     const status = await getCvStatus();
@@ -185,15 +214,23 @@ function App() {
 
     async function loadInitialData() {
       try {
-        const [status, savedJobs, sourceResponse] = await Promise.all([
+        const [status, savedJobs, sourceResponse, applicationResponse] = await Promise.all([
           getCvStatus(),
           getSavedJobs(),
           getJobSources().catch(() => null),
+          getApplications().catch((applicationsError) => {
+            if (!cancelled) setError(applicationsError instanceof Error ? applicationsError.message : "Could not load application records.");
+            return null;
+          }),
         ]);
         if (cancelled) return;
         setCvStatus(status);
         setProfileSaved(status.profile_saved);
         setJobs(savedJobs);
+        if (applicationResponse) {
+          setApplications(applicationResponse.applications);
+          if (applicationResponse.applications.length) selectApplication(applicationResponse.applications[0]);
+        }
         if (sourceResponse) {
           const mergedStatus = { ...EMPTY_SOURCE_STATUS, ...sourceResponse.sources };
           setJobSources(mergedStatus);
@@ -443,6 +480,100 @@ function App() {
     }
   }
 
+  function selectApplication(application: ApplicationRecord) {
+    setSelectedApplicationId(application.id);
+    setApplicationStatus(application.status);
+    setApplicationNotes(application.notes ?? "");
+    setApplicationFollowUpDate(application.follow_up_date ?? "");
+    setApplicationCoverLetter(application.cover_letter ?? "");
+    setApplicationAnswers(application.answers ?? []);
+    setApplicationQuestion("");
+  }
+
+  function acceptUpdatedApplication(application: ApplicationRecord) {
+    setApplications((current) => [application, ...current.filter((item) => item.id !== application.id)]);
+    selectApplication(application);
+  }
+
+  async function handleTrackJob(jobId: string) {
+    setError("");
+    setNotice("");
+    try {
+      const result = await createApplication(jobId);
+      acceptUpdatedApplication(result.application);
+      setSelectedJob(null);
+      setActiveView("applications");
+      setNotice(result.created ? "Added to your application tracker. Add notes or prepare a draft next." : "This role is already tracked. Your existing record is open.");
+    } catch (trackError) {
+      setError(trackError instanceof Error ? trackError.message : "Could not add the job to your application tracker.");
+    }
+  }
+
+  async function handleSaveApplication() {
+    if (!selectedApplicationId) return;
+    setApplicationSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const updated = await updateApplication(selectedApplicationId, {
+        status: applicationStatus,
+        notes: applicationNotes,
+        follow_up_date: applicationFollowUpDate,
+        cover_letter: applicationCoverLetter,
+        answers: applicationAnswers,
+      });
+      acceptUpdatedApplication(updated);
+      setNotice("Application details and reviewed drafts saved locally.");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Could not save application changes.");
+    } finally {
+      setApplicationSaving(false);
+    }
+  }
+
+  async function handleDraftCoverLetter() {
+    if (!selectedApplicationId) return;
+    setDraftingCoverLetter(true);
+    setError("");
+    setNotice("Generating a CV-grounded cover-letter draft with your local model. Please review every claim before using it.");
+    try {
+      const updated = await generateCoverLetter(selectedApplicationId);
+      acceptUpdatedApplication(updated);
+      setNotice("Cover-letter draft generated locally. Review and edit it, then save any changes before use.");
+    } catch (draftError) {
+      setError(draftError instanceof Error ? draftError.message : "Could not generate the cover-letter draft.");
+      setNotice("");
+    } finally {
+      setDraftingCoverLetter(false);
+    }
+  }
+
+  async function handleDraftAnswer() {
+    if (!selectedApplicationId) return;
+    if (applicationQuestion.trim().length < 5) {
+      setError("Enter the full application question before generating an answer.");
+      setNotice("");
+      return;
+    }
+    setDraftingAnswer(true);
+    setError("");
+    setNotice("Generating a draft answer from the reviewed profile with your local model.");
+    try {
+      const updated = await generateApplicationAnswer(selectedApplicationId, applicationQuestion.trim());
+      acceptUpdatedApplication(updated);
+      setNotice("Answer draft generated and saved locally. Review it for accuracy before submitting.");
+    } catch (draftError) {
+      setError(draftError instanceof Error ? draftError.message : "Could not generate the answer draft.");
+      setNotice("");
+    } finally {
+      setDraftingAnswer(false);
+    }
+  }
+
+  function editApplicationAnswer(index: number, answer: string) {
+    setApplicationAnswers((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, answer } : item));
+  }
+
   function updatePersonal<K extends keyof CandidatePersonal>(field: K, value: string) {
     setProfile((current) => current ? {
       ...current,
@@ -545,6 +676,10 @@ function App() {
     return [job.title, job.company, job.location, job.description, ...(job.search_roles ?? [])]
       .some((value) => (value ?? "").toLocaleLowerCase().includes(needle));
   });
+  const selectedApplication = applications.find((application) => application.id === selectedApplicationId) ?? null;
+  const activeApplicationCount = applications.filter((application) => !["rejected", "withdrawn", "offer"].includes(application.status)).length;
+  const submittedApplicationCount = applications.filter((application) => ["applied", "interview", "offer", "rejected", "withdrawn"].includes(application.status)).length;
+  const canGenerateApplicationDraft = Boolean(selectedApplication && profile && !applicationSaving && !draftingAnswer && !draftingCoverLetter);
   const pageMeta: Record<WorkspaceView, { title: string; eyebrow: string; description: string }> = {
     overview: {
       title: "Your career command center",
@@ -560,6 +695,11 @@ function App() {
       title: "Know why a role fits",
       eyebrow: "MATCH INSIGHTS",
       description: "Review evidence-backed strengths and gaps before spending time on an application.",
+    },
+    applications: {
+      title: "Your application workspace",
+      eyebrow: "APPLICATION TRACKER",
+      description: "Keep your shortlist, draft materials, follow-ups, and application progress organized in local files.",
     },
     profile: {
       title: "Your professional profile",
@@ -626,6 +766,7 @@ function App() {
             <button type="button" className={`nav-item${activeView === "overview" ? " active" : ""}`} onClick={() => { setActiveView("overview"); setSelectedJob(null); }}><Icon name="grid" /><span>Overview</span></button>
             <button type="button" className={`nav-item${activeView === "discover" ? " active" : ""}`} onClick={() => { setActiveView("discover"); setSelectedJob(null); }}><Icon name="search" /><span>Find jobs</span><span className="nav-count">{jobs.length}</span></button>
             <button type="button" className={`nav-item${activeView === "matches" ? " active" : ""}`} onClick={() => { setActiveView("matches"); setSelectedJob(null); }}><Icon name="sparkles" /><span>Match insights</span>{matches.length > 0 && <span className="nav-count">{matches.length}</span>}</button>
+            <button type="button" className={`nav-item${activeView === "applications" ? " active" : ""}`} onClick={() => { setActiveView("applications"); setSelectedJob(null); }}><Icon name="briefcase" /><span>Applications</span>{applications.length > 0 && <span className="nav-count">{applications.length}</span>}</button>
             <button type="button" className={`nav-item${activeView === "profile" ? " active" : ""}`} onClick={() => { setActiveView("profile"); setSelectedJob(null); }}><Icon name="user" /><span>My profile</span><span className={`nav-status ${profile && profileSaved ? "nav-status-ready" : ""}`} /></button>
           </nav>
           <div className="sidebar-divider" />
@@ -771,6 +912,58 @@ function App() {
             </div>
           )}
 
+          {activeView === "applications" && (
+            <div className="view-stack applications-view">
+              <div className="application-stats-grid">
+                <article className="application-stat-card"><span className="application-stat-label">Tracked roles</span><strong>{applications.length}</strong><small>Saved in local JSON</small></article>
+                <article className="application-stat-card"><span className="application-stat-label">In progress</span><strong>{activeApplicationCount}</strong><small>Saved, preparing or active</small></article>
+                <article className="application-stat-card"><span className="application-stat-label">Submitted or beyond</span><strong>{submittedApplicationCount}</strong><small>Applied, interview, offer or closed</small></article>
+              </div>
+              {applications.length === 0 ? (
+                <section className="panel empty-state applications-empty"><span className="empty-icon"><Icon name="briefcase" /></span><p className="eyebrow">APPLICATION TRACKER</p><h2>Your application workspace is ready</h2><p>Save a role from its details panel to track progress, keep notes, create a cover-letter draft, and prepare answers to employer questions.</p><button className="button button-primary" type="button" onClick={() => setActiveView("discover")}>Find roles to track <Icon name="arrow" /></button><p className="helper-text">No application is submitted automatically. You review and submit through the employer’s own website.</p></section>
+              ) : (
+                <div className="applications-layout">
+                  <section className="panel application-list-panel">
+                    <div className="panel-titlebar"><div><p className="eyebrow">YOUR PIPELINE</p><h2>Tracked applications <span className="count-pill">{applications.length}</span></h2><p>Choose a role to update its stage or prepare materials.</p></div></div>
+                    <div className="application-list">
+                      {applications.map((application) => (
+                        <button type="button" key={application.id} className={`application-list-item${application.id === selectedApplicationId ? " selected" : ""}`} onClick={() => selectApplication(application)} aria-pressed={application.id === selectedApplicationId}>
+                          <span className="application-company-avatar">{(application.company || "?").trim().charAt(0).toUpperCase()}</span>
+                          <span className="application-list-copy"><strong>{application.title}</strong><small>{application.company || "Company not listed"} · {application.location || "Location not listed"}</small><span className={`application-status-pill status-${application.status}`}>{APPLICATION_STATUS_LABELS[application.status]}</span></span>
+                          <Icon name="chevron" />
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                  {selectedApplication ? (
+                    <section className="panel application-editor-panel">
+                      <div className="application-editor-header"><div><p className="eyebrow">APPLICATION DETAILS</p><h2>{selectedApplication.title}</h2><p>{selectedApplication.company || "Company not listed"} · {selectedApplication.location || "Location not listed"}</p></div>{safeExternalUrl(selectedApplication.job_url) && <a className="button button-secondary button-small" href={safeExternalUrl(selectedApplication.job_url) ?? undefined} target="_blank" rel="noopener noreferrer">Original listing <Icon name="arrow" /></a>}</div>
+                      <div className="form-grid application-metadata-grid">
+                        <label className="field"><span>Application stage</span><select value={applicationStatus} onChange={(event) => setApplicationStatus(event.target.value as ApplicationStatus)}>{[
+                          ["saved", "Saved"], ["preparing", "Preparing application"], ["applied", "Applied"], ["interview", "Interview"], ["offer", "Offer"], ["rejected", "Rejected"], ["withdrawn", "Withdrawn"],
+                        ].map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+                        <Field label="Follow-up date" type="date" value={applicationFollowUpDate} onChange={setApplicationFollowUpDate} />
+                      </div>
+                      <TextAreaField label="Notes and next actions" value={applicationNotes} onChange={setApplicationNotes} placeholder="Recruiter contact, application deadline, interview notes, next action…" rows={3} />
+                      <section className="application-draft-section">
+                        <div className="application-section-heading"><div><p className="eyebrow">DRAFTING ASSISTANT</p><h3>Cover letter</h3><p>Generated from your reviewed profile and this role’s description.</p></div><button className="button button-secondary button-small" type="button" onClick={() => void handleDraftCoverLetter()} disabled={!canGenerateApplicationDraft || !profile}>{draftingCoverLetter ? <><span className="spinner" /> Generating…</> : <><Icon name="sparkles" /> {applicationCoverLetter ? "Regenerate draft" : "Generate draft"}</>}</button></div>
+                        <TextAreaField label="Edit the draft before use" value={applicationCoverLetter} onChange={setApplicationCoverLetter} placeholder="Generate a first draft, then edit it to reflect your own voice and confirm every claim." rows={10} />
+                        <p className="helper-text">The draft is not a verified statement. Review every detail and remove anything that does not reflect your experience.</p>
+                      </section>
+                      <section className="application-draft-section">
+                        <div className="application-section-heading"><div><p className="eyebrow">EMPLOYER QUESTIONS</p><h3>Prepare an answer</h3><p>Paste one application question to create a factual first-person draft.</p></div></div>
+                        <TextAreaField label="Application question" value={applicationQuestion} onChange={setApplicationQuestion} placeholder="e.g. Why are you interested in this role?" rows={3} />
+                        <div className="application-question-action"><button className="button button-secondary" type="button" onClick={() => void handleDraftAnswer()} disabled={!canGenerateApplicationDraft || !profile || applicationQuestion.trim().length < 5}>{draftingAnswer ? <><span className="spinner" /> Drafting answer…</> : <><Icon name="sparkles" /> Draft answer</>}</button></div>
+                        {applicationAnswers.length > 0 && <div className="application-answers-list">{applicationAnswers.map((answer, index) => <div className="application-answer-editor" key={`${answer.question}-${index}`}><div className="application-answer-question"><strong>{answer.question}</strong><button className="text-action" type="button" onClick={() => setApplicationAnswers((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></div><TextAreaField label="Edit answer" value={answer.answer} onChange={(value) => editApplicationAnswer(index, value)} rows={5} /></div>)}</div>}
+                      </section>
+                      <div className="application-save-row"><p className="helper-text">Saved locally in <code>data/applications/applications.json</code>. Nothing is submitted automatically.</p><button className="button button-primary" type="button" onClick={() => void handleSaveApplication()} disabled={applicationSaving || draftingAnswer || draftingCoverLetter}>{applicationSaving ? <><span className="spinner spinner-light" /> Saving…</> : <><Icon name="check" /> Save application</>}</button></div>
+                    </section>
+                  ) : <section className="panel empty-state"><h3>Select an application</h3><p>Choose a role from your tracked applications.</p></section>}
+                </div>
+              )}
+            </div>
+          )}
+
           {activeView === "profile" && (
             <div className="view-stack profile-view">
               {!profile && <section className="panel cv-setup-panel"><div className="cv-setup-visual"><div className="cv-illustration"><span className="cv-illustration-fold" /><span /><span /><span /><b><Icon name="check" /></b></div></div><div className="cv-setup-content"><p className="eyebrow">STEP 1 · BUILD YOUR PROFILE</p><h2>Start with your CV</h2><p className="panel-description">Upload a PDF, Word document, or text file. CareerMate extracts the text and uses your local Ollama model to organize it into a profile you can edit and review.</p><label className="upload-dropzone"><input type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><span className="upload-icon"><Icon name="file" /></span><strong>{file ? file.name : "Choose your CV file"}</strong><span className="helper-text">PDF, DOCX or TXT · up to 10 MB</span><span className="upload-prompt">Browse files <Icon name="arrow" /></span></label><div className="button-row"><button className="button button-secondary" onClick={handleUploadCv} disabled={cvLoading || !file} type="button">{cvLoading ? <><span className="spinner" /> Uploading…</> : "Upload & extract text"}</button><button className="button button-primary" onClick={handleAnalyzeCv} disabled={cvLoading || !cvStatus.uploaded} type="button">{cvLoading ? <><span className="spinner spinner-light" /> Working…</> : <><Icon name="sparkles" /> Analyze CV</>}</button></div><div className="cv-footnote"><span className={`status-dot ${cvStatus.uploaded ? "good" : "muted-dot"}`} />{cvStatus.uploaded ? `Text extracted · ${cvStatus.extracted_text_characters.toLocaleString()} characters` : "No CV text extracted yet"}</div><div className="local-note profile-local-note"><Icon name="shield" /><span><strong>Privacy-first processing</strong><small>CV extraction and analysis are run locally. Review the generated fields before using them in an application.</small></span></div></div></section>}
@@ -804,7 +997,7 @@ function App() {
           {matches.find((item) => item.id === selectedJob.id) && <div className="drawer-match-summary"><span className="drawer-match-score">{matches.find((item) => item.id === selectedJob.id)?.match_score ?? "—"}<small>/ 100</small></span><span><strong>CV match estimate</strong><small>Evidence coverage, not a hiring probability</small></span><button type="button" className="text-action" onClick={() => { setSelectedJob(null); setActiveView("matches"); }}>View analysis <Icon name="arrow" /></button></div>}
           <div className="drawer-section"><h3>About this role</h3><div className="drawer-description">{selectedJob.description?.trim() || "The source did not provide a description in the search response. Open the original listing for the full job advert."}</div></div>
           <div className="drawer-facts"><div><span>Work arrangement</span><strong>{workModeLabel(selectedJob.work_mode)}</strong></div><div><span>Source</span><strong>{sourceLabel(selectedJob.source)}</strong></div><div><span>Published</span><strong>{selectedJob.published_at || "Not provided"}</strong></div></div>
-          <div className="drawer-footer"><p>Review the original description and requirements before applying.</p>{safeExternalUrl(selectedJob.apply_url || selectedJob.source_url) ? <a className="button button-primary button-full" href={safeExternalUrl(selectedJob.apply_url || selectedJob.source_url) ?? undefined} target="_blank" rel="noopener noreferrer">Open employer listing <Icon name="arrow" /></a> : <span className="helper-text">No public listing URL was provided for this job.</span>}<button type="button" className="button button-secondary button-full" onClick={() => setSelectedJob(null)}>Back to results</button></div>
+          <div className="drawer-footer"><p>Review the original description and requirements before applying.</p><button type="button" className="button button-secondary button-full" onClick={() => void handleTrackJob(selectedJob.id)}>{applications.some((application) => application.job_id === selectedJob.id) ? "Open in application tracker" : "Add to application tracker"} <Icon name="briefcase" /></button>{safeExternalUrl(selectedJob.apply_url || selectedJob.source_url) ? <a className="button button-primary button-full" href={safeExternalUrl(selectedJob.apply_url || selectedJob.source_url) ?? undefined} target="_blank" rel="noopener noreferrer">Open employer listing <Icon name="arrow" /></a> : <span className="helper-text">No public listing URL was provided for this job.</span>}<button type="button" className="button button-quiet button-full" onClick={() => setSelectedJob(null)}>Back to results</button></div>
         </aside>
       </div>}
     </main>
