@@ -15,6 +15,7 @@ frontend/.vite/
 .env
 .env.*
 !.env.example
+!backend/.env.example
 frontend/.env
 frontend/.env.*
 !frontend/.env.example
@@ -32,6 +33,8 @@ data/sources.json
 data/applications/*
 !data/applications/.gitkeep
 !data/applications/applications.example.json
+data/source_cache/*
+!data/source_cache/.gitkeep
 
 # Browser authentication and downloads
 browser-state/
@@ -43,3 +46,7 @@ models/
 *.log
 .DS_Store
 Thumbs.db
+
+# Local AI provider preferences (does not contain credentials)
+data/settings/ai_settings.json
+

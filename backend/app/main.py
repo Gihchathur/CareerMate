@@ -1,5 +1,7 @@
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
 from typing import Literal
@@ -12,6 +14,19 @@ from app.models.candidate import CandidateProfile
 from app.models.application import (
     ApplicationAnswer, ApplicationCreateRequest, ApplicationRecord, ApplicationUpdateRequest,
     DraftAnswerRequest,
+)
+from app.models.browser_assistance import BrowserFillRequest
+from app.models.ai import AIProviderTestRequest, AISettingsUpdate
+from app.services.ai_provider import (
+    AIProviderError, get_active_provider_identity, get_ai_settings, save_ai_settings, test_provider_connection,
+)
+from app.services.browser_assistance import (
+    BrowserAssistanceError,
+    close_browser_session,
+    fill_reviewed_fields,
+    get_browser_session_status,
+    open_application_page,
+    scan_current_form,
 )
 from app.services.cv_analyzer import CVAnalyzerError, analyze_cv
 from app.services.application_drafts import (
@@ -29,10 +44,19 @@ from app.services.job_storage import load_saved_jobs, save_jobs
 
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Release the visible browser session cleanly when the local API stops."""
+    yield
+    await close_browser_session()
+
+
 app = FastAPI(
     title="CareerMate API",
     description="Local-first job search and application assistant",
-    version="0.4.0",
+    version="0.7.0",
+    lifespan=lifespan,
 )
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -63,7 +87,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
 
@@ -73,6 +97,34 @@ def _atomic_write(path: Path, content: str) -> None:
     temporary_path = path.with_suffix(path.suffix + ".tmp")
     temporary_path.write_text(content, encoding="utf-8")
     temporary_path.replace(path)
+
+
+@app.get("/api/ai/settings")
+def read_ai_settings() -> dict[str, object]:
+    """Return active provider/model settings without exposing API credentials."""
+    return get_ai_settings()
+
+
+@app.put("/api/ai/settings")
+def update_ai_settings(request: AISettingsUpdate) -> dict[str, object]:
+    try:
+        return save_ai_settings(
+            provider=request.provider,
+            model=request.model,
+            base_url=request.base_url,
+            confirm_cloud_data_sharing=request.confirm_cloud_data_sharing,
+        )
+    except AIProviderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/ai/test")
+def test_ai_settings(request: AIProviderTestRequest) -> dict[str, object]:
+    """Check a provider with a short, non-personal prompt; does not save settings."""
+    try:
+        return test_provider_connection(request.provider, request.model, request.base_url)
+    except AIProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.get("/api/health")
@@ -365,7 +417,7 @@ def _load_draft_inputs(application_id: str) -> tuple[ApplicationRecord, Candidat
 
 @app.post("/api/applications/{application_id}/draft-cover-letter")
 def draft_cover_letter(application_id: str) -> dict[str, object]:
-    """Generate and persist a reviewable cover-letter draft with local Ollama."""
+    """Generate and persist a reviewable cover-letter draft using the selected AI provider."""
     application, profile = _load_draft_inputs(application_id)
     try:
         content = generate_cover_letter(application, profile)
@@ -374,7 +426,7 @@ def draft_cover_letter(application_id: str) -> dict[str, object]:
             raise HTTPException(status_code=404, detail="Application record not found.")
         return {
             "success": True,
-            "message": "Cover-letter draft generated locally. Review it carefully before using it.",
+            "message": "Cover-letter draft generated. Review it carefully before using it.",
             "application": updated,
         }
     except DraftGenerationError as exc:
@@ -405,7 +457,7 @@ def draft_application_answer(
             raise HTTPException(status_code=404, detail="Application record not found.")
         return {
             "success": True,
-            "message": "Answer draft generated locally. Review it before submitting.",
+            "message": "Answer draft generated. Review it before submitting.",
             "application": updated,
         }
     except HTTPException:
@@ -417,12 +469,61 @@ def draft_application_answer(
         raise HTTPException(status_code=500, detail="Could not save the answer draft locally.") from exc
 
 
+@app.post("/api/applications/{application_id}/browser/open")
+async def open_application_browser(application_id: str) -> dict[str, object]:
+    """Open a visible local browser at the tracked role's HTTPS listing/application link."""
+    try:
+        records = load_applications()
+        record = next((item for item in records if item.get("id") == application_id), None)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Application record not found.")
+        target_url = str(record.get("job_url", "")).strip()
+        if not target_url:
+            raise HTTPException(status_code=400, detail="This application does not have a public job URL.")
+        return await open_application_page(application_id, target_url)
+    except HTTPException:
+        raise
+    except BrowserAssistanceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/browser/session")
+async def browser_session_status() -> dict[str, object]:
+    return await get_browser_session_status()
+
+
+@app.post("/api/browser/scan")
+async def scan_application_form() -> dict[str, object]:
+    try:
+        return await scan_current_form()
+    except BrowserAssistanceError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/applications/{application_id}/browser/fill")
+async def fill_application_form(
+    application_id: str,
+    request: BrowserFillRequest,
+) -> dict[str, object]:
+    """Fill only the fields the user selected and reviewed in the application workspace."""
+    try:
+        fields = [item.model_dump() for item in request.fields]
+        return await fill_reviewed_fields(application_id, fields)
+    except BrowserAssistanceError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.delete("/api/browser/session")
+async def end_browser_session() -> dict[str, object]:
+    return await close_browser_session()
+
+
 @app.get("/api/jobs/matches")
 def get_job_matches(
     limit: int = Query(default=5, ge=1, le=20),
     job_ids: list[str] | None = Query(default=None),
 ) -> dict[str, object]:
-    """Analyze at most `limit` saved jobs to bound local-model latency."""
+    """Analyze at most `limit` saved jobs, using the configured AI provider."""
     if not PROFILE_PATH.exists():
         raise HTTPException(status_code=404, detail="Analyze and save your CV profile first.")
 
@@ -442,9 +543,22 @@ def get_job_matches(
         selected_jobs = saved_jobs[:limit]
 
     results: list[dict[str, object]] = []
-    for job in selected_jobs:
-        match = score_job(job, profile.model_dump())
-        results.append({**job, **match})
+    profile_data = profile.model_dump()
+    provider, model = get_active_provider_identity()
+
+    def analyze_one(job: dict[str, object]) -> dict[str, object]:
+        match = score_job(job, profile_data)
+        return {**job, **match}
+
+    # Local Ollama is deliberately sequential to avoid putting more pressure on
+    # the user's machine. Hosted API calls run in a small bounded pool to reduce
+    # wall-clock time. The worker count is bounded to avoid runaway API spend.
+    if provider != "ollama" and len(selected_jobs) > 1:
+        workers = min(4, len(selected_jobs))
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="careermate-ai") as executor:
+            results = list(executor.map(analyze_one, selected_jobs))
+    else:
+        results = [analyze_one(job) for job in selected_jobs]
 
     results.sort(
         key=lambda item: (
@@ -458,6 +572,9 @@ def get_job_matches(
         "analyzed": len(results),
         "requested_job_ids": len(job_ids) if job_ids is not None else 0,
         "limit": limit,
-        "method": "local_llm_evidence_weighted_v2",
+        "method": f"{provider}_llm_evidence_weighted_v3",
+        "provider": provider,
+        "model": model,
+        "concurrency": min(4, len(selected_jobs)) if provider != "ollama" else 1,
         "jobs": results,
     }

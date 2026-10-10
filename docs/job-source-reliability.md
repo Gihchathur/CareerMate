@@ -4,7 +4,7 @@ This step improves how CareerMate handles provider downtime and misconfiguration
 
 ## Request retry policy
 
-All four job-source adapters use a shared GET helper:
+The provider adapters use a shared GET helper:
 
 - At most three attempts per GET request.
 - Retries timeouts/transport failures and HTTP `429`, `500`, `502`, `503`, and `504` responses.
@@ -28,6 +28,7 @@ Each employer board is isolated. If one board fails after retries, CareerMate re
 - Greenhouse must return a JSON object containing a `jobs` array.
 - Lever must return a JSON array of postings.
 - Teamtailor must return a JSON API object containing a `data` array.
+- Arbeitnow must return a JSON API object containing a `data` array; its normalized public feed is cached locally for six hours.
 
 A provider response with a missing or wrong-shaped array is not treated as a genuine zero-job result.
 
@@ -40,3 +41,7 @@ Official provider references:
 - [Greenhouse Job Board API](https://docs.greenhouse.io/job-board.html) — public GET endpoints for public jobs do not require authentication.
 - [Lever Postings API](https://github.com/lever/postings-api) — supports company-specific posting lists and pagination.
 - [Teamtailor API](https://docs.teamtailor.com/) — public job access uses an API key with suitable Public Read permissions.
+- [Arbeitnow Job Board API](https://www.arbeitnow.com/blog/job-board-api) — public no-key API; its listing URLs are retained and the source is labelled in CareerMate.
+
+
+Remote OK responses are cached in `data/source_cache/remoteok.json` for one hour to reduce repeated calls to its public feed. Arbeitnow uses a separate six-hour cache. Both caches are disposable and excluded from Git.

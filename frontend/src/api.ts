@@ -1,8 +1,13 @@
 import type {
   ApplicationRecord,
+  AIProviderSettingsInput,
+  AISettingsResponse,
+  AIProviderId,
   ApplicationsResponse,
   ApplicationStatus,
   ApplicationAnswer,
+  BrowserFieldDraft,
+  BrowserFormSession,
   CandidateProfile,
   CvStatus,
   JobMatchResult,
@@ -47,6 +52,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export async function getHealth(): Promise<{ status: string; service: string }> {
   return request("/api/health");
+}
+
+
+export async function getAiSettings(): Promise<AISettingsResponse> {
+  return request<AISettingsResponse>("/api/ai/settings");
+}
+
+export async function saveAiSettings(settings: AIProviderSettingsInput): Promise<AISettingsResponse> {
+  return request<AISettingsResponse>("/api/ai/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  });
+}
+
+export async function testAiProvider(settings: Pick<AIProviderSettingsInput, "provider" | "model" | "base_url">): Promise<{ success: boolean; provider: AIProviderId; model: string; message: string }> {
+  return request("/api/ai/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  });
 }
 
 export async function getCvStatus(): Promise<CvStatus> {
@@ -170,4 +196,28 @@ export async function generateApplicationAnswer(
     },
   );
   return result.application;
+}
+
+
+export async function openApplicationBrowser(applicationId: string): Promise<BrowserFormSession> {
+  return request<BrowserFormSession>(`/api/applications/${encodeURIComponent(applicationId)}/browser/open`, { method: "POST" });
+}
+
+export async function scanBrowserForm(): Promise<BrowserFormSession> {
+  return request<BrowserFormSession>("/api/browser/scan", { method: "POST" });
+}
+
+export async function fillBrowserForm(
+  applicationId: string,
+  fields: BrowserFieldDraft[],
+): Promise<{ filled_count: number; skipped: { field_id: string; reason: string }[]; message: string }> {
+  return request<{ filled_count: number; skipped: { field_id: string; reason: string }[]; message: string }>(`/api/applications/${encodeURIComponent(applicationId)}/browser/fill`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: fields.filter((field) => field.include && field.value.trim()).map(({ field_id, value }) => ({ field_id, value })) }),
+  });
+}
+
+export async function closeBrowserSession(): Promise<void> {
+  await request("/api/browser/session", { method: "DELETE" });
 }

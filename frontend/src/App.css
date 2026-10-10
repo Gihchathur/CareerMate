@@ -898,3 +898,79 @@ body { background: var(--workspace-bg); color: var(--workspace-ink); }
 @media (max-width: 410px) {
   .application-stats-grid { grid-template-columns: 1fr; }
 }
+
+/* Step 13–15: reviewed browser-assisted form preparation */
+.browser-assist-section { border-top: 1px solid #ececf5; margin-top: 22px; padding-top: 22px; }
+.browser-assist-safety { display: flex; align-items: flex-start; gap: 10px; border: 1px solid #dfe4fb; border-radius: 12px; padding: 12px 14px; background: #f7f8ff; color: #515675; font-size: 12px; line-height: 1.6; }
+.browser-assist-safety .icon { flex: 0 0 auto; color: #6664d8; margin-top: 2px; }
+.browser-assist-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.browser-assist-page { display: grid; gap: 4px; margin-top: 14px; padding: 12px 14px; border: 1px solid #ececf5; border-radius: 12px; background: #fbfbfe; }
+.browser-assist-page strong { color: #292b49; font-size: 13px; }
+.browser-assist-page span { color: #656985; font-size: 11px; overflow-wrap: anywhere; }
+.browser-assist-page small { color: #8a8ca4; font-size: 10px; }
+.browser-field-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; margin: 18px 0 10px; }
+.browser-field-heading strong { color: #292b49; font-size: 13px; }
+.browser-field-heading span { color: #8a8ca4; font-size: 11px; }
+.browser-field-list { display: grid; gap: 10px; margin-bottom: 14px; }
+.browser-field-card { min-width: 0; padding: 13px; border: 1px solid #e9eaf3; border-radius: 12px; background: #fff; }
+.browser-field-card-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
+.browser-field-include { display: flex; align-items: flex-start; gap: 8px; min-width: 0; font-size: 12px; font-weight: 700; color: #30324f; }
+.browser-field-include input { accent-color: #625fe1; margin-top: 2px; }
+.browser-field-include span { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; overflow-wrap: anywhere; }
+.browser-field-include em { font-style: normal; font-size: 9px; font-weight: 750; color: #a45d19; background: #fff2dc; border-radius: 5px; padding: 3px 5px; text-transform: uppercase; letter-spacing: .04em; }
+.browser-field-kind { color: #888ba3; font-size: 10px; border: 1px solid #ececf5; border-radius: 5px; padding: 3px 5px; }
+.browser-field-source { display: block; margin: 0 0 8px 23px; color: #73759b; font-size: 10px; }
+.browser-field-card .field { gap: 5px; }
+.browser-field-card .field > span { font-size: 10px; color: #82849a; }
+.browser-field-card .field textarea { min-height: 62px; font-size: 12px; }
+@media (max-width: 620px) {
+  .browser-assist-actions .button { width: 100%; justify-content: center; }
+  .browser-field-card { padding: 10px; }
+  .browser-field-heading { align-items: flex-start; flex-direction: column; }
+}
+
+/* AI provider settings */
+.ai-settings-view { gap: 18px; }
+.ai-settings-panel { padding: 25px; }
+.ai-provider-form { display: grid; gap: 16px; max-width: 760px; }
+.ai-provider-form > .field { margin: 0; }
+.ai-info-note { display: flex; align-items: flex-start; gap: 11px; border: 1px solid #dfe8f7; border-radius: 12px; padding: 14px; color: #5b6a82; background: #f7faff; }
+.ai-info-note > .icon { width: 18px; height: 18px; flex: 0 0 auto; color: #6663d9; margin-top: 1px; }
+.ai-info-note strong { display: block; color: #303b55; font-size: 12px; margin-bottom: 5px; }
+.ai-info-note p { margin: 0; color: #6a7890; font-size: 11px; line-height: 1.7; }
+.ai-info-note code, .ai-settings-disclaimer code { padding: 2px 4px; border-radius: 4px; background: #e9edf6; color: #424b61; font-size: 10px; }
+.ai-info-note a { display: inline-flex; align-items: center; gap: 6px; margin-top: 9px; font-size: 11px; font-weight: 700; color: #5f5bd8; text-decoration: none; }
+.ai-info-note a:hover { text-decoration: underline; }
+.ai-info-note a .icon { width: 13px; height: 13px; }
+.ai-info-cloud { border-color: #f0e2bb; background: #fffaf0; }
+.ai-info-cloud > .icon { color: #9a7526; }
+.ai-consent-row { display: flex; align-items: flex-start; gap: 11px; padding: 14px; border: 1px solid #f0e2bb; border-radius: 12px; background: #fffaf0; cursor: pointer; }
+.ai-consent-row input { width: 16px; height: 16px; flex: 0 0 auto; margin-top: 2px; accent-color: #6561d7; }
+.ai-consent-row span { display: grid; gap: 5px; }
+.ai-consent-row strong { color: #5e4b22; font-size: 11px; }
+.ai-consent-row small { color: #82724d; font-size: 10px; line-height: 1.65; }
+.ai-settings-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-top: 2px; }
+.ai-test-result { border-radius: 10px; padding: 11px 13px; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.ai-test-success { color: #237a5e; border: 1px solid #d5eee2; background: #f3fcf8; }
+.ai-test-error { color: #a04747; border: 1px solid #f0d5d5; background: #fff7f7; }
+.ai-provider-status-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.ai-provider-status-card { padding: 19px; }
+.ai-provider-status-card.ai-provider-active { border-color: #c8c7fc; box-shadow: 0 0 0 2px rgba(105, 101, 226, .07); }
+.ai-provider-status-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 13px; }
+.ai-provider-status-top .filter-icon { margin: 0; }
+.ai-config-status { border-radius: 99px; padding: 5px 7px; font-size: 9px; font-weight: 800; white-space: nowrap; }
+.ai-config-status.ready { color: #28785e; background: #e8f7f0; }
+.ai-config-status.needs-setup { color: #8b6b27; background: #fff4da; }
+.ai-provider-status-card h3 { margin: 0 0 8px; font-size: 14px; color: #282d42; }
+.ai-provider-status-card p { min-height: 68px; margin: 0 0 12px; color: #7b8598; font-size: 10px; line-height: 1.7; }
+.ai-provider-status-card small { display: block; padding-top: 10px; border-top: 1px solid #eef0f5; color: #7b78d7; font-size: 9px; line-height: 1.5; }
+.ai-settings-disclaimer { margin: 0; padding: 0 3px; color: #7a8498; font-size: 10px; line-height: 1.75; }
+@media (max-width: 1050px) {
+  .ai-provider-status-grid { grid-template-columns: 1fr; }
+  .ai-provider-status-card p { min-height: 0; }
+}
+@media (max-width: 650px) {
+  .ai-settings-panel { padding: 17px; }
+  .ai-settings-actions { align-items: stretch; flex-direction: column; }
+  .ai-settings-actions .button { width: 100%; }
+}

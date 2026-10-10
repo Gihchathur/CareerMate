@@ -106,17 +106,12 @@ def test_matching_validates_evidence_and_excludes_contact_data(tmp_path, monkeyp
     })
     captured: dict[str, str] = {}
 
-    class FakeClient:
-        def __init__(self, host: str):
-            captured["host"] = host
+    def fake_generate_text(prompt: str, **kwargs: object) -> str:
+        captured["prompt"] = prompt
+        captured["schema"] = str(kwargs.get("json_schema"))
+        return model_content
 
-        def chat(self, **kwargs):
-            captured["prompt"] = kwargs["messages"][0]["content"]
-            return SimpleNamespace(
-                message=SimpleNamespace(content=model_content),
-            )
-
-    monkeypatch.setattr(job_matcher, "Client", FakeClient)
+    monkeypatch.setattr(job_matcher, "generate_text", fake_generate_text)
 
     job = {
         "id": "example:1",
@@ -262,7 +257,7 @@ def test_multi_role_search_deduplicates_and_keeps_search_roles(monkeypatch) -> N
     assert result["total_is_approximate"] is True
 
 
-def test_multi_role_search_filters_unknown_work_mode_and_rejects_unsupported_country(monkeypatch) -> None:
+def test_multi_role_search_filters_unknown_work_mode_and_explains_country_sources(monkeypatch) -> None:
     from app.models.job import JobPosting
     from app.services import job_discovery
 
@@ -283,19 +278,19 @@ def test_multi_role_search_filters_unknown_work_mode_and_rejects_unsupported_cou
     monkeypatch.setattr(job_discovery, "search_jobs", lambda **kwargs: (40, [remote, unknown]))
 
     result = job_discovery.search_multiple_roles(
-        roles=["Researcher"], country="Sweden", city="", work_mode="remote", limit=10, offset=0,
+        roles=["Researcher"], country="Sweden", city="", work_mode="remote", limit=10, offset=0, sources=["jobtech_links"],
     )
     assert [job.id for job in result["jobs"]] == ["jobtech-links:remote"]
     assert result["filtered_out"] == 1
 
     try:
         job_discovery.search_multiple_roles(
-            roles=["Researcher"], country="Germany", city="", work_mode="any", limit=10, offset=0,
+            roles=["Researcher"], country="Germany", city="", work_mode="any", limit=10, offset=0, sources=["jobtech_links"],
         )
     except job_discovery.JobDiscoveryError as exc:
-        assert "configured for Sweden" in str(exc)
+        assert "Sweden-focused" in str(exc)
     else:
-        raise AssertionError("Unsupported country should be rejected clearly")
+        raise AssertionError("The Sweden-only source should explain how to search internationally")
 
 
 def test_load_saved_jobs_treats_blank_file_as_empty(tmp_path, monkeypatch) -> None:
@@ -354,16 +349,16 @@ def test_job_search_endpoint_passes_multiple_roles_and_saves_results(tmp_path, m
     assert response.json()["saved_total"] == 1
 
 
-def test_job_search_endpoint_rejects_country_not_yet_supported() -> None:
+def test_job_search_endpoint_explains_when_only_sweden_source_is_selected_for_germany() -> None:
     from fastapi.testclient import TestClient
     from app import main
 
     response = TestClient(main.app).get(
-        "/api/jobs/search?roles=Analyst&country=Germany"
+        "/api/jobs/search?roles=Analyst&country=Germany&sources=jobtech_links"
     )
 
     assert response.status_code == 400
-    assert "configured for Sweden" in response.json()["detail"]
+    assert "Sweden-focused" in response.json()["detail"]
 
 
 # Step 10: company-specific ATS source adapters.
@@ -735,3 +730,40 @@ def test_teamtailor_malformed_payload_requires_data_array(monkeypatch) -> None:
         assert "data array" in str(exc)
     else:
         raise AssertionError("Teamtailor response without data should be treated as malformed")
+
+
+def test_teamtailor_current_version_header_and_supported_region(monkeypatch) -> None:
+    from datetime import datetime, timezone
+    import httpx
+    import pytest
+    from app.services.job_sources import teamtailor
+    from app.services.job_sources.base import JobSourceError
+
+    captured = {}
+
+    def fake_get(url, **kwargs):
+        captured["url"] = url
+        captured["headers"] = kwargs["headers"]
+        return httpx.Response(200, json={"data": []}, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(teamtailor, "get_with_retries", fake_get)
+    assert teamtailor.fetch_company_jobs(api_key="fake", company_name="Example AB") == []
+    assert captured["headers"]["x-api-version"] == datetime.now(timezone.utc).strftime("%Y%m%d")
+    assert captured["url"] == "https://api.teamtailor.com/v1/jobs"
+
+    assert teamtailor.fetch_company_jobs(api_key="fake", company_name="Example AB", region="apac") == []
+    assert captured["url"] == "https://api.au.teamtailor.com/v1/jobs"
+
+
+def test_teamtailor_config_accepts_documented_apac_region(tmp_path, monkeypatch) -> None:
+    from app.services import job_search
+
+    config_path = tmp_path / "sources.json"
+    config_path.write_text(
+        '{"teamtailor": [{"enabled": true, "company": "Example AB", '
+        '"api_key_env": "CAREERMATE_TEST_KEY", "region": "apac"}]}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(job_search, "SOURCE_CONFIG_PATH", config_path)
+
+    assert job_search.load_source_config()["teamtailor"][0]["region"] == "apac"

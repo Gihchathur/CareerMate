@@ -80,6 +80,8 @@ def source_status() -> dict[str, object]:
     ]
     return {
         "jobtech_links": {"configured": True, "employers": None, "requires_api_key": False},
+        "remoteok": {"configured": True, "employers": None, "requires_api_key": False},
+        "arbeitnow": {"configured": True, "employers": None, "requires_api_key": False},
         "greenhouse": {"configured": bool(greenhouse), "employers": len(greenhouse), "requires_api_key": False},
         "lever": {"configured": bool(lever), "employers": len(lever), "requires_api_key": False},
         "teamtailor": {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -101,7 +102,8 @@ def fetch_company_jobs(
                 headers={
                     "accept": "application/vnd.api+json",
                     "authorization": f"Token token={api_key.strip()}",
-                    "x-api-version": "20240404",
+                    # Teamtailor documents using today's date to request its latest API version.
+                    "x-api-version": datetime.now(timezone.utc).strftime("%Y%m%d"),
                     "user-agent": "CareerMate-local/0.1",
                 },
                 timeout=httpx.Timeout(20.0, connect=8.0),

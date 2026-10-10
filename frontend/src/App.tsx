@@ -1,14 +1,21 @@
 import { useCallback, useEffect, useState, type FormEvent, type HTMLInputTypeAttribute } from "react";
 import {
   analyzeCv,
+  closeBrowserSession,
   createApplication,
+  fillBrowserForm,
   generateApplicationAnswer,
   generateCoverLetter,
   getApplications,
+  getAiSettings,
+  saveAiSettings,
+  testAiProvider,
   getCvStatus,
   getProfile,
   getSavedJobs,
   getJobSources,
+  openApplicationBrowser,
+  scanBrowserForm,
   matchJobs,
   saveProfile,
   searchJobs,
@@ -17,7 +24,11 @@ import {
 } from "./api";
 import type {
   ApplicationAnswer,
+  AIProviderId,
+  AISettingsResponse,
   ApplicationRecord,
+  BrowserFieldDraft,
+  BrowserFormSession,
   ApplicationStatus,
   CandidatePersonal,
   CandidateProfile,
@@ -41,6 +52,8 @@ const EMPTY_STATUS: CvStatus = {
 
 const SOURCE_OPTIONS: { id: JobSourceId; title: string }[] = [
   { id: "jobtech_links", title: "JobAd Links" },
+  { id: "remoteok", title: "Remote OK" },
+  { id: "arbeitnow", title: "Arbeitnow" },
   { id: "greenhouse", title: "Greenhouse" },
   { id: "lever", title: "Lever" },
   { id: "teamtailor", title: "Teamtailor" },
@@ -58,6 +71,8 @@ const APPLICATION_STATUS_LABELS: Record<ApplicationStatus, string> = {
 
 const EMPTY_SOURCE_STATUS: Record<JobSourceId, JobSourceStatus> = {
   jobtech_links: { configured: true, employers: null, requires_api_key: false },
+  remoteok: { configured: true, employers: null, requires_api_key: false },
+  arbeitnow: { configured: true, employers: null, requires_api_key: false },
   greenhouse: { configured: false, employers: 0, requires_api_key: false },
   lever: { configured: false, employers: 0, requires_api_key: false },
   teamtailor: { configured: false, employers: 0, requires_api_key: true, credentials_ready: false, missing_credentials: 0 },
@@ -77,6 +92,57 @@ function safeExternalUrl(value: string): string | null {
   } catch {
     return null;
   }
+}
+
+function suggestedBrowserValue(key: string, profile: CandidateProfile | null, application: ApplicationRecord | null): string {
+  if (!profile) return "";
+  const fullName = profile.personal?.name?.trim() ?? "";
+  switch (key) {
+    case "personal.name": return fullName;
+    case "personal.first_name": return fullName.split(/\s+/).filter(Boolean)[0] ?? "";
+    case "personal.last_name": return fullName.split(/\s+/).filter(Boolean).slice(1).join(" ");
+    case "personal.email": return profile.personal?.email ?? "";
+    case "personal.phone": return profile.personal?.phone ?? "";
+    case "personal.location": return profile.personal?.location ?? "";
+    case "personal.linkedin": return profile.personal?.linkedin ?? "";
+    case "personal.github": return profile.personal?.github ?? "";
+    case "personal.portfolio": return profile.personal?.portfolio ?? "";
+    case "summary": return profile.summary ?? "";
+    case "skills": return profile.skills.join(", ");
+    case "languages": return profile.languages.join(", ");
+    case "certifications": return profile.certifications.join(", ");
+    case "cover_letter": return application?.cover_letter ?? "";
+    case "latest_answer": return application?.answers.at(-1)?.answer ?? "";
+    default: return "";
+  }
+}
+
+function suggestedBrowserValueLabel(key: string): string {
+  const labels: Record<string, string> = {
+    "personal.name": "Full name",
+    "personal.first_name": "First name from profile",
+    "personal.last_name": "Last name from profile",
+    "personal.email": "Email address",
+    "personal.phone": "Phone number",
+    "personal.location": "Profile location",
+    "personal.linkedin": "LinkedIn URL",
+    "personal.github": "GitHub URL",
+    "personal.portfolio": "Portfolio URL",
+    summary: "Professional summary",
+    skills: "Skills",
+    languages: "Languages",
+    certifications: "Certifications",
+    cover_letter: "Saved cover-letter draft",
+    latest_answer: "Latest saved employer answer",
+  };
+  return labels[key] ?? "No automatic suggestion";
+}
+
+function makeBrowserFieldDrafts(session: BrowserFormSession, profile: CandidateProfile | null, application: ApplicationRecord | null): BrowserFieldDraft[] {
+  return session.fields.map((field) => {
+    const value = suggestedBrowserValue(field.suggested_key, profile, application);
+    return { ...field, value, include: Boolean(value.trim()) };
+  });
 }
 
 function Field({
@@ -131,7 +197,7 @@ function TextAreaField({
   );
 }
 
-function Icon({ name }: { name: "search" | "file" | "sparkles" | "briefcase" | "check" | "arrow" | "grid" | "user" | "shield" | "target" | "chevron" | "sliders" | "layers" | "plus" | "info" | "graduation" | "pin" | "clock" }) {
+function Icon({ name }: { name: "search" | "file" | "sparkles" | "briefcase" | "check" | "arrow" | "grid" | "user" | "shield" | "target" | "chevron" | "sliders" | "layers" | "plus" | "info" | "graduation" | "pin" | "clock" | "cpu" }) {
   const paths: Record<typeof name, string> = {
     search: "M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm10 2-4.35-4.35",
     file: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Zm0 0v6h6M8 13h8M8 17h8",
@@ -151,12 +217,13 @@ function Icon({ name }: { name: "search" | "file" | "sparkles" | "briefcase" | "
     graduation: "m2 10 10-5 10 5-10 5-10-5Zm4 2v5c4 3 8 3 12 0v-5M22 10v6",
     pin: "M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Zm-5 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z",
     clock: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0-16v6l4 2",
+    cpu: "M8 8h8v8H8zM9 2v3m6-3v3M9 19v3m6-3v3M2 9h3m-3 6h3m14-6h3m-3 6h3M8 5H5v14h14V5h-3",
   };
 
   return <svg aria-hidden="true" className="icon" viewBox="0 0 24 24" fill="none"><path d={paths[name]} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
-type WorkspaceView = "overview" | "discover" | "matches" | "applications" | "profile";
+type WorkspaceView = "overview" | "discover" | "matches" | "applications" | "profile" | "ai";
 
 function App() {
   const [file, setFile] = useState<File | null>(null);
@@ -172,6 +239,14 @@ function App() {
   const [selectedSources, setSelectedSources] = useState<JobSourceId[]>(["jobtech_links"]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [aiSettings, setAiSettings] = useState<AISettingsResponse | null>(null);
+  const [aiProviderDraft, setAiProviderDraft] = useState<AIProviderId>("ollama");
+  const [aiModelDraft, setAiModelDraft] = useState("gemma4:e4b");
+  const [aiBaseUrlDraft, setAiBaseUrlDraft] = useState("http://127.0.0.1:11434");
+  const [cloudAiConsent, setCloudAiConsent] = useState(false);
+  const [aiSaving, setAiSaving] = useState(false);
+  const [aiTesting, setAiTesting] = useState(false);
+  const [aiTestMessage, setAiTestMessage] = useState("");
 
   const [jobRoles, setJobRoles] = useState("Software Engineer");
   const [jobCountry, setJobCountry] = useState("Sweden");
@@ -201,6 +276,11 @@ function App() {
   const [applicationSaving, setApplicationSaving] = useState(false);
   const [draftingCoverLetter, setDraftingCoverLetter] = useState(false);
   const [draftingAnswer, setDraftingAnswer] = useState(false);
+  const [browserSession, setBrowserSession] = useState<BrowserFormSession | null>(null);
+  const [browserFieldDrafts, setBrowserFieldDrafts] = useState<BrowserFieldDraft[]>([]);
+  const [browserOpening, setBrowserOpening] = useState(false);
+  const [browserScanning, setBrowserScanning] = useState(false);
+  const [browserFilling, setBrowserFilling] = useState(false);
 
   const refreshStatus = useCallback(async () => {
     const status = await getCvStatus();
@@ -214,7 +294,7 @@ function App() {
 
     async function loadInitialData() {
       try {
-        const [status, savedJobs, sourceResponse, applicationResponse] = await Promise.all([
+        const [status, savedJobs, sourceResponse, applicationResponse, aiResponse] = await Promise.all([
           getCvStatus(),
           getSavedJobs(),
           getJobSources().catch(() => null),
@@ -222,6 +302,7 @@ function App() {
             if (!cancelled) setError(applicationsError instanceof Error ? applicationsError.message : "Could not load application records.");
             return null;
           }),
+          getAiSettings().catch(() => null),
         ]);
         if (cancelled) return;
         setCvStatus(status);
@@ -230,6 +311,13 @@ function App() {
         if (applicationResponse) {
           setApplications(applicationResponse.applications);
           if (applicationResponse.applications.length) selectApplication(applicationResponse.applications[0]);
+        }
+        if (aiResponse) {
+          setAiSettings(aiResponse);
+          setAiProviderDraft(aiResponse.provider);
+          setAiModelDraft(aiResponse.providers[aiResponse.provider].model);
+          setAiBaseUrlDraft(aiResponse.providers[aiResponse.provider].base_url);
+          setCloudAiConsent(false);
         }
         if (sourceResponse) {
           const mergedStatus = { ...EMPTY_SOURCE_STATUS, ...sourceResponse.sources };
@@ -321,7 +409,7 @@ function App() {
 
     setCvLoading(true);
     setError("");
-    setNotice("CareerMate is asking Ollama to structure the CV. The first run may take a while.");
+    setNotice(`CareerMate is asking ${aiSettings?.providers[aiSettings.provider]?.label ?? "the selected AI provider"} to structure the CV.`);
     try {
       const analyzedProfile = await analyzeCv();
       setProfile(analyzedProfile);
@@ -334,6 +422,59 @@ function App() {
       setNotice("");
     } finally {
       setCvLoading(false);
+    }
+  }
+
+  function selectAiProvider(provider: AIProviderId) {
+    const config = aiSettings?.providers[provider];
+    setAiProviderDraft(provider);
+    setAiModelDraft(config?.model ?? (provider === "ollama" ? "gemma4:e4b" : provider === "openai" ? "gpt-6-luna" : ""));
+    setAiBaseUrlDraft(config?.base_url ?? (provider === "ollama" ? "http://127.0.0.1:11434" : ""));
+    setAiTestMessage("");
+    setCloudAiConsent(false);
+  }
+
+  async function handleSaveAiSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAiSaving(true);
+    setAiTestMessage("");
+    setError("");
+    setNotice("");
+    try {
+      const result = await saveAiSettings({
+        provider: aiProviderDraft,
+        model: aiModelDraft.trim(),
+        base_url: aiBaseUrlDraft.trim(),
+        confirm_cloud_data_sharing: aiProviderDraft === "ollama" ? false : cloudAiConsent,
+      });
+      setAiSettings(result);
+      setAiProviderDraft(result.provider);
+      setAiModelDraft(result.providers[result.provider].model);
+      setAiBaseUrlDraft(result.providers[result.provider].base_url);
+      setCloudAiConsent(false);
+      setNotice(`AI provider updated to ${result.providers[result.provider].label}. New CV analysis, job matches and application drafts will use this provider.`);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Could not save AI provider settings.");
+    } finally {
+      setAiSaving(false);
+    }
+  }
+
+  async function handleTestAiProvider() {
+    setAiTesting(true);
+    setAiTestMessage("");
+    setError("");
+    try {
+      const result = await testAiProvider({
+        provider: aiProviderDraft,
+        model: aiModelDraft.trim(),
+        base_url: aiBaseUrlDraft.trim(),
+      });
+      setAiTestMessage(`Connection successful · ${result.model} replied: ${result.message}`);
+    } catch (testError) {
+      setAiTestMessage(testError instanceof Error ? testError.message : "Provider connection test failed.");
+    } finally {
+      setAiTesting(false);
     }
   }
 
@@ -461,7 +602,10 @@ function App() {
 
     setMatchLoading(true);
     setError("");
-    setNotice(`Analyzing up to ${Math.min(matchLimit, jobs.length)} jobs with the local model. This may take several minutes on the first run.`);
+    const activeProviderLabel = aiSettings?.providers[aiSettings.provider]?.label ?? "the selected AI provider";
+    setNotice(aiSettings?.provider === "ollama"
+      ? `Analyzing up to ${Math.min(matchLimit, jobs.length)} jobs with local Ollama. The first run can take time on this computer.`
+      : `Analyzing up to ${Math.min(matchLimit, jobs.length)} jobs with ${activeProviderLabel}. Selected jobs can run concurrently; API usage may be billed.`);
     try {
       // Always persist the current, user-reviewed version before matching.
       await saveProfile(profile);
@@ -471,7 +615,7 @@ function App() {
       const selectedJobs = jobs.slice(0, matchLimit);
       const result = await matchJobs(matchLimit, selectedJobs.map((job) => job.id));
       setMatches(result.jobs);
-      setNotice(`Analyzed ${result.analyzed} job(s). Results are evidence-coverage estimates, not hiring probabilities.`);
+      setNotice(`Analyzed ${result.analyzed} job(s) with ${activeProviderLabel}. Results are evidence-coverage estimates, not hiring probabilities.`);
     } catch (matchError) {
       setError(matchError instanceof Error ? matchError.message : "Could not analyze job matches.");
       setNotice("");
@@ -535,11 +679,12 @@ function App() {
     if (!selectedApplicationId) return;
     setDraftingCoverLetter(true);
     setError("");
-    setNotice("Generating a CV-grounded cover-letter draft with your local model. Please review every claim before using it.");
+    const activeProviderLabel = aiSettings?.providers[aiSettings.provider]?.label ?? "the selected AI provider";
+    setNotice(`Generating a CV-grounded cover-letter draft with ${activeProviderLabel}. Please review every claim before using it.`);
     try {
       const updated = await generateCoverLetter(selectedApplicationId);
       acceptUpdatedApplication(updated);
-      setNotice("Cover-letter draft generated locally. Review and edit it, then save any changes before use.");
+      setNotice(`Cover-letter draft generated with ${activeProviderLabel}. Review and edit it, then save any changes before use.`);
     } catch (draftError) {
       setError(draftError instanceof Error ? draftError.message : "Could not generate the cover-letter draft.");
       setNotice("");
@@ -557,7 +702,8 @@ function App() {
     }
     setDraftingAnswer(true);
     setError("");
-    setNotice("Generating a draft answer from the reviewed profile with your local model.");
+    const activeProviderLabel = aiSettings?.providers[aiSettings.provider]?.label ?? "the selected AI provider";
+    setNotice(`Generating a draft answer from the reviewed profile with ${activeProviderLabel}.`);
     try {
       const updated = await generateApplicationAnswer(selectedApplicationId, applicationQuestion.trim());
       acceptUpdatedApplication(updated);
@@ -568,6 +714,84 @@ function App() {
     } finally {
       setDraftingAnswer(false);
     }
+  }
+
+  async function handleOpenBrowserAssistant() {
+    if (!selectedApplication) return;
+    setBrowserOpening(true);
+    setError("");
+    setNotice("Opening a visible browser at the tracked job link. Review the page and navigate to the application form manually if needed.");
+    try {
+      const session = await openApplicationBrowser(selectedApplication.id);
+      setBrowserSession(session);
+      setBrowserFieldDrafts(makeBrowserFieldDrafts(session, profile, selectedApplication));
+      setNotice(session.field_count > 0
+        ? `Browser opened and ${session.field_count} supported fields scanned. Review suggested values before filling.`
+        : "Browser opened. If this is a job listing, navigate to its application form manually and then scan the fields.");
+    } catch (browserError) {
+      setError(browserError instanceof Error ? browserError.message : "Could not open browser assistance.");
+      setNotice("");
+    } finally {
+      setBrowserOpening(false);
+    }
+  }
+
+  async function handleScanBrowserForm() {
+    setBrowserScanning(true);
+    setError("");
+    setNotice("Scanning visible form fields. Password, verification, CAPTCHA, file upload and submit controls are excluded.");
+    try {
+      const session = await scanBrowserForm();
+      setBrowserSession(session);
+      setBrowserFieldDrafts(makeBrowserFieldDrafts(session, profile, selectedApplication));
+      setNotice(`Scanned ${session.field_count} supported field(s). Choose and review values before filling.`);
+    } catch (browserError) {
+      setError(browserError instanceof Error ? browserError.message : "Could not scan the current form.");
+      setNotice("");
+    } finally {
+      setBrowserScanning(false);
+    }
+  }
+
+  async function handleFillBrowserForm() {
+    if (!selectedApplication) return;
+    const selectedFields = browserFieldDrafts.filter((field) => field.include && field.value.trim());
+    if (selectedFields.length === 0) {
+      setError("Select at least one field and review its value before filling.");
+      setNotice("");
+      return;
+    }
+    setBrowserFilling(true);
+    setError("");
+    setNotice(`Filling ${selectedFields.length} reviewed field(s). CareerMate will not submit the form.`);
+    try {
+      const result = await fillBrowserForm(selectedApplication.id, selectedFields);
+      setNotice(`${result.message} Filled ${result.filled_count} field(s); skipped ${result.skipped.length}.`);
+      if (result.skipped.length) {
+        setError(result.skipped.map((item) => `${item.field_id}: ${item.reason}`).join(" "));
+      }
+    } catch (browserError) {
+      setError(browserError instanceof Error ? browserError.message : "Could not fill the reviewed fields.");
+      setNotice("");
+    } finally {
+      setBrowserFilling(false);
+    }
+  }
+
+  async function handleCloseBrowserAssistant() {
+    try {
+      await closeBrowserSession();
+      setBrowserSession(null);
+      setBrowserFieldDrafts([]);
+      setNotice("Browser session closed. Form values were not stored in CareerMate.");
+      setError("");
+    } catch (browserError) {
+      setError(browserError instanceof Error ? browserError.message : "Could not close the browser session.");
+    }
+  }
+
+  function updateBrowserField(fieldId: string, changes: Partial<BrowserFieldDraft>) {
+    setBrowserFieldDrafts((current) => current.map((field) => field.field_id === fieldId ? { ...field, ...changes } : field));
   }
 
   function editApplicationAnswer(index: number, answer: string) {
@@ -704,7 +928,12 @@ function App() {
     profile: {
       title: "Your professional profile",
       eyebrow: "CV & PROFILE",
-      description: "Keep your career facts accurate. The local model uses this reviewed profile when assessing opportunities.",
+      description: "Keep your career facts accurate. The selected AI provider uses this reviewed profile when assessing opportunities.",
+    },
+    ai: {
+      title: "Choose your AI engine",
+      eyebrow: "AI SETTINGS",
+      description: "Choose local Ollama for private offline inference, OpenAI for hosted responses, or another OpenAI-compatible API.",
     },
   };
   const currentMeta = pageMeta[activeView];
@@ -713,14 +942,14 @@ function App() {
     : matchLoading
       ? "Comparing job requirements with your profile…"
       : cvLoading
-        ? "Processing your CV locally…"
+        ? `Processing your CV with ${aiSettings?.providers[aiSettings.provider]?.label ?? "the selected AI provider"}…`
         : saving
           ? "Saving your profile locally…"
           : "";
-  const sourceLabel = (source: string) => source === "jobtech_links" ? "JobAd Links" : source === "greenhouse" ? "Greenhouse" : source === "lever" ? "Lever" : source === "teamtailor" ? "Teamtailor" : source;
+  const sourceLabel = (source: string) => source === "jobtech_links" ? "JobAd Links" : source === "remoteok" ? "Remote OK" : source === "arbeitnow" ? "Arbeitnow" : source === "greenhouse" ? "Greenhouse" : source === "lever" ? "Lever" : source === "teamtailor" ? "Teamtailor" : source;
   const workModeLabel = (mode?: string) => mode === "remote" ? "Remote" : mode === "hybrid" ? "Hybrid" : mode === "on_site" ? "On-site" : "Work mode unknown";
   const renderJobRow = (job: JobResult, compact = false) => {
-    const sourceUrl = safeExternalUrl(job.apply_url || job.source_url);
+    const sourceUrl = safeExternalUrl(job.source_url || job.apply_url);
     const match = matches.find((item) => item.id === job.id);
     return (
       <article className={`job-row${compact ? " job-row-compact" : ""}`} key={job.id}>
@@ -754,7 +983,7 @@ function App() {
         </a>
         <div className="topbar-context"><span className="topbar-context-dot" />Personal job search workspace</div>
         <div className="topbar-right">
-          <span className="privacy-chip"><span className="privacy-dot" /> Local-first</span>
+          <span className="privacy-chip"><span className="privacy-dot" /> {aiSettings?.provider && aiSettings.provider !== "ollama" ? "Hosted AI selected" : "Ollama selected"}</span>
           <span className="topbar-avatar">{profile?.personal?.name?.trim()?.charAt(0)?.toUpperCase() || "C"}</span>
         </div>
       </header>
@@ -768,6 +997,7 @@ function App() {
             <button type="button" className={`nav-item${activeView === "matches" ? " active" : ""}`} onClick={() => { setActiveView("matches"); setSelectedJob(null); }}><Icon name="sparkles" /><span>Match insights</span>{matches.length > 0 && <span className="nav-count">{matches.length}</span>}</button>
             <button type="button" className={`nav-item${activeView === "applications" ? " active" : ""}`} onClick={() => { setActiveView("applications"); setSelectedJob(null); }}><Icon name="briefcase" /><span>Applications</span>{applications.length > 0 && <span className="nav-count">{applications.length}</span>}</button>
             <button type="button" className={`nav-item${activeView === "profile" ? " active" : ""}`} onClick={() => { setActiveView("profile"); setSelectedJob(null); }}><Icon name="user" /><span>My profile</span><span className={`nav-status ${profile && profileSaved ? "nav-status-ready" : ""}`} /></button>
+            <button type="button" className={`nav-item${activeView === "ai" ? " active" : ""}`} onClick={() => { setActiveView("ai"); setSelectedJob(null); }}><Icon name="cpu" /><span>AI provider</span><span className={`nav-status ${aiSettings?.providers[aiSettings.provider]?.configured ? "nav-status-ready" : ""}`} /></button>
           </nav>
           <div className="sidebar-divider" />
           <div className="sidebar-label">WORKFLOW</div>
@@ -780,8 +1010,8 @@ function App() {
           <div className="privacy-card">
             <div className="privacy-card-icon"><Icon name="shield" /></div>
             <strong>Your data stays yours</strong>
-            <p>CV, profile, jobs, and match cache are stored on this computer.</p>
-            <span><span className="privacy-dot" /> Ollama · local AI</span>
+            <p>Project files stay local. Hosted AI receives prompt content only when you select an online provider.</p>
+            <span><span className="privacy-dot" /> {aiSettings?.providers[aiSettings.provider]?.label ?? "Loading AI provider"}</span>
           </div>
           <div className="sidebar-footer"><span className="brand-mark sidebar-brand-mark">C</span><span><strong>CareerMate</strong><small>Personal edition</small></span><span className="version-dot" title="Local workspace" /></div>
         </aside>
@@ -841,7 +1071,7 @@ function App() {
                   <div className="readiness-steps">
                     <button type="button" className="readiness-step" onClick={() => setActiveView("profile")}><span className={`readiness-check${cvStatus.uploaded ? " done" : ""}`}>{cvStatus.uploaded ? "✓" : "1"}</span><span><strong>Upload and review your CV</strong><small>{cvStatus.uploaded ? `${cvStatus.extracted_text_characters.toLocaleString()} characters extracted` : "PDF, DOCX or TXT up to 10 MB"}</small></span><Icon name="chevron" /></button>
                     <button type="button" className="readiness-step" onClick={() => setActiveView("discover")}><span className={`readiness-check${jobs.length ? " done" : ""}`}>{jobs.length ? "✓" : "2"}</span><span><strong>Discover relevant roles</strong><small>{jobs.length ? `${jobs.length} job records available` : "Search public job sources"}</small></span><Icon name="chevron" /></button>
-                    <button type="button" className="readiness-step" onClick={() => setActiveView("matches")}><span className={`readiness-check${matches.length ? " done" : ""}`}>{matches.length ? "✓" : "3"}</span><span><strong>Compare evidence and gaps</strong><small>{matches.length ? "Review your match results" : "Local AI · no hiring probability claims"}</small></span><Icon name="chevron" /></button>
+                    <button type="button" className="readiness-step" onClick={() => setActiveView("matches")}><span className={`readiness-check${matches.length ? " done" : ""}`}>{matches.length ? "✓" : "3"}</span><span><strong>Compare evidence and gaps</strong><small>{matches.length ? "Review your match results" : `${aiSettings?.providers[aiSettings.provider]?.label ?? "Selected AI provider"} · no hiring probability claims`}</small></span><Icon name="chevron" /></button>
                   </div>
                   <div className="local-note"><Icon name="shield" /><span><strong>Private by design</strong><small>Your data remains in local files. No account or cloud workspace is required.</small></span></div>
                 </aside>
@@ -857,7 +1087,7 @@ function App() {
                   <p className="panel-description">Search up to five job titles or keywords. One title per line.</p>
                   <form onSubmit={handleSearchJobs}>
                     <TextAreaField label="Job titles or keywords" value={jobRoles} onChange={setJobRoles} placeholder={"Platform Engineer\nDevOps Engineer\nSite Reliability Engineer"} rows={4} />
-                    <label className="field"><span>Country</span><select value={jobCountry} onChange={(event) => setJobCountry(event.target.value)}><option value="Sweden">Sweden · connected source</option><option value="Norway" disabled>Norway · source not connected</option><option value="Denmark" disabled>Denmark · source not connected</option><option value="Finland" disabled>Finland · source not connected</option><option value="Germany" disabled>Germany · source not connected</option></select></label>
+                    <label className="field"><span>Country</span><select value={jobCountry} onChange={(event) => setJobCountry(event.target.value)}><option value="Sweden">Sweden</option><option value="Norway">Norway</option><option value="Denmark">Denmark</option><option value="Finland">Finland</option><option value="Germany">Germany</option><option value="Netherlands">Netherlands</option><option value="United Kingdom">United Kingdom</option><option value="United States">United States</option><option value="Canada">Canada</option><option value="France">France</option><option value="Switzerland">Switzerland</option><option value="Any country">Any country</option></select></label>
                     <Field label="City or location" value={jobCity} onChange={setJobCity} placeholder="e.g. Stockholm" />
                     <label className="field"><span>Work arrangement</span><select value={workMode} onChange={(event) => setWorkMode(event.target.value as WorkMode)}><option value="any">Any / not specified</option><option value="remote">Remote</option><option value="hybrid">Hybrid</option><option value="on_site">On-site</option></select></label>
                     <label className="field"><span>Results per page</span><select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value={10}>10 jobs</option><option value={20}>20 jobs</option><option value={40}>40 jobs</option></select></label>
@@ -867,7 +1097,7 @@ function App() {
                           {SOURCE_OPTIONS.map((source) => {
                             const status = jobSources[source.id];
                             const selectable = canSelectSource(source.id, status);
-                            const countLabel = source.id === "jobtech_links" ? "Connected · Sweden" : !status.configured ? "Not configured · data/sources.json" : source.id === "teamtailor" && !status.credentials_ready ? "API key missing" : `${status.employers ?? 0} employer board${status.employers === 1 ? "" : "s"}`;
+                            const countLabel = source.id === "jobtech_links" ? "Connected · Sweden-focused" : source.id === "remoteok" ? "Public feed · remote roles" : source.id === "arbeitnow" ? "Public feed · European listings" : !status.configured ? "Not configured · data/sources.json" : source.id === "teamtailor" && !status.credentials_ready ? "API key missing" : `${status.employers ?? 0} employer board${status.employers === 1 ? "" : "s"}`;
                             return <label className={`source-option${selectable ? "" : " source-option-disabled"}`} key={source.id}><input type="checkbox" checked={selectedSources.includes(source.id)} disabled={!selectable} onChange={(event) => toggleJobSource(source.id, event.target.checked)} /><span className="source-option-copy"><strong>{source.title}</strong><small>{countLabel}</small></span></label>;
                           })}
                         </div>
@@ -956,6 +1186,29 @@ function App() {
                         <div className="application-question-action"><button className="button button-secondary" type="button" onClick={() => void handleDraftAnswer()} disabled={!canGenerateApplicationDraft || !profile || applicationQuestion.trim().length < 5}>{draftingAnswer ? <><span className="spinner" /> Drafting answer…</> : <><Icon name="sparkles" /> Draft answer</>}</button></div>
                         {applicationAnswers.length > 0 && <div className="application-answers-list">{applicationAnswers.map((answer, index) => <div className="application-answer-editor" key={`${answer.question}-${index}`}><div className="application-answer-question"><strong>{answer.question}</strong><button className="text-action" type="button" onClick={() => setApplicationAnswers((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></div><TextAreaField label="Edit answer" value={answer.answer} onChange={(value) => editApplicationAnswer(index, value)} rows={5} /></div>)}</div>}
                       </section>
+                      <section className="application-draft-section browser-assist-section">
+                        <div className="application-section-heading"><div><p className="eyebrow">STEP 14 · BROWSER ASSISTANCE</p><h3>Prepare the employer form</h3><p>Open a visible browser, review suggested values, then choose which fields to fill.</p></div></div>
+                        <div className="browser-assist-safety"><Icon name="shield" /><span>CareerMate never clicks Submit, uploads files, fills password/verification fields, or bypasses CAPTCHA or sign-in checks. Form values stay in browser memory and are not saved to the JSON tracker.</span></div>
+                        <div className="browser-assist-actions">
+                          <button className="button button-secondary button-small" type="button" onClick={() => void handleOpenBrowserAssistant()} disabled={!selectedApplication.job_url || browserOpening || browserScanning || browserFilling}>{browserOpening ? <><span className="spinner" /> Opening browser…</> : "Open application page"}</button>
+                          {browserSession?.application_id === selectedApplication.id && <>
+                            <button className="button button-secondary button-small" type="button" onClick={() => void handleScanBrowserForm()} disabled={browserOpening || browserScanning || browserFilling}>{browserScanning ? <><span className="spinner" /> Scanning…</> : "Refresh form fields"}</button>
+                            <button className="button button-quiet button-small" type="button" onClick={() => void handleCloseBrowserAssistant()} disabled={browserFilling}>Close browser session</button>
+                          </>}
+                        </div>
+                        {browserSession?.application_id === selectedApplication.id && <>
+                          <div className="browser-assist-page"><strong>{browserSession.title || "Employer page"}</strong><span>{browserSession.url}</span><small>Visible Chromium session · page navigation and sign-in remain manual</small></div>
+                          {browserFieldDrafts.length > 0 ? <>
+                            <div className="browser-field-heading"><strong>Review fields ({browserFieldDrafts.length})</strong><span>Only checked fields with a value will be filled</span></div>
+                            <div className="browser-field-list">{browserFieldDrafts.map((field) => <article className="browser-field-card" key={field.field_id}>
+                              <div className="browser-field-card-header"><label className="browser-field-include"><input type="checkbox" checked={field.include} onChange={(event) => updateBrowserField(field.field_id, { include: event.target.checked })} /><span>{field.label}{field.required && <em>Required</em>}</span></label><span className="browser-field-kind">{field.kind}</span></div>
+                              {field.suggested_key && <small className="browser-field-source">Suggested from: {suggestedBrowserValueLabel(field.suggested_key)}</small>}
+                              <TextAreaField label="Proposed value — review and edit" value={field.value} onChange={(value) => updateBrowserField(field.field_id, { value })} rows={field.kind === "textarea" || field.value.length > 160 ? 3 : 2} placeholder={field.suggested_key ? "Review the suggested value" : "Enter a value yourself after reviewing the form label"} />
+                            </article>)}</div>
+                            <button className="button button-primary" type="button" onClick={() => void handleFillBrowserForm()} disabled={browserFilling || browserOpening || browserScanning || !browserFieldDrafts.some((field) => field.include && field.value.trim())}>{browserFilling ? <><span className="spinner spinner-light" /> Filling reviewed fields…</> : "Fill selected fields — do not submit"}</button>
+                          </> : <p className="helper-text">No supported fields found yet. If the browser is showing a listing page, manually open its application form and select “Refresh form fields”. Password, file, CAPTCHA and submit fields are deliberately excluded.</p>}
+                        </>}
+                      </section>
                       <div className="application-save-row"><p className="helper-text">Saved locally in <code>data/applications/applications.json</code>. Nothing is submitted automatically.</p><button className="button button-primary" type="button" onClick={() => void handleSaveApplication()} disabled={applicationSaving || draftingAnswer || draftingCoverLetter}>{applicationSaving ? <><span className="spinner spinner-light" /> Saving…</> : <><Icon name="check" /> Save application</>}</button></div>
                     </section>
                   ) : <section className="panel empty-state"><h3>Select an application</h3><p>Choose a role from your tracked applications.</p></section>}
@@ -964,9 +1217,62 @@ function App() {
             </div>
           )}
 
+          {activeView === "ai" && (
+            <div className="view-stack ai-settings-view">
+              <section className="panel ai-settings-panel">
+                <div className="panel-titlebar">
+                  <div>
+                    <p className="eyebrow">PROVIDER CONFIGURATION</p>
+                    <h2>Choose how CareerMate thinks</h2>
+                  </div>
+                  <span className="filter-icon"><Icon name="cpu" /></span>
+                </div>
+                <p className="panel-description">The selected provider is used for CV analysis, job matching, cover letters, and employer-question drafts. Your files and settings remain on this computer.</p>
+                <form className="ai-provider-form" onSubmit={handleSaveAiSettings}>
+                  <label className="field">
+                    <span>AI provider</span>
+                    <select value={aiProviderDraft} onChange={(event) => selectAiProvider(event.target.value as AIProviderId)}>
+                      <option value="ollama">Ollama — local and private</option>
+                      <option value="openai">OpenAI API — hosted models</option>
+                      <option value="openai_compatible">OpenAI-compatible API — other providers</option>
+                    </select>
+                  </label>
+                  <Field label="Model ID" value={aiModelDraft} onChange={(value) => { setAiModelDraft(value); setAiTestMessage(""); }} placeholder={aiProviderDraft === "ollama" ? "e.g. gemma4:e4b" : aiProviderDraft === "openai" ? "e.g. gpt-6-luna" : "Model ID supplied by your API provider"} />
+                  {aiProviderDraft !== "openai" && <Field label={aiProviderDraft === "ollama" ? "Ollama host URL" : "API base URL"} value={aiBaseUrlDraft} onChange={(value) => { setAiBaseUrlDraft(value); setAiTestMessage(""); }} placeholder={aiProviderDraft === "ollama" ? "http://127.0.0.1:11434" : "https://your-provider.example/v1"} />}
+
+                  {aiProviderDraft === "ollama" && <div className="ai-info-note"><Icon name="shield" /><div><strong>Local processing</strong><p>CV text, profile details, job descriptions, and drafts are sent to your local Ollama instance. It runs on your computer and can use significant memory and CPU.</p></div></div>}
+                  {aiProviderDraft === "openai" && <div className="ai-info-note ai-info-cloud"><Icon name="info" /><div><strong>OpenAI API credentials</strong><p>Add an API key to <code>backend/.env</code> using <code>OPENAI_API_KEY</code>. Your ChatGPT subscription does not include API usage; API usage is billed separately.</p><a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">Open OpenAI API keys <Icon name="arrow" /></a></div></div>}
+                  {aiProviderDraft === "openai_compatible" && <div className="ai-info-note ai-info-cloud"><Icon name="info" /><div><strong>Bring a compatible provider</strong><p>Enter the API base URL and model ID supplied by your provider. Add its key as <code>CAREERMATE_OPENAI_COMPATIBLE_API_KEY</code> in <code>backend/.env</code>. The endpoint must support the OpenAI Chat Completions-compatible API; structured responses are validated locally.</p></div></div>}
+
+                  {aiProviderDraft !== "ollama" && <label className="ai-consent-row"><input type="checkbox" checked={cloudAiConsent} onChange={(event) => setCloudAiConsent(event.target.checked)} /><span><strong>I understand this provider is online.</strong><small>CareerMate may send CV text, profile fields, selected job descriptions, and draft prompts to this provider for processing. Do not switch to a hosted provider unless you are comfortable sharing that task data.</small></span></label>}
+
+                  <div className="ai-settings-actions">
+                    <button className="button button-secondary" type="button" onClick={() => void handleTestAiProvider()} disabled={aiTesting || !aiModelDraft.trim()}>{aiTesting ? <><span className="spinner" /> Testing…</> : <><Icon name="target" /> Test connection</>}</button>
+                    <button className="button button-primary" type="submit" disabled={aiSaving || !aiModelDraft.trim() || (aiProviderDraft !== "ollama" && !cloudAiConsent)}>{aiSaving ? <><span className="spinner spinner-light" /> Saving…</> : <><Icon name="check" /> Save AI settings</>}</button>
+                  </div>
+                  {aiTestMessage && <div className={`ai-test-result ${aiTestMessage.toLowerCase().includes("connection successful") ? "ai-test-success" : "ai-test-error"}`} role="status">{aiTestMessage}</div>}
+                </form>
+              </section>
+
+              <section className="ai-provider-status-grid">
+                {(["ollama", "openai", "openai_compatible"] as AIProviderId[]).map((providerId) => {
+                  const provider = aiSettings?.providers[providerId];
+                  const isActive = aiSettings?.provider === providerId;
+                  return <article className={`panel ai-provider-status-card${isActive ? " ai-provider-active" : ""}`} key={providerId}>
+                    <div className="ai-provider-status-top"><span className="filter-icon"><Icon name={providerId === "ollama" ? "shield" : providerId === "openai" ? "sparkles" : "layers"} /></span><span className={`ai-config-status ${provider?.configured ? "ready" : "needs-setup"}`}>{provider?.configured ? "Configured" : "Setup needed"}</span></div>
+                    <h3>{provider?.label ?? providerId}</h3>
+                    <p>{providerId === "ollama" ? "Runs on your machine with no API usage charges, but speed depends on hardware, available memory, and the local model." : providerId === "openai" ? "Avoids local model inference and can reduce CPU/RAM load. Actual speed, limits, and cost depend on the selected model and provider." : "Connect compatible endpoints from other API providers using their supplied HTTPS URL, key, and model ID. Speed and pricing depend on that provider."}</p>
+                    <small>{isActive ? "Currently active" : provider?.configured ? "Available to select" : providerId === "ollama" ? "Test whether Ollama is running" : provider?.api_key_configured ? "Check model and endpoint settings" : "API key is not configured in backend/.env"}</small>
+                  </article>;
+                })}
+              </section>
+              <p className="ai-settings-disclaimer">CareerMate stores CVs, profile, jobs, and application records in local files. When a cloud AI provider is active, the text required for the specific AI operation is sent to that provider. API keys are read from <code>backend/.env</code> and are never returned by the settings API or stored in the JSON preferences.</p>
+            </div>
+          )}
+
           {activeView === "profile" && (
             <div className="view-stack profile-view">
-              {!profile && <section className="panel cv-setup-panel"><div className="cv-setup-visual"><div className="cv-illustration"><span className="cv-illustration-fold" /><span /><span /><span /><b><Icon name="check" /></b></div></div><div className="cv-setup-content"><p className="eyebrow">STEP 1 · BUILD YOUR PROFILE</p><h2>Start with your CV</h2><p className="panel-description">Upload a PDF, Word document, or text file. CareerMate extracts the text and uses your local Ollama model to organize it into a profile you can edit and review.</p><label className="upload-dropzone"><input type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><span className="upload-icon"><Icon name="file" /></span><strong>{file ? file.name : "Choose your CV file"}</strong><span className="helper-text">PDF, DOCX or TXT · up to 10 MB</span><span className="upload-prompt">Browse files <Icon name="arrow" /></span></label><div className="button-row"><button className="button button-secondary" onClick={handleUploadCv} disabled={cvLoading || !file} type="button">{cvLoading ? <><span className="spinner" /> Uploading…</> : "Upload & extract text"}</button><button className="button button-primary" onClick={handleAnalyzeCv} disabled={cvLoading || !cvStatus.uploaded} type="button">{cvLoading ? <><span className="spinner spinner-light" /> Working…</> : <><Icon name="sparkles" /> Analyze CV</>}</button></div><div className="cv-footnote"><span className={`status-dot ${cvStatus.uploaded ? "good" : "muted-dot"}`} />{cvStatus.uploaded ? `Text extracted · ${cvStatus.extracted_text_characters.toLocaleString()} characters` : "No CV text extracted yet"}</div><div className="local-note profile-local-note"><Icon name="shield" /><span><strong>Privacy-first processing</strong><small>CV extraction and analysis are run locally. Review the generated fields before using them in an application.</small></span></div></div></section>}
+              {!profile && <section className="panel cv-setup-panel"><div className="cv-setup-visual"><div className="cv-illustration"><span className="cv-illustration-fold" /><span /><span /><span /><b><Icon name="check" /></b></div></div><div className="cv-setup-content"><p className="eyebrow">STEP 1 · BUILD YOUR PROFILE</p><h2>Start with your CV</h2><p className="panel-description">Upload a PDF, Word document, or text file. CareerMate extracts the text and uses your selected AI provider to organize it into a profile you can edit and review. Online providers receive the CV text for processing.</p><label className="upload-dropzone"><input type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><span className="upload-icon"><Icon name="file" /></span><strong>{file ? file.name : "Choose your CV file"}</strong><span className="helper-text">PDF, DOCX or TXT · up to 10 MB</span><span className="upload-prompt">Browse files <Icon name="arrow" /></span></label><div className="button-row"><button className="button button-secondary" onClick={handleUploadCv} disabled={cvLoading || !file} type="button">{cvLoading ? <><span className="spinner" /> Uploading…</> : "Upload & extract text"}</button><button className="button button-primary" onClick={handleAnalyzeCv} disabled={cvLoading || !cvStatus.uploaded} type="button">{cvLoading ? <><span className="spinner spinner-light" /> Working…</> : <><Icon name="sparkles" /> Analyze CV</>}</button></div><div className="cv-footnote"><span className={`status-dot ${cvStatus.uploaded ? "good" : "muted-dot"}`} />{cvStatus.uploaded ? `Text extracted · ${cvStatus.extracted_text_characters.toLocaleString()} characters` : "No CV text extracted yet"}</div><div className="local-note profile-local-note"><Icon name="shield" /><span><strong>Privacy-first processing</strong><small>Review extracted fields before use. When a hosted provider is selected, CV text is sent to that provider for analysis.</small></span></div></div></section>}
 
               {profile && <>
                 <section className="profile-summary-card panel"><div className="profile-summary-avatar">{profile.personal?.name?.trim()?.charAt(0)?.toUpperCase() || "C"}</div><div className="profile-summary-copy"><p className="eyebrow">CANDIDATE PROFILE</p><h2>{profile.personal?.name?.trim() || "Your professional profile"}</h2><p>{[profile.personal?.location, profile.personal?.email].filter(Boolean).join(" · ") || "Add your contact details and professional information below."}</p></div><div className={`save-state ${profileSaved ? "saved" : "unsaved"}`}>{profileSaved ? "✓ Saved locally" : "● Review changes"}</div><div className="profile-completion"><div className="profile-completion-label"><span>Profile completeness</span><strong>{profileCompletion}%</strong></div><div className="completion-track"><span style={{ width: `${profileCompletion}%` }} /></div></div></section>
@@ -978,11 +1284,11 @@ function App() {
                   <div className="profile-save-row"><p className="helper-text">Saved to <code>data/cv/profile.json</code> on this computer. Match analysis will use the profile after saving.</p><button className="button button-primary" type="button" onClick={handleSaveProfile} disabled={saving || cvLoading || matchLoading}>{saving ? <><span className="spinner spinner-light" /> Saving…</> : <><Icon name="check" /> Save reviewed profile</>}</button></div>
                 </section>
               </>}
-              {profile && <div className="profile-privacy-footer"><Icon name="shield" /><span>CareerMate keeps your personal information in local files and excludes contact details from job-match prompts.</span></div>}
+              {profile && <div className="profile-privacy-footer"><Icon name="shield" /><span>CareerMate stores your profile in local files and excludes contact details from job-match prompts. Hosted providers receive the content needed for each requested task.</span></div>}
             </div>
           )}
 
-          <footer className="workspace-footer"><div><span className="brand-mark footer-mark">C</span><strong>CareerMate</strong><span className="footer-separator">/</span><span>Local-first job search assistant</span></div><span>Open source · Your data remains on this device</span></footer>
+          <footer className="workspace-footer"><div><span className="brand-mark footer-mark">C</span><strong>CareerMate</strong><span className="footer-separator">/</span><span>Local-first job search assistant</span></div><span>Open source · Local files, configurable AI provider</span></footer>
         </section>
       </div>
 
@@ -997,7 +1303,7 @@ function App() {
           {matches.find((item) => item.id === selectedJob.id) && <div className="drawer-match-summary"><span className="drawer-match-score">{matches.find((item) => item.id === selectedJob.id)?.match_score ?? "—"}<small>/ 100</small></span><span><strong>CV match estimate</strong><small>Evidence coverage, not a hiring probability</small></span><button type="button" className="text-action" onClick={() => { setSelectedJob(null); setActiveView("matches"); }}>View analysis <Icon name="arrow" /></button></div>}
           <div className="drawer-section"><h3>About this role</h3><div className="drawer-description">{selectedJob.description?.trim() || "The source did not provide a description in the search response. Open the original listing for the full job advert."}</div></div>
           <div className="drawer-facts"><div><span>Work arrangement</span><strong>{workModeLabel(selectedJob.work_mode)}</strong></div><div><span>Source</span><strong>{sourceLabel(selectedJob.source)}</strong></div><div><span>Published</span><strong>{selectedJob.published_at || "Not provided"}</strong></div></div>
-          <div className="drawer-footer"><p>Review the original description and requirements before applying.</p><button type="button" className="button button-secondary button-full" onClick={() => void handleTrackJob(selectedJob.id)}>{applications.some((application) => application.job_id === selectedJob.id) ? "Open in application tracker" : "Add to application tracker"} <Icon name="briefcase" /></button>{safeExternalUrl(selectedJob.apply_url || selectedJob.source_url) ? <a className="button button-primary button-full" href={safeExternalUrl(selectedJob.apply_url || selectedJob.source_url) ?? undefined} target="_blank" rel="noopener noreferrer">Open employer listing <Icon name="arrow" /></a> : <span className="helper-text">No public listing URL was provided for this job.</span>}<button type="button" className="button button-quiet button-full" onClick={() => setSelectedJob(null)}>Back to results</button></div>
+          <div className="drawer-footer"><p>Review the original description and requirements before applying.</p><button type="button" className="button button-secondary button-full" onClick={() => void handleTrackJob(selectedJob.id)}>{applications.some((application) => application.job_id === selectedJob.id) ? "Open in application tracker" : "Add to application tracker"} <Icon name="briefcase" /></button>{safeExternalUrl(selectedJob.source_url) ? <a className="button button-primary button-full" href={safeExternalUrl(selectedJob.source_url) ?? undefined} target="_blank" rel="noopener noreferrer">View original listing · {sourceLabel(selectedJob.source)} <Icon name="arrow" /></a> : null}{safeExternalUrl(selectedJob.apply_url) && selectedJob.apply_url !== selectedJob.source_url ? <a className="button button-secondary button-full" href={safeExternalUrl(selectedJob.apply_url) ?? undefined} target="_blank" rel="noopener noreferrer">Open application website <Icon name="arrow" /></a> : !safeExternalUrl(selectedJob.source_url) && !safeExternalUrl(selectedJob.apply_url) ? <span className="helper-text">No public listing URL was provided for this job.</span> : null}<button type="button" className="button button-quiet button-full" onClick={() => setSelectedJob(null)}>Back to results</button></div>
         </aside>
       </div>}
     </main>

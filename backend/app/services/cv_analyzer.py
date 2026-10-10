@@ -1,18 +1,15 @@
 import json
 import logging
-import os
 from pathlib import Path
 
-from ollama import Client
 from pydantic import ValidationError
 
 from app.models.candidate import CandidateProfile
+from app.services.ai_provider import AIProviderError, generate_text, get_active_provider_identity
 from app.services.cv_parser import MAX_EXTRACTED_CHARACTERS
 
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = os.getenv("CAREERMATE_OLLAMA_MODEL", "gemma4:e4b")
-OLLAMA_HOST = os.getenv("CAREERMATE_OLLAMA_HOST", "http://127.0.0.1:11434")
 BASE_DIR = Path(__file__).resolve().parents[3]
 CV_DIR = BASE_DIR / "data" / "cv"
 EXTRACTED_TEXT_PATH = CV_DIR / "extracted_text.txt"
@@ -65,42 +62,29 @@ CV text (source data):
 {json.dumps(cv_text, ensure_ascii=False)}
 """
 
+    provider, model = get_active_provider_identity()
     try:
-        client = Client(host=OLLAMA_HOST)
-        response = client.chat(
-            model=MODEL_NAME,
-            messages=[{"role": "user", "content": prompt}],
-            format=schema,
-            think=False,
-            options={
-                "temperature": 0,
-                "num_predict": 4096,
-                "num_ctx": 8192,
-            },
+        content = generate_text(
+            prompt,
+            json_schema=schema,
+            max_tokens=4096,
+            temperature=0,
+            context_window=8192,
         )
-        content = response.message.content or ""
-        if not content.strip():
-            raise CVAnalyzerError("Ollama returned an empty response.")
-
         try:
             profile = CandidateProfile.model_validate_json(content)
         except ValidationError as exc:
-            reason = getattr(response, "done_reason", None)
-            if reason == "length":
-                raise CVAnalyzerError(
-                    "CV analysis reached the output limit. Try again or shorten the CV."
-                ) from exc
             raise CVAnalyzerError(
-                "Ollama returned incomplete or invalid profile JSON. Try again."
+                f"The selected AI provider ({provider}, model '{model}') returned incomplete or invalid profile JSON. Try again or select another model."
             ) from exc
 
         _atomic_write(PROFILE_PATH, profile.model_dump_json(indent=2))
         return profile
+
     except CVAnalyzerError:
         raise
+    except AIProviderError as exc:
+        raise CVAnalyzerError(str(exc)) from exc
     except Exception as exc:
-        logger.exception("Local CV analysis failed")
-        raise CVAnalyzerError(
-            f"Could not analyze the CV with Ollama model '{MODEL_NAME}'. "
-            "Check that Ollama is running and the model is installed."
-        ) from exc
+        logger.exception("CV analysis failed using provider=%s model=%s", provider, model)
+        raise CVAnalyzerError("Could not analyze the CV. Check the selected AI provider settings and try again.") from exc

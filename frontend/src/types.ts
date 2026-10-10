@@ -43,7 +43,7 @@ export type CvStatus = {
 
 export type WorkMode = "any" | "remote" | "hybrid" | "on_site";
 export type DetectedWorkMode = Exclude<WorkMode, "any"> | "unknown";
-export type JobSourceId = "jobtech_links" | "greenhouse" | "lever" | "teamtailor";
+export type JobSourceId = "jobtech_links" | "remoteok" | "arbeitnow" | "greenhouse" | "lever" | "teamtailor";
 
 export type JobSourceStatus = {
   configured: boolean;
@@ -183,4 +183,56 @@ export type ApplicationsResponse = {
   total: number;
   status_counts: Record<string, number>;
   applications: ApplicationRecord[];
+};
+
+
+export type BrowserFormField = {
+  field_id: string;
+  label: string;
+  kind: string;
+  required: boolean;
+  placeholder: string;
+  autocomplete: string;
+  suggested_key: string;
+};
+
+export type BrowserFormSession = {
+  success: boolean;
+  active?: boolean;
+  application_id: string;
+  url: string;
+  title: string;
+  field_count: number;
+  fields: BrowserFormField[];
+  message: string;
+};
+
+export type BrowserFieldDraft = BrowserFormField & { include: boolean; value: string };
+
+
+export type AIProviderId = "ollama" | "openai" | "openai_compatible";
+
+export type AIProviderConfiguration = {
+  id: AIProviderId;
+  label: string;
+  model: string;
+  base_url: string;
+  configured: boolean;
+  api_key_configured: boolean | null;
+  requires_api_key: boolean;
+  data_location: "local" | "external provider";
+};
+
+export type AISettingsResponse = {
+  success: boolean;
+  provider: AIProviderId;
+  cloud_data_sharing_acknowledged: boolean;
+  providers: Record<AIProviderId, AIProviderConfiguration>;
+};
+
+export type AIProviderSettingsInput = {
+  provider: AIProviderId;
+  model: string;
+  base_url?: string;
+  confirm_cloud_data_sharing?: boolean;
 };

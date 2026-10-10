@@ -1,0 +1,90 @@
+{
+  "personal": {
+    "name": "GIHAN CHATHURANGA",
+    "email": "gihchathurhan@gmail.com",
+    "phone": "+46 769 601 480",
+    "location": "Stockholm, Sweden",
+    "linkedin": "linkedin.com/in/gihanchathuranga",
+    "github": "github.com/Gihchathur",
+    "portfolio": "gihchathur.github.io"
+  },
+  "summary": "Software Engineer with 4+ years of experience specializing in DevOps and platform engineering. Backend engineering background with hands-on expertise in Kubernetes, Terraform, CI/CD, observability (Grafana, Prometheus, OpenTelemetry), and distributed systems. Strong in production troubleshooting, cloud infrastructure automation, and reliability improvements for e-healthcare platforms. Pursuing an MSc in Software Engineering in Sweden.",
+  "skills": [
+    "Azure",
+    "AWS",
+    "Kubernetes",
+    "Docker",
+    "Terraform",
+    "Helm",
+    "CI/CD",
+    "Git",
+    "ArgoCD",
+    "GitOps",
+    "JFrog Artifactory",
+    "Azure Container Registry",
+    "OpenTelemetry",
+    "Prometheus",
+    "Grafana",
+    "Jaeger",
+    "Splunk",
+    "OpenSearch",
+    "Fluent Bit",
+    "C#",
+    ".NET",
+    "Python",
+    "REST APIs",
+    "Blazor",
+    "PostgreSQL",
+    "MongoDB",
+    "PL/SQL",
+    "RabbitMQ"
+  ],
+  "experience": [
+    {
+      "job_title": "Software Engineer",
+      "company": "Creative Software",
+      "location": "Colombo, Sri Lanka",
+      "start_date": "May 2022",
+      "end_date": "July 2025",
+      "description": [
+        "Developed backend services and observability tooling for DIPS ASA, supporting reliable operations for 100K+ healthcare users through a client-facing team at Creative Software.",
+        "Built, tested, and deployed the C#/.NET notification framework, reducing notification delivery failures by 25% in production.",
+        "Implemented distributed-systems observability with Grafana, Prometheus, OpenTelemetry, Jaeger, FluentBit, and Splunk, enabling monitoring and tracing across services.",
+        "Optimized PostgreSQL and OpenSearch query performance, improving search latency across high-volume production workloads.",
+        "Provisioned AWS infrastructure with Terraform (IaC) and deployed containerized services on Kubernetes via CI/CD pipelines, streamlining application releases."
+      ]
+    },
+    {
+      "job_title": "Software Engineer Intern",
+      "company": "Creative Software",
+      "location": "Colombo, Sri Lanka",
+      "start_date": "Nov 2021",
+      "end_date": "April 2022",
+      "description": [
+        "Developed an administration web application and notification pipeline for a healthcare software provider using Blazor and C#, implementing user interfaces and backend integration for managing notification workflows and delivery settings.",
+        "Extended the notification delivery pipeline using C# and RabbitMQ, and built observability instrumentation with FluentBit/FluentD, OpenTelemetry, and Grafana to improve message reliability and monitoring.",
+        "Assisted in database management using PL/SQL and contributed to container orchestration via Docker and Kubernetes for deployment automation."
+      ]
+    }
+  ],
+  "education": [
+    {
+      "degree": "Master of Science (MSc), Software Engineering",
+      "institution": "Mälardalen University",
+      "location": "Västerås, Sweden",
+      "start_date": "2025",
+      "end_date": "2027"
+    },
+    {
+      "degree": "Bachelor of Science (BSc Hons), Computer Engineering",
+      "institution": "University of Sri Jayewardenepura",
+      "location": "Sri Lanka",
+      "start_date": "2018",
+      "end_date": "2022"
+    }
+  ],
+  "certifications": [
+    "Merit Award – NBQSA 2023 — National Best Quality Software Awards — Abhises (Intelligent AR Tour Guide)"
+  ],
+  "languages": []
+}

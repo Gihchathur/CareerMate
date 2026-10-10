@@ -164,7 +164,16 @@ def _classify_work_mode(ad: dict[str, Any]) -> WorkMode:
 
 
 def normalize_job(ad: dict[str, Any]) -> JobPosting:
-    """Normalize one JobAd Links result into CareerMate's job schema."""
+    """Normalize one JobAd Links result, accepting flat or search-index hit shapes."""
+    # Some search responses wrap the actual advertisement inside `_source` and
+    # put the ID in `_id`. Unwrap that shape before extracting user-facing fields.
+    outer = ad
+    nested_source = ad.get("_source")
+    if isinstance(nested_source, dict):
+        ad = dict(nested_source)
+        if not _text(ad.get("id")) and _text(outer.get("_id")):
+            ad["id"] = outer["_id"]
+
     source_id = _text(ad.get("id"))
     title = _first_text(ad, "headline", "title")
     company = _get_company(ad)
@@ -234,6 +243,15 @@ def search_jobs(
 
     raw_hits = payload.get("hits")
     total_data = payload.get("total", {})
+    # Accept both the flattened JobAd Links shape and an Elasticsearch-style
+    # `{hits: {total: ..., hits: [...]}}` response. Supporting both keeps a
+    # provider response envelope change from becoming dozens of empty listings.
+    if isinstance(raw_hits, dict):
+        nested_hits = raw_hits.get("hits")
+        if isinstance(nested_hits, list):
+            if not total_data:
+                total_data = raw_hits.get("total", {})
+            raw_hits = nested_hits
     if not isinstance(raw_hits, list):
         raise JobSourceError("The job source returned an unexpected jobs format.")
 

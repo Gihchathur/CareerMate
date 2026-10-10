@@ -1,21 +1,20 @@
 import hashlib
 import json
 import logging
-import os
 import re
+import threading
 from pathlib import Path
 from typing import Any, Literal
 
-from ollama import Client
 from pydantic import BaseModel, Field, ValidationError
 
-logger = logging.getLogger(__name__)
+from app.services.ai_provider import AIProviderError, generate_text, get_active_provider_identity
 
-MODEL_NAME = os.getenv("CAREERMATE_OLLAMA_MODEL", "gemma4:e4b")
-OLLAMA_HOST = os.getenv("CAREERMATE_OLLAMA_HOST", "http://127.0.0.1:11434")
+logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parents[3]
 CACHE_PATH = BASE_DIR / "data" / "jobs" / "match_cache.json"
-CACHE_VERSION = 2
+CACHE_VERSION = 3
+_CACHE_WRITE_LOCK = threading.Lock()
 
 
 class RequirementAssessment(BaseModel):
@@ -37,7 +36,7 @@ class JobMatchAnalysis(BaseModel):
 
 def _cache_key(job: dict[str, Any], profile: dict[str, Any]) -> str:
     payload = json.dumps(
-        {"job": job, "profile": profile, "model": MODEL_NAME, "version": CACHE_VERSION},
+        {"job": job, "profile": profile, "provider": get_active_provider_identity(), "version": CACHE_VERSION},
         sort_keys=True,
         ensure_ascii=False,
         default=str,
@@ -57,19 +56,22 @@ def _load_cache() -> dict[str, Any]:
 
 
 def _save_cache_entry(key: str, result: dict[str, Any]) -> None:
-    CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    cache = _load_cache()
-    cache[key] = result
-    temporary_path = CACHE_PATH.with_suffix(".tmp")
-    temporary_path.write_text(
-        json.dumps(cache, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    temporary_path.replace(CACHE_PATH)
+    # Cloud analyses may run concurrently. Serialize read/modify/write so two
+    # finished jobs cannot overwrite each other's cache entries.
+    with _CACHE_WRITE_LOCK:
+        CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        cache = _load_cache()
+        cache[key] = result
+        temporary_path = CACHE_PATH.with_name(f"{CACHE_PATH.stem}-{threading.get_ident()}.tmp")
+        temporary_path.write_text(
+            json.dumps(cache, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        temporary_path.replace(CACHE_PATH)
 
 
 def _candidate_facts(profile: dict[str, Any]) -> dict[str, Any]:
-    """Exclude unnecessary contact details before calling the local LLM."""
+    """Exclude unnecessary contact details before calling the selected AI provider."""
     return {
         "summary": profile.get("summary", ""),
         "skills": profile.get("skills", []),
@@ -108,7 +110,7 @@ def _unavailable_result(explanation: str) -> dict[str, Any]:
     return {
         "match_score": None,
         "match_confidence": "unavailable",
-        "match_method": "local_llm_evidence_weighted_v2",
+        "match_method": f"{get_active_provider_identity()[0]}_llm_evidence_weighted_v3",
         "matched_skills": [],
         "matched_requirements": [],
         "partially_matched_requirements": [],
@@ -124,7 +126,7 @@ def _unavailable_result(explanation: str) -> dict[str, Any]:
 
 
 def score_job(job: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
-    """Use a local LLM to identify requirements, validate evidence, and score coverage."""
+    """Use the configured AI provider to identify requirements, validate evidence, and score coverage."""
     candidate_profile = _candidate_facts(profile)
     candidate_text = "\n".join(_collect_text(candidate_profile))
     title = str(job.get("title", "")).strip()
@@ -181,29 +183,28 @@ OUTPUT SCHEMA:
 {json.dumps(schema, ensure_ascii=False)}
 """
 
+    provider, model = get_active_provider_identity()
     try:
-        client = Client(host=OLLAMA_HOST)
-        response = client.chat(
-            model=MODEL_NAME,
-            messages=[{"role": "user", "content": prompt}],
-            format=schema,
-            think=False,
-            options={"temperature": 0, "num_predict": 3072, "num_ctx": 8192},
+        content = generate_text(
+            prompt,
+            json_schema=schema,
+            max_tokens=3072,
+            temperature=0,
+            context_window=8192,
         )
-        content = response.message.content or ""
-        if not content.strip():
-            raise ValueError("The model returned an empty response.")
         analysis = JobMatchAnalysis.model_validate_json(content)
-    except (ValidationError, ValueError) as exc:
-        logger.warning("Invalid job-match response for %s: %s", job.get("id", "unknown"), exc)
+    except (AIProviderError, ValidationError, ValueError) as exc:
+        logger.warning(
+            "Job-match analysis unavailable for %s via %s/%s: %s",
+            job.get("id", "unknown"), provider, model, type(exc).__name__,
+        )
         return _unavailable_result(
-            "The local AI returned an incomplete or invalid analysis. Try again."
+            f"Could not complete analysis with {provider} model '{model}'. {str(exc)[:300]}"
         )
     except Exception as exc:
-        logger.warning("Ollama job matching failed: %s", type(exc).__name__)
+        logger.warning("Job matching failed: provider=%s error_type=%s", provider, type(exc).__name__)
         return _unavailable_result(
-            f"Could not analyze this job using the local model '{MODEL_NAME}'. "
-            "Check that Ollama is running and the model is installed."
+            f"Could not analyze this job using {provider} model '{model}'. Check the provider settings and try again."
         )
 
     assessed: list[dict[str, Any]] = []
@@ -250,7 +251,7 @@ OUTPUT SCHEMA:
     result = {
         "match_score": score,
         "match_confidence": confidence,
-        "match_method": "local_llm_evidence_weighted_v2",
+        "match_method": f"{get_active_provider_identity()[0]}_llm_evidence_weighted_v3",
         "matched_skills": [item["requirement"] for item in supported + partial if item["category"] == "skill"],
         "matched_requirements": [item["requirement"] for item in supported],
         "partially_matched_requirements": [item["requirement"] for item in partial],

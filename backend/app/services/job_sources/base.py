@@ -131,17 +131,38 @@ def classify_work_mode(*values: Any) -> WorkMode:
 
 
 def infer_country(location: str, default_country: str = "") -> str:
-    value = location.casefold()
-    if "sweden" in value or "sverige" in value:
-        return "Sweden"
-    if "norway" in value or "norge" in value:
-        return "Norway"
-    if "denmark" in value or "danmark" in value:
-        return "Denmark"
-    if "finland" in value or "suomi" in value:
-        return "Finland"
-    if "germany" in value or "deutschland" in value:
-        return "Germany"
+    """Infer a country only from recognizable location text, otherwise use the configured default."""
+    value = re.sub(r"\s+", " ", location.casefold()).strip()
+    country_markers = (
+        ("Sweden", ("sweden", "sverige", "swedish")),
+        ("Norway", ("norway", "norge", "norwegian")),
+        ("Denmark", ("denmark", "danmark", "danish")),
+        ("Finland", ("finland", "suomi", "finnish")),
+        ("Germany", ("germany", "deutschland", "german")),
+        ("Netherlands", ("netherlands", "the netherlands", "dutch", "holland")),
+        ("United Kingdom", ("united kingdom", "uk only", "uk", "britain", "england", "scotland", "wales")),
+        ("United States", ("united states", "usa", "us only", "u.s.", "american")),
+        ("Canada", ("canada", "canadian")),
+        ("Ireland", ("ireland", "irish")),
+        ("France", ("france", "french")),
+        ("Spain", ("spain", "spanish")),
+        ("Italy", ("italy", "italian")),
+        ("Poland", ("poland", "polish")),
+        ("Estonia", ("estonia", "estonian")),
+        ("Switzerland", ("switzerland", "swiss")),
+        ("Austria", ("austria", "austrian")),
+        ("Portugal", ("portugal", "portuguese")),
+        ("Belgium", ("belgium", "belgian")),
+        ("Iceland", ("iceland", "icelandic")),
+        ("Australia", ("australia", "australian")),
+        ("New Zealand", ("new zealand",)),
+        ("India", ("india", "indian")),
+        ("Singapore", ("singapore",)),
+    )
+    for country, markers in country_markers:
+        for marker in markers:
+            if marker in value and (marker not in {"uk", "usa"} or re.search(rf"\b{re.escape(marker)}\b", value)):
+                return country
     return default_country.strip()
 
 

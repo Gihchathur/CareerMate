@@ -11,7 +11,7 @@ This repository snapshot was reviewed and updated on 2026-10-09.
 - Added `/api/cv/status` so the UI can distinguish an uploaded CV from a reviewed/saved profile.
 - Allowed both `localhost` and `127.0.0.1` as local UI origins; made CORS configurable.
 - Honored the job-matching limit and added `job_ids` filtering so a run can match the currently displayed search results instead of unrelated older results.
-- Changed the job-match method label to reflect local LLM/evidence-weighted matching and incremented the cache version.
+- Changed the job-match method label to reflect selected-provider/evidence-weighted matching and incremented the cache version.
 - Excluded email, phone, name, and other personal contact fields from prompts used for job matching.
 - Prevented non-HTTP(S) provider URLs from being used as job links.
 - Improved API/network error messages and made match-cache write failures non-fatal.
@@ -30,14 +30,24 @@ This repository snapshot was reviewed and updated on 2026-10-09.
 
 ## Remaining known limitations
 
-- The frontend depends on Node packages; this runner could not complete `npm ci` because the package registry was unreachable. The TS/TSX files were syntax-transpiled, but run the actual `npm run build` and `npm run lint` locally after `npm install`.
+- The frontend depends on Node packages; this runner could not complete `npm ci` because the package registry was unreachable. TS/TSX/JS syntax parsing succeeded, and `.github/workflows/ci.yml` now runs `npm ci`, the production build, and ESLint on GitHub Actions. The actual frontend build/lint still must be confirmed by that CI run or locally.
 - The actual Ollama model was not run during these unit tests. Matching and application draft tests use mocked Ollama responses; live model output and latency still need testing on the user's machine.
 - JobAd Links returns short descriptions and provider links. Scores from thin descriptions will appropriately have low confidence or be unavailable.
 - JobTech remains Sweden-focused. Greenhouse and Lever need per-employer board identifiers, and Teamtailor needs an authorized Public Read key; there is still no global search endpoint across all employers using these ATS platforms.
 - The test environment cannot reach the external job APIs from this runner, so no live employer board request was verified during Step 11. Adapter behavior is covered with mocked HTTP responses; validate your actual board identifiers and Teamtailor key from your own machine.
 - Matching is AI-assisted and can misclassify requirements. A quote being present in a profile is only a basic evidence check, not proof that the quote satisfies the employer's requirement.
-- No employer-form automation or automatic submission is included. Draft generation is local-model-assisted and still requires a human review for correctness.
+- Browser-assisted form preparation is now included for supported public HTTPS employer pages. It fills only explicitly selected and reviewed visible fields. It never submits an application, uploads a CV, fills authentication/security fields, or bypasses CAPTCHA, access controls, or bot protections. Live browser testing on the target machine remains required.
 
 ## Private data reminder
 
 `.gitignore` prevents new untracked files from being added accidentally, but it cannot untrack data already committed. If local data files were previously staged or committed, remove them from the Git index and check the repository history before publishing.
+
+
+## Steps 13–15 release additions (2026-10-09)
+
+- Added acceptance/regression tests for source filtering, caching, provider configuration, and browser-assistance safety checks. The latest offline suite passes 52 tests. This does not replace testing the live Ollama model, public job providers, or a real Chromium session on the target machine.
+- Added a GitHub Actions CI workflow for backend tests/compilation and frontend dependency installation, production build, and lint. The frontend build/lint could not be run in this runner because package-registry access was unavailable.
+- Added a visible Playwright browser workflow in the Applications area: open a tracked public HTTPS job URL, scan supported fields, review/edit suggested values, fill selected fields, and inspect the result. The workflow never submits a form or uploads a file, refuses unsupported/private destinations, and excludes sensitive/authentication/security fields. LinkedIn, Indeed and Glassdoor are explicitly blocked from browser automation.
+- Expanded job sources with the public Remote OK feed (one-hour local cache) and Arbeitnow API (bounded pagination, six-hour local cache and visible attribution/source links). Existing JobTech remains useful for Sweden; Greenhouse and Lever remain employer-specific; Teamtailor requires an authorized key and one of the documented EU, North America, or Asia-Pacific stacks.
+- Added source warnings, best-effort country/city/work-mode filtering and cross-source deduplication. Filters remain best effort where providers omit structured location/work-mode data; counts can be approximate.
+- Added `.gitignore` entries for source caches, Playwright state and generated artifacts. Review Git history separately before making a repository public if private data was committed in the past.
