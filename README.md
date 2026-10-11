@@ -1,5 +1,9 @@
 # CareerMate
 
+<p align="center">
+  <img src="frontend/public/careermate-logo.svg" alt="CareerMate — your AI job search assistant" width="456" />
+</p>
+
 CareerMate is a local-first, open-source job discovery and application workspace. It searches public job feeds and configured employer boards, extracts a candidate profile from a CV, and compares job requirements against evidence in that profile using a selectable AI provider: local Ollama, OpenAI API, or an OpenAI-compatible API.
 
 ## Current capabilities
@@ -15,7 +19,7 @@ CareerMate is a local-first, open-source job discovery and application workspace
 - Expose `/api/jobs/sources` to report configured source counts without returning credentials.
 - Retry temporary provider errors with a bounded backoff, validate listing payloads, and preserve results from healthy employer boards when another board fails.
 - Reject incomplete enabled-source configuration early and show warnings instead of silently presenting malformed responses as zero results.
-- Fetch fuller descriptions from public job pages when possible, then compare requirements against CV evidence. Search-snippet-only scores are marked preliminary, with a prompt to fetch the full advert and reanalyse before deciding. Cloud-provider matches can run concurrently (up to four at a time); Ollama remains sequential to reduce local CPU/RAM pressure.
+- Fetch fuller descriptions from public job pages when possible, including a bounded JavaScript-rendered fallback for public ATS pages. When automated extraction fails, paste the original advert text and reanalyse; pasted text is clearly labelled as unverified. Search-snippet-only scores are marked preliminary, and unavailable scores explain why requirements could not be assessed. Cloud-provider matches can run concurrently (up to four at a time); Ollama remains sequential to reduce local CPU/RAM pressure.
 - Cache successful match analyses locally by job, profile, provider, and model to reduce repeated model calls.
 - Use a focused workspace with separate Overview, Find jobs, Match insights, and My profile views.
 - Open full job details in a side drawer while keeping search results compact.

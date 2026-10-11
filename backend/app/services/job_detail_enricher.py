@@ -8,6 +8,7 @@ from __future__ import annotations
 import html
 import ipaddress
 import json
+import logging
 import re
 import socket
 from datetime import datetime, timezone
@@ -16,6 +17,8 @@ from typing import Any
 from urllib.parse import urljoin, urlsplit
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 MAX_PAGE_BYTES = 2 * 1024 * 1024
 MAX_DESCRIPTION_CHARS = 30000
@@ -213,6 +216,117 @@ def _check_public_https_url(url: str) -> str:
     return parsed._replace(fragment="").geturl()
 
 
+def _fetch_rendered_job_description(url: str) -> str:
+    """Read a JavaScript-rendered public listing when its static HTML is only a shell.
+
+    The fallback uses an isolated headless browser with downloads disabled, blocks
+    images/fonts/media, validates every requested URL as public HTTPS, and has hard
+    request/time limits. It never solves CAPTCHAs or retries through access controls.
+    """
+    validated_url = _check_public_https_url(url)
+    try:
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise JobDetailFetchError(
+            "The page returned too little server-rendered text and needs browser rendering. "
+            "Install Chromium with `python -m playwright install chromium`, or open the listing and paste its advert text below."
+        ) from exc
+
+    browser = None
+    requests_seen = 0
+    max_requests = 80
+    blocked_resource_types = {"image", "font", "media"}
+
+    def guard_request(route: Any) -> None:
+        nonlocal requests_seen
+        requests_seen += 1
+        request = route.request
+        if requests_seen > max_requests or request.resource_type in blocked_resource_types:
+            route.abort()
+            return
+        try:
+            _check_public_https_url(request.url)
+        except JobDetailFetchError:
+            route.abort()
+            return
+        route.continue_()
+
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            context = browser.new_context(
+                user_agent=USER_AGENT,
+                accept_downloads=False,
+                service_workers="block",
+            )
+            page = context.new_page()
+            page.set_default_navigation_timeout(8_000)
+            page.set_default_timeout(2_500)
+            page.route("**/*", guard_request)
+            try:
+                response = page.goto(validated_url, wait_until="domcontentloaded", timeout=8_000)
+            except PlaywrightTimeoutError:
+                # A page can render useful content before slow background requests finish.
+                response = None
+            try:
+                page.wait_for_load_state("networkidle", timeout=2_000)
+            except PlaywrightTimeoutError:
+                pass
+            if response and response.status in {401, 403, 429}:
+                raise JobDetailFetchError(
+                    f"The public listing returned HTTP {response.status}; CareerMate will not bypass access controls."
+                )
+            if response and response.status >= 400:
+                raise JobDetailFetchError(f"The public job page returned HTTP {response.status}.")
+            page.wait_for_timeout(400)
+            rendered_html = page.content()
+            description = _html_to_text(rendered_html)
+            if len(description) < 500:
+                try:
+                    body_text = _normalize_text(page.locator("body").inner_text())
+                    if len(body_text) > len(description):
+                        description = body_text
+                except Exception:
+                    pass
+            lower_text = description.casefold()
+            if len(description) < 500 and any(
+                marker in lower_text
+                for marker in ("captcha", "verify you are human", "checking your browser", "access denied")
+            ):
+                raise JobDetailFetchError(
+                    "The site returned an access-check page. CareerMate will not bypass it; open the listing and paste the advert text manually."
+                )
+            if len(description) < 500:
+                raise JobDetailFetchError(
+                    "The page returned too little readable advert text, even after browser rendering. "
+                    "Open the original listing and use ‘Paste advert text’ to analyse the full description."
+                )
+            return description[:MAX_DESCRIPTION_CHARS]
+    except JobDetailFetchError:
+        raise
+    except Exception as exc:
+        logger.info("Rendered job-page retrieval failed for %s (%s)", urlsplit(validated_url).hostname, type(exc).__name__)
+        error_text = str(exc).casefold()
+        if "executable doesn't exist" in error_text or "playwright install" in error_text or "browser has not been installed" in error_text:
+            message = (
+                "The listing requires browser rendering, but Chromium is not installed for CareerMate's backend. "
+                "Run `python -m playwright install chromium`, restart the backend and retry, or paste the advert text manually."
+            )
+        else:
+            message = (
+                "CareerMate could not read enough text from this dynamic listing. Open the original page and use "
+                "‘Paste advert text’ to analyse it. The existing search result has been retained."
+            )
+        raise JobDetailFetchError(message) from exc
+    finally:
+        if browser is not None:
+            try:
+                browser.close()
+            except Exception:
+                pass
+
+
 def fetch_public_job_description(url: str) -> str:
     """Fetch readable public listing text with bounded size, time and redirects."""
     current_url = _check_public_https_url(url)
@@ -251,7 +365,9 @@ def fetch_public_job_description(url: str) -> str:
                     page = b"".join(chunks).decode(encoding, errors="replace")
                     description = _html_to_text(page)
                     if len(description) < 500:
-                        raise JobDetailFetchError("The page did not contain enough readable job details to improve the search result.")
+                        # Many ATS sites render their description after JavaScript runs.
+                        # Attempt a bounded public-page render before asking the user to paste it.
+                        return _fetch_rendered_job_description(current_url)
                     return description[:MAX_DESCRIPTION_CHARS]
     except JobDetailFetchError:
         raise

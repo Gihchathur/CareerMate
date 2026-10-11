@@ -155,11 +155,16 @@ export async function searchJobs(options: JobSearchOptions): Promise<JobSearchRe
 export async function enrichJobDetails(
   jobId: string,
   forceRefresh = false,
+  manualDescription?: string,
 ): Promise<{ success: boolean; message: string; job: JobResult }> {
   return request("/api/jobs/enrich", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ job_id: jobId, force_refresh: forceRefresh }),
+    body: JSON.stringify({
+      job_id: jobId,
+      force_refresh: forceRefresh,
+      ...(manualDescription === undefined ? {} : { manual_description: manualDescription }),
+    }),
   });
 }
 

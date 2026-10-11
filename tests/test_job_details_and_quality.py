@@ -264,7 +264,7 @@ def test_match_from_search_snippet_is_explicitly_provisional(tmp_path, monkeypat
 
     def fake_generate(prompt, **kwargs):
         captured.update(kwargs)
-        assert "Aim for 10–18 distinct material requirements" in prompt
+        assert "Aim for 8–14 distinct material requirements" in prompt
         return json.dumps(model_response)
 
     monkeypatch.setattr(job_matcher, "generate_text", fake_generate)
@@ -285,7 +285,7 @@ def test_match_from_search_snippet_is_explicitly_provisional(tmp_path, monkeypat
     assert result["description_complete"] is False
     assert "PRELIMINARY" in result["score_note"]
     assert any("7+ years" in item["requirement"] for item in result["critical_gaps"])
-    assert captured["max_tokens"] == 2400
+    assert captured["max_tokens"] == 3600
     assert captured["context_window"] == 8192
 
 

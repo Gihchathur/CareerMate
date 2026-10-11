@@ -13,12 +13,12 @@ from app.services.ai_provider import AIProviderError, generate_text, get_active_
 logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parents[3]
 CACHE_PATH = BASE_DIR / "data" / "jobs" / "match_cache.json"
-CACHE_VERSION = 6
+CACHE_VERSION = 8
 _CACHE_WRITE_LOCK = threading.Lock()
 
 
 class RequirementAssessment(BaseModel):
-    requirement: str = Field(min_length=1, max_length=300)
+    requirement: str = Field(min_length=1, max_length=240)
     category: Literal[
         "skill", "experience", "education", "certification", "language",
         "responsibility", "work_mode", "location", "other",
@@ -26,12 +26,12 @@ class RequirementAssessment(BaseModel):
     importance: Literal["required", "preferred", "unclear"]
     criticality: Literal["critical", "important", "nice_to_have"] = "important"
     status: Literal["supported", "partially_supported", "not_evidenced"]
-    evidence: str = Field(default="", max_length=800)
-    explanation: str = Field(default="", max_length=800)
+    evidence: str = Field(default="", max_length=240)
+    explanation: str = Field(default="", max_length=320)
 
 
 class JobMatchAnalysis(BaseModel):
-    requirements: list[RequirementAssessment] = Field(default_factory=list, max_length=30)
+    requirements: list[RequirementAssessment] = Field(default_factory=list, max_length=18)
     summary: str = Field(default="", max_length=1500)
 
 
@@ -278,6 +278,10 @@ def _apply_deterministic_profile_evidence(
     return assessment
 
 
+def _is_full_description_source(description_source: str) -> bool:
+    return description_source == "original_listing"
+
+
 def _decision_guidance(
     score: int | None,
     requirements: list[dict[str, Any]],
@@ -295,7 +299,7 @@ def _decision_guidance(
         recommendation = "insufficient_evidence"
         label = "Need more evidence"
         explanation = "CareerMate could not produce a reliable score. Review the source description and profile before deciding."
-    elif description_source != "original_listing":
+    elif not _is_full_description_source(description_source):
         recommendation = "incomplete_description"
         label = "Full job advert needed"
         explanation = (
@@ -326,15 +330,15 @@ def _decision_guidance(
         "recommendation_label": label,
         "recommendation_explanation": explanation,
         "job_description_source": description_source or "search_result",
-        "description_complete": description_source == "original_listing",
+        "description_complete": _is_full_description_source(description_source),
     }
 
 
-def _unavailable_result(explanation: str) -> dict[str, Any]:
+def _unavailable_result(explanation: str, description_source: str = "search_result") -> dict[str, Any]:
     return {
         "match_score": None,
         "match_confidence": "unavailable",
-        "match_method": f"{get_active_provider_identity()[0]}_llm_evidence_weighted_v6",
+        "match_method": f"{get_active_provider_identity()[0]}_llm_evidence_weighted_v7",
         "matched_skills": [],
         "matched_requirements": [],
         "partially_matched_requirements": [],
@@ -345,7 +349,8 @@ def _unavailable_result(explanation: str) -> dict[str, Any]:
         "recommendation": "insufficient_evidence",
         "recommendation_label": "Need more evidence",
         "recommendation_explanation": explanation,
-        "job_description_source": "search_result",
+        "job_description_source": description_source,
+        "description_complete": _is_full_description_source(description_source),
         "match_explanation": explanation,
         "score_note": (
             "The score measures evidence coverage for extracted requirements, "
@@ -355,6 +360,53 @@ def _unavailable_result(explanation: str) -> dict[str, Any]:
     }
 
 
+class JobAnalysisOutputError(ValueError):
+    """The selected model did not return a complete response matching the analysis schema."""
+
+
+def _generate_job_analysis(prompt: str, schema: dict[str, Any]) -> JobMatchAnalysis:
+    """Generate and validate analysis JSON, with one bounded compact-output retry.
+
+    Compatible APIs often support JSON mode but not the application's full JSON Schema.
+    A long list of verbose requirements can hit a provider's output ceiling, leaving the
+    response syntactically incomplete. Never score a partial object: retry once with a
+    smaller requested result, then return a safe user-facing failure.
+    """
+    generation_options = {
+        "json_schema": schema,
+        "max_tokens": 3600,
+        "temperature": 0,
+        "context_window": 8192,
+    }
+    content = generate_text(prompt, **generation_options)
+    try:
+        return JobMatchAnalysis.model_validate_json(content)
+    except (ValidationError, ValueError):
+        retry_prompt = (
+            prompt
+            + "\n\nIMPORTANT RETRY INSTRUCTIONS: Your previous response was incomplete or invalid. "
+              "Regenerate the ENTIRE JSON object from the beginning; do not continue the old output. "
+              "Keep the response compact: return at most 12 distinct requirements, keep each requirement "
+              "under 160 characters, evidence under 100 characters, and explanation under 160 characters. "
+              "Return every required schema field, use an empty string for evidence when status is not_evidenced, "
+              "and close the JSON object completely. Output JSON only, with no Markdown or commentary."
+        )
+        try:
+            retry_content = generate_text(
+                retry_prompt,
+                json_schema=schema,
+                max_tokens=3600,
+                temperature=0,
+                context_window=8192,
+            )
+            return JobMatchAnalysis.model_validate_json(retry_content)
+        except (ValidationError, ValueError) as retry_error:
+            raise JobAnalysisOutputError(
+                "The AI model returned incomplete or invalid structured output twice. "
+                "No match score was calculated. Try again or select a model/provider that supports JSON output."
+            ) from retry_error
+
+
 def score_job(job: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
     """Use the configured AI provider to identify requirements, validate evidence, and score coverage."""
     candidate_profile = _candidate_facts(profile)
@@ -362,10 +414,11 @@ def score_job(job: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
     title = str(job.get("title", "")).strip()
     description = str(job.get("description", "")).strip()
 
+    description_source = str(job.get("description_source", "search_result"))
     if not candidate_text.strip():
-        return _unavailable_result("The candidate profile contains no usable professional information.")
+        return _unavailable_result("The candidate profile contains no usable professional information.", description_source)
     if not title and not description:
-        return _unavailable_result("This job has no title or description to analyze.")
+        return _unavailable_result("This job has no title or description to analyze.", description_source)
 
     key = _cache_key(job, candidate_profile)
     cached_result = _load_cache().get(key)
@@ -393,9 +446,11 @@ Assessment rules:
   product and industry experience, ownership/leadership, communication/language, location/work
   model, and clearly labelled nice-to-haves. Include requirements that describe how success is
   defined and explicit reasons the role may not fit.
-- Aim for 10–18 distinct material requirements, expanding toward 25 for a detailed advert;
+- Aim for 8–14 distinct material requirements and never return more than 16;
   include fewer only when the advert genuinely has fewer relevant criteria. Do not collapse several
   independent criteria into one vague requirement and do not invent requirements.
+- Be concise: requirement <= 160 characters, evidence <= 100 characters, explanation <= 160 characters.
+  Keep explanations to one short sentence so the response can fit common provider output limits.
 - Mark importance as required only if the wording clearly makes it mandatory or a clear success criterion.
   Use preferred for explicit advantages/desirables, otherwise unclear.
 - Also classify criticality conservatively: critical only for hard thresholds/eligibility gates
@@ -416,7 +471,7 @@ Assessment rules:
 - For supported or partially supported, quote a short exact excerpt from the
   candidate profile. For not_evidenced, evidence must be an empty string.
 - Never invent candidate facts or job requirements. Do not infer language level.
-- Avoid duplicates. Return up to 25 distinct requirements. Keep each explanation concise (one sentence).
+- Avoid duplicates. Return up to 16 distinct requirements. Keep each explanation concise (one short sentence).
 - If the job content is short or incomplete, say so in the summary.
 - The purpose is to support an apply / do-not-apply review, so preserve decision-relevant details
   instead of returning only a high-level summary. Keep distinct criteria distinct: numeric experience
@@ -437,26 +492,38 @@ OUTPUT SCHEMA:
 
     provider, model = get_active_provider_identity()
     try:
-        content = generate_text(
-            prompt,
-            json_schema=schema,
-            max_tokens=2400,
-            temperature=0,
-            context_window=8192,
-        )
-        analysis = JobMatchAnalysis.model_validate_json(content)
-    except (AIProviderError, ValidationError, ValueError) as exc:
+        analysis = _generate_job_analysis(prompt, schema)
+    except JobAnalysisOutputError as exc:
         logger.warning(
-            "Job-match analysis unavailable for %s via %s/%s: %s",
+            "Job-match output invalid for %s via %s/%s after one retry",
+            job.get("id", "unknown"), provider, model,
+        )
+        return _unavailable_result(str(exc), description_source)
+    except AIProviderError as exc:
+        logger.warning(
+            "Job-match provider request failed for %s via %s/%s: %s",
             job.get("id", "unknown"), provider, model, type(exc).__name__,
         )
         return _unavailable_result(
-            f"Could not complete analysis with {provider} model '{model}'. {str(exc)[:300]}"
+            f"CareerMate could not get a response from {provider} model '{model}'. Check the provider URL, model ID, API key/quota, and connection, then try again.",
+            description_source,
+        )
+    except (ValidationError, ValueError) as exc:
+        # Do not surface Pydantic's raw input_value: it can dump a large fragment
+        # of the model response into the UI and is not actionable for the user.
+        logger.warning(
+            "Job-match validation failed for %s via %s/%s: %s",
+            job.get("id", "unknown"), provider, model, type(exc).__name__,
+        )
+        return _unavailable_result(
+            "The AI model returned a response CareerMate could not validate. No score was calculated. Try again or select another model.",
+            description_source,
         )
     except Exception as exc:
         logger.warning("Job matching failed: provider=%s error_type=%s", provider, type(exc).__name__)
         return _unavailable_result(
-            f"Could not analyze this job using {provider} model '{model}'. Check the provider settings and try again."
+            f"Could not analyze this job using {provider} model '{model}'. Check the provider settings and try again.",
+            description_source,
         )
 
     assessed: list[dict[str, Any]] = []
@@ -486,13 +553,20 @@ OUTPUT SCHEMA:
         if item["importance"] in weights
     )
     score = round(100 * numerator / denominator) if denominator else None
+    if assessed and denominator == 0:
+        no_weight_summary = (
+            "A numerical score is unavailable because none of the extracted requirements was classified as required or preferred. "
+            "Review the advert and rerun analysis; CareerMate will not invent weights for unclear requirements."
+        )
+        analysis.summary = f"{analysis.summary.strip()} {no_weight_summary}".strip()
 
     supported = [item for item in assessed if item["status"] == "supported"]
     partial = [item for item in assessed if item["status"] == "partially_supported"]
     not_evidenced = [item for item in assessed if item["status"] == "not_evidenced"]
 
-    description_source = str(job.get("description_source", "search_result"))
-    if description_source != "original_listing":
+    manual_text_note = str(job.get("description_fetch_message", "")).casefold().startswith("manually pasted advert text")
+    full_description = _is_full_description_source(description_source)
+    if not full_description:
         confidence = "low"
         summary = analysis.summary or "The available advertisement contains limited information."
         summary += " The original listing was not retrieved, so treat this score as preliminary."
@@ -514,7 +588,7 @@ OUTPUT SCHEMA:
     result = {
         "match_score": score,
         "match_confidence": confidence,
-        "match_method": f"{get_active_provider_identity()[0]}_llm_evidence_weighted_v6",
+        "match_method": f"{get_active_provider_identity()[0]}_llm_evidence_weighted_v7",
         "matched_skills": [item["requirement"] for item in supported + partial if item["category"] == "skill"],
         "matched_requirements": [item["requirement"] for item in supported],
         "partially_matched_requirements": [item["requirement"] for item in partial],
@@ -524,7 +598,8 @@ OUTPUT SCHEMA:
         "match_explanation": summary,
         "score_note": (
             ("PRELIMINARY: the full original advert was not retrieved. Re-fetch and reanalyse before using this score to decide. "
-             if description_source != "original_listing" else "")
+             if not full_description else "")
+            + ("The advert text was manually pasted and has not been independently verified against the source page. " if manual_text_note else "")
             + "Measures evidence coverage for requirements extracted from the advert; "
             "it is not a probability of receiving an interview or offer. Missing "
             "evidence does not prove a candidate lacks a qualification."

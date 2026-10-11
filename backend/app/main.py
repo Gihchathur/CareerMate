@@ -633,6 +633,38 @@ def enrich_saved_job_details(request: JobEnrichmentRequest) -> dict[str, object]
     job = next((item for item in saved_jobs if str(item.get("id", "")) == request.job_id), None)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found in local saved jobs. Search for it again first.")
+
+    if request.manual_description is not None:
+        # User-pasted text is an intentional fallback for public ATS pages whose
+        # readable content is unavailable to the safe static/browser fetcher.
+        manual_text = "\n".join(" ".join(line.split()) for line in request.manual_description.splitlines()).strip()
+        if len(manual_text) < 300:
+            return {
+                "success": False,
+                "message": "Paste at least 300 characters from the original advert so CareerMate has enough context to analyse.",
+                "job": job,
+            }
+        manual_job = dict(job)
+        manual_job.update({
+            "description": manual_text[:30000],
+            "description_source": "original_listing",
+            "description_fetch_status": "success",
+            "description_fetched_at": "",
+            "description_fetch_message": (
+                "Manually pasted advert text saved locally; CareerMate has not independently verified it against the source page."
+            ),
+        })
+        try:
+            save_jobs([manual_job])
+        except RuntimeError as exc:
+            logger.exception("Could not save manually supplied advert text")
+            raise HTTPException(status_code=500, detail="Could not save the pasted advert text locally.") from exc
+        return {
+            "success": True,
+            "message": "Advert text saved locally. CareerMate will reanalyse the pasted content; verify it matches the employer page.",
+            "job": manual_job,
+        }
+
     enriched = _try_enrich_job(job, force=request.force_refresh)
     if enriched.get("description_fetch_status") != "success":
         message = str(enriched.get("description_fetch_message") or "CareerMate could not obtain a fuller description from the public listing.")

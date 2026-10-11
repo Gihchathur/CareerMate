@@ -31,3 +31,5 @@ class JobPosting(BaseModel):
 class JobEnrichmentRequest(BaseModel):
     job_id: str = Field(min_length=1, max_length=300)
     force_refresh: bool = False
+    # Optional local fallback for ATS pages that block or require JavaScript rendering.
+    manual_description: str | None = Field(default=None, max_length=30000)

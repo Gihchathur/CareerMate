@@ -31,6 +31,32 @@ Restart FastAPI after changing `.env`. Do not commit `.env` or place a key in a 
 
 For the OpenAI-compatible endpoint, use HTTPS for remote hosts. Plain HTTP is allowed only for loopback URLs such as `http://127.0.0.1:1234/v1`.
 
+## Example: Groq (fast hosted inference)
+
+CareerMate can use providers that are compatible with the OpenAI Chat Completions API without a new integration. For Groq, add your key to `backend/.env`:
+
+```dotenv
+CAREERMATE_OPENAI_COMPATIBLE_API_KEY=your-groq-api-key
+CAREERMATE_OPENAI_COMPATIBLE_BASE_URL=https://api.groq.com/openai/v1
+CAREERMATE_OPENAI_COMPATIBLE_MODEL=openai/gpt-oss-20b
+```
+
+Restart FastAPI, open **AI provider**, select **OpenAI-compatible API**, and verify/save the base URL and a model ID currently available to your account. Groq's available models and per-model free-tier limits can change; check its [model list](https://console.groq.com/docs/models) and [rate limits](https://console.groq.com/docs/rate-limits).
+
+## Example: Google Gemini
+
+Google documents OpenAI-compatible access to Gemini. To try it, set the generic provider values in `backend/.env` and then select **OpenAI-compatible API** in CareerMate:
+
+```dotenv
+CAREERMATE_OPENAI_COMPATIBLE_API_KEY=your-gemini-api-key
+CAREERMATE_OPENAI_COMPATIBLE_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+CAREERMATE_OPENAI_COMPATIBLE_MODEL=gemini-3.8-flash
+```
+
+The example model ID and endpoint follow Google's [OpenAI compatibility documentation](https://ai.google.dev/gemini-api/docs/openai); confirm current model availability and active quota in Google AI Studio. CareerMate's generic adapter sends `response_format: {"type":"json_object"}` for structured tasks, so run **Test connection** and then a CV/job-analysis test to verify the chosen model's compatibility before using it for applications.
+
+**Privacy reminder:** Google currently states that content in the Gemini API free tier may be used to improve Google products. Do not send an unredacted personal CV to a free-tier hosted provider unless you accept its current data policy. With the generic adapter, only one compatible-provider configuration is active at a time; switching between Groq and Gemini currently means changing the configured endpoint/model/key.
+
 ## Switch providers
 
 1. Open **AI provider** in the workspace navigation.
