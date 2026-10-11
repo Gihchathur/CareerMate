@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="tile" x1="6" y1="5" x2="59" y2="61" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7774FF"/>
+      <stop offset="0.52" stop-color="#514CE5"/>
+      <stop offset="1" stop-color="#322CA8"/>
+    </linearGradient>
+    <linearGradient id="flight" x1="25" y1="21" x2="47" y2="45" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9BE7FF"/>
+      <stop offset="1" stop-color="#41D3E6"/>
+    </linearGradient>
+    <filter id="shadow" x="-12%" y="-12%" width="124%" height="132%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#4740CC" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <rect x="3" y="3" width="58" height="58" rx="18" fill="url(#tile)"/>
+    <path d="M43.5 18.8A20 20 0 1 0 44.1 45" stroke="#FFFFFF" stroke-width="6.2" stroke-linecap="round"/>
+    <path d="M22.2 33.2 47.5 19.1 38.7 45 31.7 35.7 22.2 33.2Z" fill="url(#flight)"/>
+    <path d="M31.8 35.7 47.5 19.1 35.1 38.8" stroke="#FFFFFF" stroke-opacity="0.76" stroke-width="1.2" stroke-linejoin="round"/>
+    <path d="M48 8.7 49.7 13.1 54.1 14.8 49.7 16.5 48 20.9 46.3 16.5 41.9 14.8 46.3 13.1 48 8.7Z" fill="#A1F4FF"/>
+    <circle cx="14.8" cy="47.4" r="1.5" fill="#C7C5FF"/>
+  </g>
+</svg>

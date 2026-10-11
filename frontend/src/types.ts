@@ -73,6 +73,10 @@ export type JobResult = {
   country?: string;
   work_mode?: DetectedWorkMode;
   search_roles?: string[];
+  description_source?: "search_result" | "original_listing";
+  description_fetch_status?: "not_attempted" | "success" | "failed";
+  description_fetched_at?: string;
+  description_fetch_message?: string;
 };
 
 export type JobSearchCriteria = {
@@ -125,6 +129,7 @@ export type RequirementAssessment = {
   requirement: string;
   category: RequirementCategory;
   importance: "required" | "preferred" | "unclear";
+  criticality?: "critical" | "important" | "nice_to_have";
   status: "supported" | "partially_supported" | "not_evidenced";
   evidence: string;
   explanation: string;
@@ -141,6 +146,13 @@ export type JobMatchResult = JobResult & {
   requirements: RequirementAssessment[];
   match_explanation: string;
   score_note: string;
+  critical_gaps?: RequirementAssessment[];
+  required_gaps_count?: number;
+  recommendation?: "insufficient_evidence" | "incomplete_description" | "review_critical_gaps" | "strong_potential_fit" | "consider_after_review" | "significant_gaps";
+  recommendation_label?: string;
+  recommendation_explanation?: string;
+  job_description_source?: "search_result" | "original_listing";
+  description_complete?: boolean;
 };
 
 
@@ -167,7 +179,12 @@ export type ApplicationRecord = {
   location: string;
   source: string;
   job_url: string;
+  source_url?: string;
   job_description: string;
+  job_description_source?: "search_result" | "original_listing";
+  job_description_fetched_at?: string;
+  job_description_fetch_status?: "not_attempted" | "success" | "failed";
+  job_description_fetch_message?: string;
   status: ApplicationStatus;
   notes: string;
   follow_up_date: string;
@@ -235,4 +252,30 @@ export type AIProviderSettingsInput = {
   model: string;
   base_url?: string;
   confirm_cloud_data_sharing?: boolean;
+};
+
+
+export type LocalDataSummary = {
+  success: boolean;
+  removed_files?: number;
+  message?: string;
+  counts: {
+    cv_files: number;
+    profile_saved: boolean;
+    cv_text_saved: boolean;
+    saved_jobs: number;
+    applications: number;
+    cache_files: number;
+    settings_files: number;
+    total_data_files: number;
+  };
+  preserved: string[];
+};
+
+export type BrowserDiagnostics = {
+  success: boolean;
+  playwright_installed: boolean;
+  chromium_installed: boolean;
+  install_command: string;
+  message: string;
 };

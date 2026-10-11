@@ -22,3 +22,12 @@ class JobPosting(BaseModel):
     country: str = ""
     work_mode: WorkMode = "unknown"
     search_roles: list[str] = Field(default_factory=list)
+    description_source: Literal["search_result", "original_listing"] = "search_result"
+    description_fetch_status: Literal["not_attempted", "success", "failed"] = "not_attempted"
+    description_fetched_at: str = ""
+    description_fetch_message: str = ""
+
+
+class JobEnrichmentRequest(BaseModel):
+    job_id: str = Field(min_length=1, max_length=300)
+    force_refresh: bool = False

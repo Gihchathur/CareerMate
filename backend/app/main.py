@@ -17,6 +17,8 @@ from app.models.application import (
 )
 from app.models.browser_assistance import BrowserFillRequest
 from app.models.ai import AIProviderTestRequest, AISettingsUpdate
+from app.models.data_management import LocalDataResetRequest
+from app.models.job import JobEnrichmentRequest
 from app.services.ai_provider import (
     AIProviderError, get_active_provider_identity, get_ai_settings, save_ai_settings, test_provider_connection,
 )
@@ -25,6 +27,7 @@ from app.services.browser_assistance import (
     close_browser_session,
     fill_reviewed_fields,
     get_browser_session_status,
+    get_browser_diagnostics,
     open_application_page,
     scan_current_form,
 )
@@ -40,7 +43,9 @@ from app.services.job_matcher import score_job
 from app.services.job_discovery import JobDiscoveryError, search_multiple_roles
 from app.services.job_sources.base import JobSourceError
 from app.services.job_search import source_status
+from app.services.job_detail_enricher import JobDetailFetchError, enrich_job_record
 from app.services.job_storage import load_saved_jobs, save_jobs
+from app.services.data_management import clear_cache_files, get_data_summary, reset_workspace_data
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +130,51 @@ def test_ai_settings(request: AIProviderTestRequest) -> dict[str, object]:
         return test_provider_connection(request.provider, request.model, request.base_url)
     except AIProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/api/data/summary")
+def local_data_summary() -> dict[str, object]:
+    """Return counts of local data without exposing its contents."""
+    return get_data_summary(DATA_DIR)
+
+
+@app.post("/api/data/clear-cache")
+def clear_local_caches() -> dict[str, object]:
+    """Clear derived caches while keeping the CV, jobs, profile and applications."""
+    try:
+        removed = clear_cache_files(DATA_DIR)
+        return {"success": True, "removed_files": removed, "message": f"Cleared {removed} cache file(s).", **get_data_summary(DATA_DIR)}
+    except OSError as exc:
+        logger.exception("Could not clear CareerMate cache files")
+        raise HTTPException(status_code=500, detail="Could not clear all cache files. Check file permissions and try again.") from exc
+
+
+@app.post("/api/data/reset")
+async def reset_local_workspace_data(request: LocalDataResetRequest) -> dict[str, object]:
+    """Permanently remove user-generated files stored under data/ only."""
+    if request.confirmation != "DELETE ALL LOCAL DATA":
+        raise HTTPException(
+            status_code=400,
+            detail="Confirmation did not match. Type DELETE ALL LOCAL DATA to proceed.",
+        )
+    # Close the application browser first so transient form values are not left
+    # in a live browser session during a workspace reset.
+    try:
+        await close_browser_session()
+    except Exception as exc:
+        logger.exception("Could not close the browser before workspace reset")
+        raise HTTPException(status_code=500, detail="Could not close the browser session; no local data was reset. Close it and try again.") from exc
+    try:
+        removed = reset_workspace_data(DATA_DIR)
+        return {
+            "success": True,
+            "removed_files": removed,
+            "message": f"Workspace reset complete. Removed {removed} local data file(s).",
+            **get_data_summary(DATA_DIR),
+        }
+    except OSError as exc:
+        logger.exception("Could not reset CareerMate local workspace data")
+        raise HTTPException(status_code=500, detail="Could not reset all local data. Check file permissions and inspect the workspace.") from exc
 
 
 @app.get("/api/health")
@@ -266,12 +316,27 @@ def search_job_listings(
         jobs = result["jobs"]
         job_payload = [job.model_dump() for job in jobs]  # type: ignore[union-attr]
         saved_total = save_jobs(job_payload)
+        # Reuse a previously fetched full description when the same job appears
+        # again in a later search and the provider only returns a short teaser.
+        saved_by_id = {str(item.get("id", "")): item for item in load_saved_jobs()}
+        response_jobs: list[dict[str, object]] = []
+        for item in job_payload:
+            saved = saved_by_id.get(str(item.get("id", "")), {})
+            if saved.get("description_source") == "original_listing" and len(str(saved.get("description", ""))) > len(str(item.get("description", ""))):
+                response_jobs.append({**item, **{
+                    key: saved[key] for key in (
+                        "description", "description_source", "description_fetch_status",
+                        "description_fetched_at", "description_fetch_message",
+                    ) if key in saved
+                }})
+            else:
+                response_jobs.append(item)
 
         return {
             "success": True,
             **{key: value for key, value in result.items() if key != "jobs"},
             "saved_total": saved_total,
-            "jobs": job_payload,
+            "jobs": response_jobs,
         }
     except JobDiscoveryError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -336,8 +401,11 @@ def add_application(request: ApplicationCreateRequest) -> dict[str, object]:
 
         now = utc_now()
         job_url = str(job.get("apply_url") or job.get("source_url") or "")
+        source_url = str(job.get("source_url") or job_url or "")
         if not job_url.startswith(("https://", "http://")):
             job_url = ""
+        if not source_url.startswith(("https://", "http://")):
+            source_url = ""
         record = ApplicationRecord(
             id=f"application:{uuid4().hex}",
             job_id=request.job_id,
@@ -346,7 +414,11 @@ def add_application(request: ApplicationCreateRequest) -> dict[str, object]:
             location=str(job.get("location", ""))[:300],
             source=str(job.get("source", ""))[:100],
             job_url=job_url[:2000],
+            source_url=source_url[:2000],
             job_description=str(job.get("description", ""))[:30000],
+            job_description_source=str(job.get("description_source", "search_result")),
+            job_description_fetched_at=str(job.get("description_fetched_at", "")),
+            job_description_fetch_status=str(job.get("description_fetch_status", "not_attempted")),
             status="saved",
             notes=request.notes,
             created_at=now,
@@ -419,6 +491,15 @@ def _load_draft_inputs(application_id: str) -> tuple[ApplicationRecord, Candidat
 def draft_cover_letter(application_id: str) -> dict[str, object]:
     """Generate and persist a reviewable cover-letter draft using the selected AI provider."""
     application, profile = _load_draft_inputs(application_id)
+    application = _refresh_application_description(application)
+    if application.job_description_source != "original_listing" and len(application.job_description.strip()) < 500:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "CareerMate only has a short search snippet for this role, so it cannot reliably tailor a complete cover letter yet. "
+                "Use ‘Fetch full details’ in the application workspace and retry. If the public site blocks retrieval, review the advert manually before drafting."
+            ),
+        )
     try:
         content = generate_cover_letter(application, profile)
         updated = update_application(application_id, {"cover_letter": content})
@@ -443,6 +524,7 @@ def draft_application_answer(
 ) -> dict[str, object]:
     """Generate and persist an answer draft for one employer question."""
     application, profile = _load_draft_inputs(application_id)
+    application = _refresh_application_description(application)
     try:
         answer_text = generate_application_answer(application, profile, request.question)
         records = [item for item in application.answers if item.question.casefold() != request.question.casefold()]
@@ -487,6 +569,12 @@ async def open_application_browser(application_id: str) -> dict[str, object]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.get("/api/browser/diagnostics")
+async def browser_diagnostics() -> dict[str, object]:
+    """Check Playwright and Chromium availability without opening a browser."""
+    return await get_browser_diagnostics()
+
+
 @app.get("/api/browser/session")
 async def browser_session_status() -> dict[str, object]:
     return await get_browser_session_status()
@@ -518,6 +606,118 @@ async def end_browser_session() -> dict[str, object]:
     return await close_browser_session()
 
 
+def _try_enrich_job(job: dict[str, object], *, force: bool = False) -> dict[str, object]:
+    """Best-effort public-page enrichment; keep source data if enrichment fails."""
+    result = dict(job)
+    description = str(result.get("description", "")).strip()
+    if not force and (result.get("description_source") == "original_listing" or len(description) >= 1800):
+        result.setdefault("description_source", "search_result")
+        result.setdefault("description_fetch_status", "not_attempted")
+        return result
+    try:
+        return enrich_job_record(result, force=force)
+    except JobDetailFetchError as exc:
+        result["description_source"] = str(result.get("description_source") or "search_result")
+        result["description_fetch_status"] = "failed"
+        result["description_fetch_message"] = str(exc)[:300]
+        return result
+
+
+@app.post("/api/jobs/enrich")
+def enrich_saved_job_details(request: JobEnrichmentRequest) -> dict[str, object]:
+    """Fetch fuller text from a selected job's public original listing."""
+    try:
+        saved_jobs = load_saved_jobs()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail="Could not load saved job listings.") from exc
+    job = next((item for item in saved_jobs if str(item.get("id", "")) == request.job_id), None)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found in local saved jobs. Search for it again first.")
+    enriched = _try_enrich_job(job, force=request.force_refresh)
+    if enriched.get("description_fetch_status") != "success":
+        message = str(enriched.get("description_fetch_message") or "CareerMate could not obtain a fuller description from the public listing.")
+        # A failed refresh returns useful current data and a warning; this is not
+        # a server error because the existing snippet remains usable.
+        return {"success": False, "message": message, "job": enriched}
+    try:
+        save_jobs([enriched])
+    except RuntimeError as exc:
+        logger.exception("Could not persist enriched job description")
+        raise HTTPException(status_code=500, detail="Fetched the description but could not save it locally.") from exc
+    return {"success": True, "message": "Fuller description saved from the public original listing.", "job": enriched}
+
+
+def _refresh_application_description(
+    application: ApplicationRecord,
+    *,
+    force: bool = False,
+) -> ApplicationRecord:
+    """Try enriching an older short application snapshot before generating drafts."""
+    if application.job_description_source == "original_listing" and len(application.job_description) >= 1800:
+        return application
+    if not force and application.job_description_fetch_status == "failed":
+        return application
+    source_url = application.source_url or application.job_url
+    if not source_url:
+        return application
+    job_for_enrichment: dict[str, object] = {
+        "id": application.job_id,
+        "source": application.source,
+        "source_id": application.job_id,
+        "title": application.title,
+        "company": application.company,
+        "location": application.location,
+        "description": application.job_description,
+        "source_url": source_url,
+        "apply_url": application.job_url or source_url,
+        "description_source": application.job_description_source,
+        "description_fetch_status": application.job_description_fetch_status,
+    }
+    enriched = _try_enrich_job(job_for_enrichment, force=force)
+    updates: dict[str, object] = {
+        "job_description_fetch_status": str(enriched.get("description_fetch_status", "not_attempted")),
+        "job_description_fetch_message": str(enriched.get("description_fetch_message", ""))[:500],
+    }
+    if enriched.get("description_source") == "original_listing":
+        updates.update({
+            "job_description": str(enriched.get("description", ""))[:30000],
+            "job_description_source": "original_listing",
+            "job_description_fetched_at": str(enriched.get("description_fetched_at", "")),
+            "job_description_fetch_status": "success",
+            "job_description_fetch_message": "Full text retrieved from the public original listing.",
+        })
+    elif enriched.get("description_fetch_status") == "failed":
+        logger.info("Could not enrich application description (%s): %s", application.job_id, updates["job_description_fetch_message"])
+    saved = update_application(application.id, updates)
+    if saved:
+        return ApplicationRecord.model_validate(saved)
+    return application
+
+
+@app.post("/api/applications/{application_id}/enrich-description")
+def enrich_application_description(application_id: str) -> dict[str, object]:
+    """Refresh the public listing description for an application record."""
+    try:
+        records = load_applications()
+        record = next((item for item in records if item.get("id") == application_id), None)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Application record not found.")
+        application = ApplicationRecord.model_validate(record)
+        enriched = _refresh_application_description(application, force=True)
+        success = enriched.job_description_source == "original_listing"
+        return {
+            "success": success,
+            "message": enriched.job_description_fetch_message or (
+                "Full job description refreshed." if success else "The listing did not provide a fuller description."
+            ),
+            "application": enriched.model_dump(),
+        }
+    except HTTPException:
+        raise
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail="Could not refresh the application description.") from exc
+
+
 @app.get("/api/jobs/matches")
 def get_job_matches(
     limit: int = Query(default=5, ge=1, le=20),
@@ -541,6 +741,18 @@ def get_job_matches(
         selected_jobs = [by_id[item] for item in job_ids[:limit] if item in by_id]
     else:
         selected_jobs = saved_jobs[:limit]
+
+    # Job-search adapters often return only a teaser. Fetch the public listing
+    # for selected jobs before scoring so a match is based on the actual requirements.
+    if selected_jobs:
+        with ThreadPoolExecutor(max_workers=min(4, len(selected_jobs)), thread_name_prefix="careermate-job-page") as executor:
+            selected_jobs = list(executor.map(_try_enrich_job, selected_jobs))
+        enriched_jobs = [job for job in selected_jobs if job.get("description_source") == "original_listing"]
+        if enriched_jobs:
+            try:
+                save_jobs(enriched_jobs)
+            except RuntimeError:
+                logger.warning("Could not persist one or more enriched job descriptions")
 
     results: list[dict[str, object]] = []
     profile_data = profile.model_dump()
@@ -572,7 +784,7 @@ def get_job_matches(
         "analyzed": len(results),
         "requested_job_ids": len(job_ids) if job_ids is not None else 0,
         "limit": limit,
-        "method": f"{provider}_llm_evidence_weighted_v3",
+        "method": f"{provider}_llm_evidence_weighted_v6",
         "provider": provider,
         "model": model,
         "concurrency": min(4, len(selected_jobs)) if provider != "ollama" else 1,

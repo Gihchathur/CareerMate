@@ -24,6 +24,9 @@ JOB = {
 }
 
 
+LONG_COVER_LETTER = "Dear hiring team,\n\nI am interested in the Platform Engineer role because the responsibilities align with my background in software engineering and production operations. My work has involved building and maintaining backend services and working with tools that support reliable delivery. These experiences have helped me understand how implementation choices affect operability, quality, and the people who use a system.\n\nIn my professional experience, I have worked with Kubernetes, CI/CD pipelines, and observability tools to support production services. I have contributed to automation and monitoring approaches that help teams understand system behaviour, identify problems, and make releases more predictable. I bring a practical perspective on the connection between development, deployment, and service reliability.\n\nI would bring these skills to the role while continuing to build depth in areas specific to your product and engineering environment. I am comfortable learning the context of an existing system, understanding why a change is needed, and choosing a maintainable way to deliver it. I would also be careful to communicate what is known, where risks remain, and what needs to be verified before a change is released.\n\nThe opportunity to contribute to useful software and help improve its long-term quality is appealing in the context of the role described. I would welcome a conversation about the team's current priorities and where my experience could be most useful.\n\nKind regards,\nExample Candidate"
+
+
 def test_create_application_is_idempotent_and_stores_job_snapshot(tmp_path, monkeypatch):
     monkeypatch.setattr(application_storage, "APPLICATIONS_PATH", tmp_path / "applications.json")
     monkeypatch.setattr(main, "load_saved_jobs", lambda: [JOB])
@@ -111,7 +114,7 @@ def test_local_cover_letter_prompt_excludes_contact_details(monkeypatch):
 
         def chat(self, **kwargs):
             captured["prompt"] = kwargs["messages"][0]["content"]
-            return types.SimpleNamespace(message=types.SimpleNamespace(content="Dear hiring team, I am interested in the role.\n\nExample Candidate"))
+            return types.SimpleNamespace(message=types.SimpleNamespace(content=LONG_COVER_LETTER))
 
     monkeypatch.setitem(sys.modules, "ollama", types.SimpleNamespace(Client=FakeClient))
     profile = CandidateProfile.model_validate({
@@ -135,15 +138,19 @@ def test_local_cover_letter_prompt_excludes_contact_details(monkeypatch):
     assert "private@example.com" not in captured["prompt"]
     assert "+460000000" not in captured["prompt"]
     assert "Never invent employers" in captured["prompt"]
+    assert "Sanitized text extracted from the candidate's current CV" in captured["prompt"]
+    assert len(result.split()) >= 200
 
 
 def test_cover_letter_endpoint_persists_local_draft(tmp_path, monkeypatch):
     app_path = tmp_path / "applications.json"
     profile_path = tmp_path / "profile.json"
     monkeypatch.setattr(application_storage, "APPLICATIONS_PATH", app_path)
-    monkeypatch.setattr(main, "load_saved_jobs", lambda: [JOB])
+    full_job = {**JOB, "description": ("Operate Kubernetes services, maintain CI/CD pipelines, improve observability, and collaborate with engineers to support production systems. " * 8), "description_source": "original_listing"}
+    monkeypatch.setattr(main, "load_saved_jobs", lambda: [full_job])
     monkeypatch.setattr(main, "PROFILE_PATH", profile_path)
     profile_path.write_text(CandidateProfile.model_validate({"summary": "Kubernetes operations"}).model_dump_json(), encoding="utf-8")
+    monkeypatch.setattr(main, "_refresh_application_description", lambda application, force=False: application)
     monkeypatch.setattr(main, "generate_cover_letter", lambda _application, _profile: "A reviewed cover-letter draft.")
     client = TestClient(main.app)
     created = client.post("/api/applications", json={"job_id": JOB["id"]}).json()["application"]
@@ -163,6 +170,7 @@ def test_application_question_answer_is_saved_and_same_question_is_replaced(tmp_
     monkeypatch.setattr(main, "PROFILE_PATH", profile_path)
     profile_path.write_text(CandidateProfile.model_validate({"summary": "Kubernetes operations"}).model_dump_json(), encoding="utf-8")
     generated = iter(["First draft.", "Improved second draft."])
+    monkeypatch.setattr(main, "_refresh_application_description", lambda application, force=False: application)
     monkeypatch.setattr(main, "generate_application_answer", lambda _application, _profile, _question: next(generated))
     client = TestClient(main.app)
     created = client.post("/api/applications", json={"job_id": JOB["id"]}).json()["application"]

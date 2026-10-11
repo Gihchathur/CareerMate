@@ -11,6 +11,7 @@ import asyncio
 import ipaddress
 import re
 import socket
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
@@ -256,6 +257,82 @@ async def scan_current_form() -> dict[str, Any]:
         }
 
 
+def _browser_failure_message(exc: Exception, *, browser_started: bool = False) -> str:
+    """Translate Playwright failures into specific, actionable local guidance."""
+    detail = " ".join(str(exc).split())[:220]
+    lowered = detail.casefold()
+    if not browser_started and (
+        "executable doesn't exist" in lowered
+        or "executable does not exist" in lowered
+        or "browser has been closed" in lowered and "executable" in lowered
+    ):
+        return (
+            "Playwright is installed, but Chromium is missing for this backend's Python environment. "
+            "In PowerShell, enter the backend folder, activate `.venv`, then run "
+            "`python -m playwright install chromium`. Restart Uvicorn afterward."
+        )
+    if not browser_started and ("host system is missing dependencies" in lowered or "missing shared libraries" in lowered):
+        return (
+            "Chromium is installed but could not start because a required system dependency is missing. "
+            "On Windows, reinstall Chromium with `python -m playwright install chromium`, check Windows Security/antivirus, "
+            "and see the backend terminal for the underlying error."
+        )
+    if browser_started:
+        suffix = f" Details: {detail}" if detail else ""
+        return (
+            "Chromium started, but the public job page could not be loaded. Check that the saved application URL opens "
+            "in your regular browser and that your internet connection is working. You can still open the link manually."
+            + suffix
+        )
+    suffix = f" Details: {detail}" if detail else ""
+    return (
+        "CareerMate could not start the visible Chromium browser. Run `python -m playwright install chromium` "
+        "from the same activated backend virtual environment, restart Uvicorn, and inspect the backend terminal."
+        + suffix
+    )
+
+
+async def get_browser_diagnostics() -> dict[str, Any]:
+    """Return browser availability without opening a window or visiting a URL."""
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        return {
+            "success": True,
+            "playwright_installed": False,
+            "chromium_installed": False,
+            "install_command": "python -m pip install -r requirements.txt; python -m playwright install chromium",
+            "message": "Playwright is not installed in the active backend Python environment.",
+        }
+
+    manager = None
+    try:
+        manager = await async_playwright().start()
+        executable = Path(manager.chromium.executable_path)
+        installed = executable.is_file()
+        return {
+            "success": True,
+            "playwright_installed": True,
+            "chromium_installed": installed,
+            "install_command": "python -m playwright install chromium",
+            "message": "Chromium is ready." if installed else "Chromium is not installed for the active backend Python environment.",
+        }
+    except Exception as exc:
+        return {
+            "success": True,
+            "playwright_installed": True,
+            "chromium_installed": False,
+            "install_command": "python -m playwright install chromium",
+            "message": f"Could not inspect the Playwright browser installation ({type(exc).__name__}).",
+        }
+    finally:
+        if manager is not None:
+            try:
+                await manager.stop()
+            except Exception:
+                pass
+
+
 async def open_application_page(application_id: str, url: str) -> dict[str, Any]:
     """Open a visible Chromium window for a user-selected tracked application."""
     global _active_session
@@ -266,7 +343,8 @@ async def open_application_page(application_id: str, url: str) -> dict[str, Any]
             from playwright.async_api import async_playwright
         except ImportError as exc:
             raise BrowserAssistanceError(
-                "Browser assistance requires Playwright. Install backend dependencies and run `python -m playwright install chromium`."
+                "Browser assistance requires Playwright in the active backend virtual environment. "
+                "Run `python -m pip install -r requirements.txt` and `python -m playwright install chromium`, then restart Uvicorn."
             ) from exc
 
         manager = None
@@ -274,6 +352,13 @@ async def open_application_page(application_id: str, url: str) -> dict[str, Any]
         context = None
         try:
             manager = await async_playwright().start()
+            executable = Path(manager.chromium.executable_path)
+            if not executable.is_file():
+                raise BrowserAssistanceError(
+                    "Chromium is not installed for the active backend Python environment. "
+                    "In PowerShell, enter the backend folder, activate `.venv`, then run "
+                    "`python -m playwright install chromium`. Restart Uvicorn afterward."
+                )
             browser = await manager.chromium.launch(headless=False)
             context = await browser.new_context(accept_downloads=False, service_workers="block")
             await context.route("**/*", _route_public_requests)
@@ -283,6 +368,7 @@ async def open_application_page(application_id: str, url: str) -> dict[str, Any]
                 playwright=manager, browser=browser, context=context, page=page, application_id=application_id,
             )
         except Exception as exc:
+            browser_started = browser is not None
             for resource in (context, browser):
                 if resource is not None:
                     try:
@@ -296,9 +382,7 @@ async def open_application_page(application_id: str, url: str) -> dict[str, Any]
                     pass
             if isinstance(exc, BrowserAssistanceError):
                 raise
-            raise BrowserAssistanceError(
-                "Could not open the visible browser. Install Chromium with `python -m playwright install chromium` and check the application link."
-            ) from exc
+            raise BrowserAssistanceError(_browser_failure_message(exc, browser_started=browser_started)) from exc
 
     return await scan_current_form()
 

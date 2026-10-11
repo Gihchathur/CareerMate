@@ -15,13 +15,13 @@ CareerMate is a local-first, open-source job discovery and application workspace
 - Expose `/api/jobs/sources` to report configured source counts without returning credentials.
 - Retry temporary provider errors with a bounded backoff, validate listing payloads, and preserve results from healthy employer boards when another board fails.
 - Reject incomplete enabled-source configuration early and show warnings instead of silently presenting malformed responses as zero results.
-- Compare selected jobs to the profile using the selected AI provider and show evidence coverage. Cloud-provider matches can run concurrently (up to four at a time); Ollama remains sequential to reduce local CPU/RAM pressure.
+- Fetch fuller descriptions from public job pages when possible, then compare requirements against CV evidence. Search-snippet-only scores are marked preliminary, with a prompt to fetch the full advert and reanalyse before deciding. Cloud-provider matches can run concurrently (up to four at a time); Ollama remains sequential to reduce local CPU/RAM pressure.
 - Cache successful match analyses locally by job, profile, provider, and model to reduce repeated model calls.
 - Use a focused workspace with separate Overview, Find jobs, Match insights, and My profile views.
 - Open full job details in a side drawer while keeping search results compact.
 - See processing states and transient success/error notifications without losing the current view.
 - Track saved roles through application stages with notes, follow-up dates, draft cover letters, and employer-question answers in local JSON.
-- Generate reviewable application drafts using the selected AI provider and the reviewed CV profile; generated content is not submitted automatically.
+- Generate cover letters from the reviewed profile, sanitized text extracted from the current CV, and the full saved advert. A quality gate retries short/overlong/incomplete letters and refuses to save them if they still fail; employer-question answers also use the configured AI provider. Generated content is not submitted automatically.
 
 ## UI and user experience
 
@@ -178,9 +178,17 @@ Open **AI provider** in the workspace navigation to choose between local Ollama,
 
 **Billing note:** ChatGPT subscriptions and OpenAI API usage have separate billing. A paid ChatGPT subscription does not automatically cover this application's API usage. See the [official billing explanation](https://help.openai.com/en/articles/9039756-managing-billing-for-chatgpt-and-the-api-platform).
 
-## Matching score
+## Detailed job analysis and matching
 
-The match score is a weighted coverage estimate based on job requirements extracted by the selected AI provider and evidence found in the reviewed profile. It is not a probability of interview or offer. “Not evidenced” means the profile did not establish the requirement; it does not prove the candidate lacks it. Review the extracted requirements and evidence yourself.
+Job feeds often provide truncated teasers. CareerMate attempts to fetch a fuller public employer listing before matching; if retrieval fails, the match insight clearly labels the score as preliminary and offers **Fetch full advert & reanalyse**. You can also trigger a refresh from the job detail or application view. The public-page fetcher only requests public HTTPS pages, restricts private/internal network destinations, limits response size, and does not log in, solve CAPTCHAs, run page JavaScript, or bypass access controls.
+
+The matcher aims to extract the material responsibilities, required experience, skills, education/certifications, work model/location, languages, and nice-to-haves from the full description (up to 40 distinct criteria). Criteria are classified as supported, partially supported, or not evidenced; critical unmet requirements are highlighted separately from ordinary gaps. Numeric minimum experience, required language, work eligibility, and required location can be critical, while explicitly optional/preferred items should remain nice-to-have. These categories are AI-assisted and can be wrong, so open the full advert and verify important criteria manually.
+
+The match score is a weighted coverage estimate based on job requirements and evidence in the reviewed profile. It is not a probability of interview or offer. “Not evidenced” means the profile did not establish the requirement; it does not prove the candidate lacks it. A preliminary score based on an incomplete snippet should not be used as an application decision.
+
+## Cover-letter quality
+
+Cover letters use the selected AI provider, the reviewed candidate profile, sanitized text extracted from the current CV, and the saved job advert. The prompt targets approximately 280–350 words in multiple purposeful paragraphs and forbids inventing qualifications, metrics, dates, years of experience, language levels, or authorization. A quality gate retries once if the response is very short, overlong, or poorly structured; incomplete output is not saved. If a job has only a short search snippet and the public advert cannot be retrieved, CareerMate asks you to fetch/review the full advert before drafting. Always read and edit the result before sending. Hosted-provider requests leave your computer; follow the selected provider’s privacy terms.
 
 ## Tests
 
@@ -218,4 +226,15 @@ npm run lint
 
 GitHub Actions runs the backend tests and Python compilation, then installs frontend dependencies and runs the Vite production build and ESLint. See [`.github/workflows/ci.yml`](.github/workflows/ci.yml). The automated suite uses mocked provider responses and does not bypass authentication or interact with live employer forms.
 
-For the complete acceptance procedure, browser assistance safety boundaries, source limitations, and official API references, see [`docs/steps-13-15.md`](docs/steps-13-15.md).
+For the complete acceptance procedure, browser assistance safety boundaries, source limitations, and official API references, see [`docs/steps-13-15.md`](docs/steps-13-15.md). For detailed job-requirement analysis and cover-letter quality behavior, see [`docs/job-analysis-and-cover-letters.md`](docs/job-analysis-and-cover-letters.md).
+
+## Browser setup and data cleanup
+
+For browser-assisted application preparation, Playwright's Python package and Chromium browser binary must both be installed in the backend virtual environment. With `.venv` activated in `backend`, run `python -m playwright install chromium`, restart Uvicorn, and use the **Check Playwright / Chromium** action in Applications if browser opening fails.
+
+The **Data management** page can clear derived search/match caches or permanently clean local workspace data. A destructive reset requires typing `DELETE ALL LOCAL DATA`, preserves `.example.json` templates, and does not delete `backend/.env`, source code, or the Python virtual environment. See [Browser setup and local data management](docs/browser-setup-and-data-management.md) for details.
+
+
+## Matching accuracy and local performance
+
+See [`docs/matching-accuracy-and-ollama-performance.md`](docs/matching-accuracy-and-ollama-performance.md) for profile fact validation, critical-gap rules, cache invalidation, and recommended Ollama settings for lower-resource computers.

@@ -2,7 +2,13 @@ import { useCallback, useEffect, useState, type FormEvent, type HTMLInputTypeAtt
 import {
   analyzeCv,
   closeBrowserSession,
+  clearLocalCaches,
+  getLocalDataSummary,
+  getBrowserDiagnostics,
+  resetLocalWorkspaceData,
   createApplication,
+  enrichApplicationDescription,
+  enrichJobDetails,
   fillBrowserForm,
   generateApplicationAnswer,
   generateCoverLetter,
@@ -24,6 +30,8 @@ import {
 } from "./api";
 import type {
   ApplicationAnswer,
+  BrowserDiagnostics,
+  LocalDataSummary,
   AIProviderId,
   AISettingsResponse,
   ApplicationRecord,
@@ -197,7 +205,7 @@ function TextAreaField({
   );
 }
 
-function Icon({ name }: { name: "search" | "file" | "sparkles" | "briefcase" | "check" | "arrow" | "grid" | "user" | "shield" | "target" | "chevron" | "sliders" | "layers" | "plus" | "info" | "graduation" | "pin" | "clock" | "cpu" }) {
+function Icon({ name }: { name: "search" | "file" | "sparkles" | "briefcase" | "check" | "arrow" | "grid" | "user" | "shield" | "target" | "chevron" | "sliders" | "layers" | "plus" | "info" | "graduation" | "pin" | "clock" | "cpu" | "refresh" | "trash" }) {
   const paths: Record<typeof name, string> = {
     search: "M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm10 2-4.35-4.35",
     file: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Zm0 0v6h6M8 13h8M8 17h8",
@@ -218,12 +226,14 @@ function Icon({ name }: { name: "search" | "file" | "sparkles" | "briefcase" | "
     pin: "M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Zm-5 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z",
     clock: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0-16v6l4 2",
     cpu: "M8 8h8v8H8zM9 2v3m6-3v3M9 19v3m6-3v3M2 9h3m-3 6h3m14-6h3m-3 6h3M8 5H5v14h14V5h-3",
+    refresh: "M20 7v5h-5M4 17v-5h5M5.6 9a7 7 0 0 1 11.7-2L20 12M4 12l2.7 5a7 7 0 0 0 11.7-2",
+    trash: "M3 6h18M8 6V4h8v2m-10 0 1 14h10l1-14M10 10v6m4-6v6",
   };
 
   return <svg aria-hidden="true" className="icon" viewBox="0 0 24 24" fill="none"><path d={paths[name]} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
-type WorkspaceView = "overview" | "discover" | "matches" | "applications" | "profile" | "ai";
+type WorkspaceView = "overview" | "discover" | "matches" | "applications" | "profile" | "ai" | "data";
 
 function App() {
   const [file, setFile] = useState<File | null>(null);
@@ -241,7 +251,7 @@ function App() {
   const [notice, setNotice] = useState("");
   const [aiSettings, setAiSettings] = useState<AISettingsResponse | null>(null);
   const [aiProviderDraft, setAiProviderDraft] = useState<AIProviderId>("ollama");
-  const [aiModelDraft, setAiModelDraft] = useState("gemma4:e4b");
+  const [aiModelDraft, setAiModelDraft] = useState("qwen3:4b");
   const [aiBaseUrlDraft, setAiBaseUrlDraft] = useState("http://127.0.0.1:11434");
   const [cloudAiConsent, setCloudAiConsent] = useState(false);
   const [aiSaving, setAiSaving] = useState(false);
@@ -264,6 +274,8 @@ function App() {
   const [matchLimit, setMatchLimit] = useState(3);
   const [activeView, setActiveView] = useState<WorkspaceView>("overview");
   const [selectedJob, setSelectedJob] = useState<JobResult | null>(null);
+  const [enrichingJobId, setEnrichingJobId] = useState<string | null>(null);
+  const [enrichingApplicationId, setEnrichingApplicationId] = useState<string | null>(null);
   const [jobFilter, setJobFilter] = useState("");
   const [applications, setApplications] = useState<ApplicationRecord[]>([]);
   const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
@@ -281,6 +293,14 @@ function App() {
   const [browserOpening, setBrowserOpening] = useState(false);
   const [browserScanning, setBrowserScanning] = useState(false);
   const [browserFilling, setBrowserFilling] = useState(false);
+  const [dataSummary, setDataSummary] = useState<LocalDataSummary | null>(null);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [dataResetBusy, setDataResetBusy] = useState(false);
+  const [cacheClearBusy, setCacheClearBusy] = useState(false);
+  const [showResetConfirmation, setShowResetConfirmation] = useState(false);
+  const [resetConfirmationText, setResetConfirmationText] = useState("");
+  const [browserDiagnostics, setBrowserDiagnostics] = useState<BrowserDiagnostics | null>(null);
+  const [browserDiagnosticsLoading, setBrowserDiagnosticsLoading] = useState(false);
 
   const refreshStatus = useCallback(async () => {
     const status = await getCvStatus();
@@ -428,7 +448,7 @@ function App() {
   function selectAiProvider(provider: AIProviderId) {
     const config = aiSettings?.providers[provider];
     setAiProviderDraft(provider);
-    setAiModelDraft(config?.model ?? (provider === "ollama" ? "gemma4:e4b" : provider === "openai" ? "gpt-6-luna" : ""));
+    setAiModelDraft(config?.model ?? (provider === "ollama" ? "qwen3:4b" : provider === "openai" ? "gpt-6-luna" : ""));
     setAiBaseUrlDraft(config?.base_url ?? (provider === "ollama" ? "http://127.0.0.1:11434" : ""));
     setAiTestMessage("");
     setCloudAiConsent(false);
@@ -639,6 +659,77 @@ function App() {
     selectApplication(application);
   }
 
+  async function handleEnrichJobDetails(job: JobResult, forceRefresh = false) {
+    setEnrichingJobId(job.id);
+    setError("");
+    setNotice("Fetching the public original listing and extracting its full description…");
+    try {
+      const result = await enrichJobDetails(job.id, forceRefresh);
+      setJobs((current) => current.map((item) => item.id === job.id ? result.job : item));
+      setSelectedJob(result.job);
+      if (result.success) {
+        setMatches((current) => current.filter((item) => item.id !== job.id));
+        setNotice("Full job description saved. Re-run match analysis so the score includes the newly retrieved requirements.");
+      } else {
+        setNotice("");
+        setError(result.message);
+      }
+    } catch (enrichError) {
+      setNotice("");
+      setError(enrichError instanceof Error ? enrichError.message : "Could not fetch the full public job description.");
+    } finally {
+      setEnrichingJobId(null);
+    }
+  }
+
+  async function handleEnrichAndReanalyze(job: JobMatchResult) {
+    setEnrichingJobId(job.id);
+    setError("");
+    setNotice("Retrieving the full employer advert. CareerMate will re-run the match analysis if it succeeds…");
+    try {
+      const enrichment = await enrichJobDetails(job.id, true);
+      setJobs((current) => current.map((item) => item.id === job.id ? enrichment.job : item));
+      if (!enrichment.success || enrichment.job.description_source !== "original_listing") {
+        throw new Error(enrichment.message || "CareerMate could not retrieve the full original advert. The current score remains preliminary.");
+      }
+      setNotice("Full listing retrieved. Rechecking all requirements against your reviewed profile…");
+      const refreshed = await matchJobs(1, [job.id]);
+      const updatedMatch = refreshed.jobs[0];
+      if (!updatedMatch) {
+        throw new Error("The full listing was saved, but CareerMate did not return a refreshed match. Run Analyze matches again.");
+      }
+      setMatches((current) => [updatedMatch, ...current.filter((item) => item.id !== job.id)]);
+      setNotice(`Full advert analysed: ${updatedMatch.requirements.length} requirements reviewed. Confirm each red flag against your CV before deciding.`);
+    } catch (enrichError) {
+      setError(enrichError instanceof Error ? enrichError.message : "Could not retrieve and analyse the full job advert.");
+      setNotice("");
+    } finally {
+      setEnrichingJobId(null);
+    }
+  }
+
+  async function handleRefreshApplicationDescription() {
+    if (!selectedApplication) return;
+    setEnrichingApplicationId(selectedApplication.id);
+    setError("");
+    setNotice("Refreshing the original job description before preparing application materials…");
+    try {
+      const result = await enrichApplicationDescription(selectedApplication.id);
+      acceptUpdatedApplication(result.application);
+      if (result.success) {
+        setNotice("Full job description saved to this application. Regenerate the cover letter to use the richer requirements.");
+      } else {
+        setError(result.message);
+        setNotice("");
+      }
+    } catch (enrichError) {
+      setError(enrichError instanceof Error ? enrichError.message : "Could not refresh the application description.");
+      setNotice("");
+    } finally {
+      setEnrichingApplicationId(null);
+    }
+  }
+
   async function handleTrackJob(jobId: string) {
     setError("");
     setNotice("");
@@ -716,6 +807,117 @@ function App() {
     }
   }
 
+  async function refreshDataSummary() {
+    setDataLoading(true);
+    try {
+      setDataSummary(await getLocalDataSummary());
+    } catch (summaryError) {
+      setError(summaryError instanceof Error ? summaryError.message : "Could not load local data summary.");
+    } finally {
+      setDataLoading(false);
+    }
+  }
+
+  async function handleClearCaches() {
+    setCacheClearBusy(true);
+    setError("");
+    try {
+      const result = await clearLocalCaches();
+      setDataSummary(result);
+      setMatches([]);
+      setNotice(result.message || "Local caches cleared. Match insights are cleared from this session too.");
+    } catch (cacheError) {
+      setError(cacheError instanceof Error ? cacheError.message : "Could not clear local caches.");
+    } finally {
+      setCacheClearBusy(false);
+    }
+  }
+
+  async function handleResetEverything() {
+    if (resetConfirmationText.trim() !== "DELETE ALL LOCAL DATA") {
+      setError("Type DELETE ALL LOCAL DATA exactly to confirm the reset.");
+      return;
+    }
+    setDataResetBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await resetLocalWorkspaceData(resetConfirmationText.trim());
+      setProfile(null);
+      setCvStatus(EMPTY_STATUS);
+      setProfileSaved(false);
+      setJobs([]);
+      setMatches([]);
+      setApplications([]);
+      setSelectedApplicationId(null);
+      setApplicationStatus("saved");
+      setApplicationNotes("");
+      setApplicationFollowUpDate("");
+      setApplicationCoverLetter("");
+      setApplicationAnswers([]);
+      setApplicationQuestion("");
+      setSelectedJob(null);
+      setActiveSearch(null);
+      setSearchOffset(0);
+      setSearchHasMore(false);
+      setSearchTotalReported(0);
+      setSearchTotalApproximate(false);
+      setSearchFilterNote("");
+      setJobRoles("Software Engineer");
+      setJobCountry("Sweden");
+      setJobCity("Stockholm");
+      setWorkMode("any");
+      setPageSize(20);
+      setSelectedSources(["jobtech_links"]);
+      setJobFilter("");
+      setFile(null);
+      setBrowserSession(null);
+      setBrowserFieldDrafts([]);
+      setBrowserDiagnostics(null);
+      setAiTestMessage("");
+      setCloudAiConsent(false);
+      setShowResetConfirmation(false);
+      setResetConfirmationText("");
+      setDataSummary(result);
+      const [settings, sources] = await Promise.all([
+        getAiSettings().catch(() => null),
+        getJobSources().catch(() => null),
+      ]);
+      if (settings) {
+        setAiSettings(settings);
+        setAiProviderDraft(settings.provider);
+        setAiModelDraft(settings.providers[settings.provider].model);
+        setAiBaseUrlDraft(settings.providers[settings.provider].base_url);
+      }
+      if (sources) setJobSources(sources.sources);
+      setActiveView("overview");
+      setNotice(`${result.message || "Workspace reset complete."} Your backend/.env API keys and project files were kept.`);
+    } catch (resetError) {
+      setError(resetError instanceof Error ? resetError.message : "Could not clean the local workspace.");
+    } finally {
+      setDataResetBusy(false);
+    }
+  }
+
+  async function handleCheckBrowserSetup() {
+    setBrowserDiagnosticsLoading(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await getBrowserDiagnostics();
+      setBrowserDiagnostics(result);
+      if (result.playwright_installed && result.chromium_installed) {
+        setNotice("Browser setup looks ready. If a listing still fails to open, check the listing URL and network connection.");
+      } else {
+        setError(`${result.message} In the activated backend virtual environment, run: ${result.install_command}`);
+      }
+    } catch (diagnosticError) {
+      setError(diagnosticError instanceof Error ? diagnosticError.message : "Could not inspect browser setup.");
+    } finally {
+      setBrowserDiagnosticsLoading(false);
+    }
+  }
+
   async function handleOpenBrowserAssistant() {
     if (!selectedApplication) return;
     setBrowserOpening(true);
@@ -729,7 +931,17 @@ function App() {
         ? `Browser opened and ${session.field_count} supported fields scanned. Review suggested values before filling.`
         : "Browser opened. If this is a job listing, navigate to its application form manually and then scan the fields.");
     } catch (browserError) {
-      setError(browserError instanceof Error ? browserError.message : "Could not open browser assistance.");
+      let message = browserError instanceof Error ? browserError.message : "Could not open browser assistance.";
+      try {
+        const diagnostics = await getBrowserDiagnostics();
+        setBrowserDiagnostics(diagnostics);
+        if (!diagnostics.playwright_installed || !diagnostics.chromium_installed) {
+          message = `${diagnostics.message} In the activated backend virtual environment, run: ${diagnostics.install_command}`;
+        }
+      } catch {
+        // Keep the original server error if diagnostics aren't reachable.
+      }
+      setError(message);
       setNotice("");
     } finally {
       setBrowserOpening(false);
@@ -935,6 +1147,11 @@ function App() {
       eyebrow: "AI SETTINGS",
       description: "Choose local Ollama for private offline inference, OpenAI for hosted responses, or another OpenAI-compatible API.",
     },
+    data: {
+      title: "Manage your local data",
+      eyebrow: "DATA MANAGEMENT",
+      description: "Review what CareerMate stores on this computer, clear derived caches, or reset your workspace when you want a fresh start.",
+    },
   };
   const currentMeta = pageMeta[activeView];
   const currentActivity = jobLoading
@@ -978,7 +1195,7 @@ function App() {
     <main className="app-shell">
       <header className="topbar">
         <a className="brand" href="#top" aria-label="CareerMate home" onClick={(event) => { event.preventDefault(); setActiveView("overview"); setSelectedJob(null); }}>
-          <span className="brand-mark">C</span>
+          <img className="brand-mark brand-mark-image" src="/careermate-mark.svg" alt="" />
           <span className="brand-wordmark">CareerMate<span className="brand-period">.</span></span>
         </a>
         <div className="topbar-context"><span className="topbar-context-dot" />Personal job search workspace</div>
@@ -1000,6 +1217,11 @@ function App() {
             <button type="button" className={`nav-item${activeView === "ai" ? " active" : ""}`} onClick={() => { setActiveView("ai"); setSelectedJob(null); }}><Icon name="cpu" /><span>AI provider</span><span className={`nav-status ${aiSettings?.providers[aiSettings.provider]?.configured ? "nav-status-ready" : ""}`} /></button>
           </nav>
           <div className="sidebar-divider" />
+          <div className="sidebar-label">DATA & SETTINGS</div>
+          <nav className="sidebar-nav" aria-label="Data management">
+            <button type="button" className={`nav-item${activeView === "data" ? " active" : ""}`} onClick={() => { setActiveView("data"); setSelectedJob(null); void refreshDataSummary(); }}><Icon name="shield" /><span>Data management</span></button>
+          </nav>
+          <div className="sidebar-divider" />
           <div className="sidebar-label">WORKFLOW</div>
           <div className="workflow-checks">
             <div className="workflow-check"><span className={`workflow-check-mark${cvStatus.uploaded ? " complete" : ""}`}>{cvStatus.uploaded ? "✓" : "1"}</span><span><strong>CV uploaded</strong><small>{cvStatus.uploaded ? "Text extracted locally" : "Add your CV to begin"}</small></span></div>
@@ -1013,7 +1235,7 @@ function App() {
             <p>Project files stay local. Hosted AI receives prompt content only when you select an online provider.</p>
             <span><span className="privacy-dot" /> {aiSettings?.providers[aiSettings.provider]?.label ?? "Loading AI provider"}</span>
           </div>
-          <div className="sidebar-footer"><span className="brand-mark sidebar-brand-mark">C</span><span><strong>CareerMate</strong><small>Personal edition</small></span><span className="version-dot" title="Local workspace" /></div>
+          <div className="sidebar-footer"><img className="brand-mark brand-mark-image sidebar-brand-mark" src="/careermate-mark.svg" alt="" /><span><strong>CareerMate</strong><small>Personal edition</small></span><span className="version-dot" title="Local workspace" /></div>
         </aside>
 
         <section className="workspace-main">
@@ -1128,16 +1350,24 @@ function App() {
               </section>
               {!profile && <div className="inline-hint setup-hint"><Icon name="user" /><div><strong>Your profile is the starting point</strong><p>Upload and analyze your CV, review the extracted facts, and save the profile before running match analysis.</p><button className="button button-secondary" type="button" onClick={() => setActiveView("profile")}>Set up profile <Icon name="arrow" /></button></div></div>}
               {profile && !profileSaved && <div className="inline-hint"><Icon name="info" /><span>Your profile has unsaved edits. CareerMate saves the reviewed version before matching.</span><button className="text-action" type="button" onClick={() => setActiveView("profile")}>Review profile</button></div>}
-              {matchLoading && <div className="inline-progress match-progress"><span className="spinner" /><div><strong>Local model is comparing requirements</strong><p>First-time analysis may take several minutes. Results are cached for repeat runs.</p></div></div>}
+              {matchLoading && <div className="inline-progress match-progress"><span className="spinner" /><div><strong>Retrieving full job descriptions and comparing requirements</strong><p>CareerMate first tries to read the public original listing when the saved description is only a short snippet, then checks the requirements against your profile. Results are cached for repeat runs.</p></div></div>}
               {!matchLoading && matches.length === 0 && <div className="panel empty-state match-empty"><span className="empty-icon"><Icon name="sparkles" /></span><h3>Your fit report will appear here</h3><p>Search for jobs and make sure your CV profile has been reviewed. Then analyze the roles you want to compare.</p><div className="empty-state-actions"><button className="button button-primary" type="button" onClick={() => setActiveView("discover")}>Find jobs <Icon name="arrow" /></button>{!profile && <button className="button button-secondary" type="button" onClick={() => setActiveView("profile")}>Review CV profile</button>}</div></div>}
               {matches.length > 0 && <div className="match-results">{matches.map((job) => <article className="match-card" key={job.id}>
-                <div className="match-card-header"><div><p className="eyebrow">MATCH REPORT</p><h3>{job.title}</h3><p>{job.company} · {job.location}</p></div><div className={`score-badge ${job.match_score === null ? "score-unavailable" : job.match_score >= 75 ? "score-strong" : job.match_score >= 50 ? "score-medium" : "score-low"}`}><strong>{job.match_score === null ? "—" : job.match_score}</strong><span>{job.match_score === null ? "No score" : "/ 100"}</span></div></div>
+                <div className="match-card-header"><div><p className="eyebrow">MATCH REPORT</p><h3>{job.title}</h3><p>{job.company} · {job.location}</p>{job.description_source !== "original_listing" && <span className="provisional-score-label">PRELIMINARY SCORE · FULL ADVERT NOT RETRIEVED</span>}</div><div className={`score-badge ${job.match_score === null ? "score-unavailable" : job.match_score >= 75 ? "score-strong" : job.match_score >= 50 ? "score-medium" : "score-low"}`}><strong>{job.match_score === null ? "—" : job.match_score}</strong><span>{job.match_score === null ? "No score" : "/ 100"}</span></div></div>
                 {job.match_score !== null && <div className="score-track"><span style={{ width: `${Math.max(0, Math.min(100, job.match_score))}%` }} /></div>}
-                <div className="match-meta"><span>Confidence: {job.match_confidence}</span><span>Method: evidence-weighted AI</span><button className="text-action" type="button" onClick={() => { setSelectedJob(job); }}>Open role details <Icon name="arrow" /></button></div>
+                <div className="match-meta"><span>Confidence: {job.match_confidence}</span><span>Requirements found: {(job.requirements ?? []).length}</span><span>{job.job_description_source === "original_listing" ? "Full listing analysed" : "Search snippet analysed"}</span><button className="text-action" type="button" onClick={() => { setSelectedJob(job); }}>Open role details <Icon name="arrow" /></button></div>
+                <section className={`decision-panel ${job.recommendation === "review_critical_gaps" || job.recommendation === "significant_gaps" ? "decision-panel-warning" : job.recommendation === "incomplete_description" ? "decision-panel-incomplete" : job.recommendation === "strong_potential_fit" ? "decision-panel-positive" : "decision-panel-neutral"}`}>
+                  <div className="decision-panel-heading"><div><p className="eyebrow">APPLICATION GUIDANCE</p><h4>{job.recommendation_label ?? "Review the requirements"}</h4></div><span className={`decision-gap-count${(job.critical_gaps?.length ?? 0) > 0 ? " has-critical-gaps" : ""}`}>{job.critical_gaps?.length ?? 0} critical gaps</span></div>
+                  <p>{job.recommendation_explanation ?? job.match_explanation}</p>
+                  {(job.critical_gaps?.length ?? 0) > 0 && <div className="critical-gap-list">{(job.critical_gaps ?? []).map((item, index) => <div className="critical-gap-item" key={`${item.requirement}-${index}`}><span>CRITICAL GAP</span><div><strong>{item.requirement}</strong><p>{item.status === "partially_supported" ? "Only partly supported by the current profile." : "Not evidenced in the current profile; verify against the full CV before deciding."} {item.explanation}</p></div></div>)}</div>}
+                </section>
                 <p className="match-explanation">{job.match_explanation}</p>
-                <div className="requirement-grid"><RequirementList title="Supported" kind="supported" items={(job.requirements ?? []).filter((item) => item.status === "supported")} /><RequirementList title="Partially supported" kind="partial" items={(job.requirements ?? []).filter((item) => item.status === "partially_supported")} /><RequirementList title="Not evidenced in profile" kind="missing" items={(job.requirements ?? []).filter((item) => item.status === "not_evidenced")} /></div>
+                {job.description_source !== "original_listing" && <div className="match-incomplete-notice"><div><strong>Don't decide from this score yet</strong><p>{job.description_fetch_message || "The original employer advert has not been retrieved. The requirements below may be incomplete, so this score is provisional."}</p></div><button className="button button-secondary button-small" type="button" onClick={() => void handleEnrichAndReanalyze(job)} disabled={enrichingJobId === job.id || matchLoading}>{enrichingJobId === job.id ? <><span className="spinner" /> Fetching and reanalysing…</> : <><Icon name="refresh" /> Fetch full advert &amp; reanalyse</>}</button></div>}
+                <div className="requirement-summary-bar"><span><strong>{(job.requirements ?? []).length}</strong> criteria extracted</span><span><strong>{(job.requirements ?? []).filter((item) => item.status === "supported").length}</strong> evidenced</span><span className={(job.critical_gaps?.length ?? 0) > 0 ? "requirement-summary-alert" : ""}><strong>{job.critical_gaps?.length ?? 0}</strong> critical gaps</span></div>
+                <div className="requirement-grid"><RequirementList title="Supported · evidence found" kind="supported" items={(job.requirements ?? []).filter((item) => item.status === "supported")} /><RequirementList title="Partially supported · review" kind="partial" items={(job.requirements ?? []).filter((item) => item.status === "partially_supported")} /><RequirementList title="Missing from CV evidence" kind="missing" items={(job.requirements ?? []).filter((item) => item.status === "not_evidenced")} /></div>
+                <details className="match-job-description"><summary>Read full job description used for this analysis</summary><p className="description-source-note">{job.job_description_source === "original_listing" ? `Retrieved from the public original listing${job.description_fetched_at ? ` · ${job.description_fetched_at}` : ""}.` : "Only the search-result description was available. Fetch the original listing from role details for a more complete analysis."}</p><div className="full-job-description">{job.description?.trim() || "No job description was provided by the source."}</div></details>
                 <p className="score-note">{job.score_note}</p>
-                {safeExternalUrl(job.apply_url || job.source_url) && <a className="text-link" href={safeExternalUrl(job.apply_url || job.source_url) ?? undefined} target="_blank" rel="noopener noreferrer">Review full job advert <Icon name="arrow" /></a>}
+                {safeExternalUrl(job.source_url || job.apply_url) && <a className="text-link" href={safeExternalUrl(job.source_url || job.apply_url) ?? undefined} target="_blank" rel="noopener noreferrer">Review original job advert <Icon name="arrow" /></a>}
               </article>)}</div>}
             </div>
           )}
@@ -1167,7 +1397,7 @@ function App() {
                   </section>
                   {selectedApplication ? (
                     <section className="panel application-editor-panel">
-                      <div className="application-editor-header"><div><p className="eyebrow">APPLICATION DETAILS</p><h2>{selectedApplication.title}</h2><p>{selectedApplication.company || "Company not listed"} · {selectedApplication.location || "Location not listed"}</p></div>{safeExternalUrl(selectedApplication.job_url) && <a className="button button-secondary button-small" href={safeExternalUrl(selectedApplication.job_url) ?? undefined} target="_blank" rel="noopener noreferrer">Original listing <Icon name="arrow" /></a>}</div>
+                      <div className="application-editor-header"><div><p className="eyebrow">APPLICATION DETAILS</p><h2>{selectedApplication.title}</h2><p>{selectedApplication.company || "Company not listed"} · {selectedApplication.location || "Location not listed"}</p></div>{safeExternalUrl(selectedApplication.source_url || selectedApplication.job_url) && <a className="button button-secondary button-small" href={safeExternalUrl(selectedApplication.source_url || selectedApplication.job_url) ?? undefined} target="_blank" rel="noopener noreferrer">Original listing <Icon name="arrow" /></a>}</div>
                       <div className="form-grid application-metadata-grid">
                         <label className="field"><span>Application stage</span><select value={applicationStatus} onChange={(event) => setApplicationStatus(event.target.value as ApplicationStatus)}>{[
                           ["saved", "Saved"], ["preparing", "Preparing application"], ["applied", "Applied"], ["interview", "Interview"], ["offer", "Offer"], ["rejected", "Rejected"], ["withdrawn", "Withdrawn"],
@@ -1175,6 +1405,11 @@ function App() {
                         <Field label="Follow-up date" type="date" value={applicationFollowUpDate} onChange={setApplicationFollowUpDate} />
                       </div>
                       <TextAreaField label="Notes and next actions" value={applicationNotes} onChange={setApplicationNotes} placeholder="Recruiter contact, application deadline, interview notes, next action…" rows={3} />
+                      <section className="application-job-description-panel">
+                        <div className="application-section-heading"><div><p className="eyebrow">SOURCE DETAILS</p><h3>Job description</h3><p>{selectedApplication.job_description_source === "original_listing" ? "Fuller text from the original public listing is saved with this application." : "This record may contain only the short text returned by job search. Fetch the full listing before drafting."}</p></div><button className="button button-secondary button-small" type="button" onClick={() => void handleRefreshApplicationDescription()} disabled={enrichingApplicationId === selectedApplication.id}>{enrichingApplicationId === selectedApplication.id ? <><span className="spinner" /> Fetching…</> : selectedApplication.job_description_source === "original_listing" ? "Refresh details" : "Fetch full details"}</button></div>
+                        <details><summary>Review saved job description ({selectedApplication.job_description.length.toLocaleString()} characters)</summary><div className="full-job-description">{selectedApplication.job_description || "No description saved yet."}</div></details>
+                        {selectedApplication.job_description_fetch_status === "failed" && selectedApplication.job_description_fetch_message && <p className="description-fetch-warning">{selectedApplication.job_description_fetch_message}</p>}
+                      </section>
                       <section className="application-draft-section">
                         <div className="application-section-heading"><div><p className="eyebrow">DRAFTING ASSISTANT</p><h3>Cover letter</h3><p>Generated from your reviewed profile and this role’s description.</p></div><button className="button button-secondary button-small" type="button" onClick={() => void handleDraftCoverLetter()} disabled={!canGenerateApplicationDraft || !profile}>{draftingCoverLetter ? <><span className="spinner" /> Generating…</> : <><Icon name="sparkles" /> {applicationCoverLetter ? "Regenerate draft" : "Generate draft"}</>}</button></div>
                         <TextAreaField label="Edit the draft before use" value={applicationCoverLetter} onChange={setApplicationCoverLetter} placeholder="Generate a first draft, then edit it to reflect your own voice and confirm every claim." rows={10} />
@@ -1189,6 +1424,7 @@ function App() {
                       <section className="application-draft-section browser-assist-section">
                         <div className="application-section-heading"><div><p className="eyebrow">STEP 14 · BROWSER ASSISTANCE</p><h3>Prepare the employer form</h3><p>Open a visible browser, review suggested values, then choose which fields to fill.</p></div></div>
                         <div className="browser-assist-safety"><Icon name="shield" /><span>CareerMate never clicks Submit, uploads files, fills password/verification fields, or bypasses CAPTCHA or sign-in checks. Form values stay in browser memory and are not saved to the JSON tracker.</span></div>
+                      <div className="browser-setup-line"><span><Icon name="info" /> Visible browser setup</span><button className="text-action" type="button" onClick={() => void handleCheckBrowserSetup()} disabled={browserDiagnosticsLoading}>{browserDiagnosticsLoading ? "Checking…" : "Check Playwright / Chromium"}</button>{browserDiagnostics && <small className={browserDiagnostics.playwright_installed && browserDiagnostics.chromium_installed ? "browser-setup-ok" : "browser-setup-error"}>{browserDiagnostics.message}{!browserDiagnostics.chromium_installed && ` Install with: ${browserDiagnostics.install_command}`}</small>}</div>
                         <div className="browser-assist-actions">
                           <button className="button button-secondary button-small" type="button" onClick={() => void handleOpenBrowserAssistant()} disabled={!selectedApplication.job_url || browserOpening || browserScanning || browserFilling}>{browserOpening ? <><span className="spinner" /> Opening browser…</> : "Open application page"}</button>
                           {browserSession?.application_id === selectedApplication.id && <>
@@ -1237,10 +1473,13 @@ function App() {
                       <option value="openai_compatible">OpenAI-compatible API — other providers</option>
                     </select>
                   </label>
-                  <Field label="Model ID" value={aiModelDraft} onChange={(value) => { setAiModelDraft(value); setAiTestMessage(""); }} placeholder={aiProviderDraft === "ollama" ? "e.g. gemma4:e4b" : aiProviderDraft === "openai" ? "e.g. gpt-6-luna" : "Model ID supplied by your API provider"} />
+                  <Field label="Model ID" value={aiModelDraft} onChange={(value) => { setAiModelDraft(value); setAiTestMessage(""); }} placeholder={aiProviderDraft === "ollama" ? "e.g. qwen3:4b" : aiProviderDraft === "openai" ? "documented API model ID" : "Model ID supplied by your API provider"} />
                   {aiProviderDraft !== "openai" && <Field label={aiProviderDraft === "ollama" ? "Ollama host URL" : "API base URL"} value={aiBaseUrlDraft} onChange={(value) => { setAiBaseUrlDraft(value); setAiTestMessage(""); }} placeholder={aiProviderDraft === "ollama" ? "http://127.0.0.1:11434" : "https://your-provider.example/v1"} />}
 
-                  {aiProviderDraft === "ollama" && <div className="ai-info-note"><Icon name="shield" /><div><strong>Local processing</strong><p>CV text, profile details, job descriptions, and drafts are sent to your local Ollama instance. It runs on your computer and can use significant memory and CPU.</p></div></div>}
+                  {aiProviderDraft === "ollama" && <>
+                    <div className="ai-info-note"><Icon name="shield" /><div><strong>Local processing</strong><p>CV text, profile details, job descriptions, and drafts are sent to your local Ollama instance. It runs on your computer and can use significant memory and CPU.</p></div></div>
+                    <div className="ai-info-note"><Icon name="cpu" /><div><strong>Lower-resource local model</strong><p>For faster matching on a CPU-limited computer, try <code>qwen3:4b</code> instead of <code>gemma4:e4b</code>. First run <code>ollama pull qwen3:4b</code> in a terminal, then use the button below. This smaller model may be less capable on nuanced requirements, so verify critical results.</p><button className="text-action" type="button" onClick={() => { setAiModelDraft("qwen3:4b"); setAiTestMessage(""); }}>Use qwen3:4b</button></div></div>
+                  </>}
                   {aiProviderDraft === "openai" && <div className="ai-info-note ai-info-cloud"><Icon name="info" /><div><strong>OpenAI API credentials</strong><p>Add an API key to <code>backend/.env</code> using <code>OPENAI_API_KEY</code>. Your ChatGPT subscription does not include API usage; API usage is billed separately.</p><a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">Open OpenAI API keys <Icon name="arrow" /></a></div></div>}
                   {aiProviderDraft === "openai_compatible" && <div className="ai-info-note ai-info-cloud"><Icon name="info" /><div><strong>Bring a compatible provider</strong><p>Enter the API base URL and model ID supplied by your provider. Add its key as <code>CAREERMATE_OPENAI_COMPATIBLE_API_KEY</code> in <code>backend/.env</code>. The endpoint must support the OpenAI Chat Completions-compatible API; structured responses are validated locally.</p></div></div>}
 
@@ -1288,7 +1527,41 @@ function App() {
             </div>
           )}
 
-          <footer className="workspace-footer"><div><span className="brand-mark footer-mark">C</span><strong>CareerMate</strong><span className="footer-separator">/</span><span>Local-first job search assistant</span></div><span>Open source · Local files, configurable AI provider</span></footer>
+          {activeView === "data" && (
+            <div className="view-stack data-management-view">
+              <section className="panel data-summary-panel">
+                <div className="panel-titlebar">
+                  <div><p className="eyebrow">LOCAL WORKSPACE</p><h2>Your data, your control</h2><p className="panel-description">CareerMate stores workspace records under the local <code>data/</code> folder. This page never displays your CV text or other private file contents.</p></div>
+                  <button className="button button-secondary button-small" type="button" onClick={() => void refreshDataSummary()} disabled={dataLoading}>{dataLoading ? <><span className="spinner" /> Refreshing…</> : <><Icon name="refresh" /> Refresh summary</>}</button>
+                </div>
+                <div className="data-count-grid">
+                  <article className="data-count-card"><span className="data-count-icon"><Icon name="file" /></span><div><strong>{dataSummary?.counts.cv_files ?? "—"}</strong><span>CV and profile files</span><small>{dataSummary?.counts.profile_saved ? "Profile saved" : "No saved profile"}</small></div></article>
+                  <article className="data-count-card"><span className="data-count-icon"><Icon name="search" /></span><div><strong>{dataSummary?.counts.saved_jobs ?? "—"}</strong><span>Saved jobs</span><small>Local job listings</small></div></article>
+                  <article className="data-count-card"><span className="data-count-icon"><Icon name="briefcase" /></span><div><strong>{dataSummary?.counts.applications ?? "—"}</strong><span>Applications</span><small>Statuses, notes and drafts</small></div></article>
+                  <article className="data-count-card"><span className="data-count-icon"><Icon name="cpu" /></span><div><strong>{dataSummary?.counts.cache_files ?? "—"}</strong><span>Cache files</span><small>Derived results, safe to rebuild</small></div></article>
+                </div>
+                <p className="data-summary-footnote">{dataSummary?.counts.total_data_files ?? "—"} local data file(s) found · {dataSummary?.counts.settings_files ?? "—"} local settings/config file(s)</p>
+              </section>
+
+              <section className="panel data-action-card">
+                <div className="data-action-icon data-action-icon-blue"><Icon name="refresh" /></div>
+                <div className="data-action-copy"><h3>Clear search and match caches</h3><p>Remove downloaded job-source caches and saved AI match calculations. Your CV, candidate profile, saved jobs and application tracker stay untouched. CareerMate will fetch or recompute these items when needed.</p></div>
+                <button className="button button-secondary" type="button" onClick={() => void handleClearCaches()} disabled={cacheClearBusy || dataResetBusy || jobLoading || matchLoading || cvLoading || saving || applicationSaving || draftingCoverLetter || draftingAnswer}>{cacheClearBusy ? <><span className="spinner" /> Clearing…</> : "Clear caches"}</button>
+              </section>
+
+              <section className="panel data-action-card data-action-danger">
+                <div className="data-action-icon data-action-icon-red"><Icon name="trash" /></div>
+                <div className="data-action-copy"><p className="eyebrow">DESTRUCTIVE ACTION</p><h3>Clean everything</h3><p>Permanently delete the current CV and extracted text, reviewed profile, saved jobs, match results, source caches, application records and local provider/source preferences. Example configuration templates are kept.</p><div className="data-preserved-note"><Icon name="shield" /><span><strong>Kept safely:</strong> <code>backend/.env</code> (including API keys), your source code, and your Python virtual environment.</span></div></div>
+                <button className="button button-danger" type="button" onClick={() => { setResetConfirmationText(""); setShowResetConfirmation(true); setError(""); }} disabled={dataResetBusy || cacheClearBusy || jobLoading || matchLoading || cvLoading || saving || applicationSaving || draftingCoverLetter || draftingAnswer}><Icon name="trash" /> Clean everything</button>
+              </section>
+
+              <section className="local-note data-management-note"><Icon name="info" /><span><strong>Before you reset</strong><small>This action cannot be undone. Export or back up any information you want to keep. The reset closes CareerMate's visible browser session first and preserves API keys in <code>backend/.env</code>.</small></span></section>
+
+              {showResetConfirmation && <div className="reset-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !dataResetBusy) setShowResetConfirmation(false); }}><section className="reset-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="reset-confirm-title"><span className="reset-confirm-icon"><Icon name="trash" /></span><p className="eyebrow">PERMANENT LOCAL RESET</p><h2 id="reset-confirm-title">Clean all CareerMate data?</h2><p>This removes your CV, profile, saved opportunities, match cache, applications, AI preferences and source configuration from the local <code>data/</code> folder. It does not remove <code>backend/.env</code>, API keys, source code, or the virtual environment.</p><label className="field"><span>Type DELETE ALL LOCAL DATA to confirm</span><input autoComplete="off" value={resetConfirmationText} onChange={(event) => setResetConfirmationText(event.target.value)} placeholder="DELETE ALL LOCAL DATA" /></label><div className="reset-confirm-actions"><button className="button button-secondary" type="button" onClick={() => setShowResetConfirmation(false)} disabled={dataResetBusy}>Cancel</button><button className="button button-danger" type="button" onClick={() => void handleResetEverything()} disabled={dataResetBusy || resetConfirmationText.trim() !== "DELETE ALL LOCAL DATA"}>{dataResetBusy ? <><span className="spinner spinner-light" /> Cleaning…</> : "Yes, clean everything"}</button></div></section></div>}
+            </div>
+          )}
+
+          <footer className="workspace-footer"><div><img className="brand-mark brand-mark-image footer-mark" src="/careermate-mark.svg" alt="" /><strong>CareerMate</strong><span className="footer-separator">/</span><span>Local-first job search assistant</span></div><span>Open source · Local files, configurable AI provider</span></footer>
         </section>
       </div>
 
@@ -1301,7 +1574,7 @@ function App() {
           <div className="drawer-meta"><span><Icon name="pin" />{selectedJob.location || "Location not listed"}</span><span><Icon name="briefcase" />{workModeLabel(selectedJob.work_mode)}</span>{selectedJob.published_at && <span><Icon name="clock" />{selectedJob.published_at}</span>}</div>
           {selectedJob.search_roles?.length ? <div className="drawer-tags">{selectedJob.search_roles.map((role) => <span className="job-role-badge" key={role}>{role}</span>)}</div> : null}
           {matches.find((item) => item.id === selectedJob.id) && <div className="drawer-match-summary"><span className="drawer-match-score">{matches.find((item) => item.id === selectedJob.id)?.match_score ?? "—"}<small>/ 100</small></span><span><strong>CV match estimate</strong><small>Evidence coverage, not a hiring probability</small></span><button type="button" className="text-action" onClick={() => { setSelectedJob(null); setActiveView("matches"); }}>View analysis <Icon name="arrow" /></button></div>}
-          <div className="drawer-section"><h3>About this role</h3><div className="drawer-description">{selectedJob.description?.trim() || "The source did not provide a description in the search response. Open the original listing for the full job advert."}</div></div>
+          <div className="drawer-section"><div className="drawer-section-heading"><h3>About this role</h3><span className={`description-quality-pill ${selectedJob.description_source === "original_listing" ? "description-quality-full" : "description-quality-snippet"}`}>{selectedJob.description_source === "original_listing" ? "Full listing" : "Search snippet"}</span></div><div className="drawer-description">{selectedJob.description?.trim() || "The source did not provide a description in the search response. Fetch the original public listing or open it below."}</div>{selectedJob.description_source !== "original_listing" && <button type="button" className="button button-secondary button-full fetch-description-button" onClick={() => void handleEnrichJobDetails(selectedJob)} disabled={enrichingJobId === selectedJob.id}>{enrichingJobId === selectedJob.id ? <><span className="spinner" /> Fetching full job details…</> : "Fetch full job description"}</button>}{selectedJob.description_fetch_status === "failed" && selectedJob.description_fetch_message && <p className="description-fetch-warning">{selectedJob.description_fetch_message}</p>}</div>
           <div className="drawer-facts"><div><span>Work arrangement</span><strong>{workModeLabel(selectedJob.work_mode)}</strong></div><div><span>Source</span><strong>{sourceLabel(selectedJob.source)}</strong></div><div><span>Published</span><strong>{selectedJob.published_at || "Not provided"}</strong></div></div>
           <div className="drawer-footer"><p>Review the original description and requirements before applying.</p><button type="button" className="button button-secondary button-full" onClick={() => void handleTrackJob(selectedJob.id)}>{applications.some((application) => application.job_id === selectedJob.id) ? "Open in application tracker" : "Add to application tracker"} <Icon name="briefcase" /></button>{safeExternalUrl(selectedJob.source_url) ? <a className="button button-primary button-full" href={safeExternalUrl(selectedJob.source_url) ?? undefined} target="_blank" rel="noopener noreferrer">View original listing · {sourceLabel(selectedJob.source)} <Icon name="arrow" /></a> : null}{safeExternalUrl(selectedJob.apply_url) && selectedJob.apply_url !== selectedJob.source_url ? <a className="button button-secondary button-full" href={safeExternalUrl(selectedJob.apply_url) ?? undefined} target="_blank" rel="noopener noreferrer">Open application website <Icon name="arrow" /></a> : !safeExternalUrl(selectedJob.source_url) && !safeExternalUrl(selectedJob.apply_url) ? <span className="helper-text">No public listing URL was provided for this job.</span> : null}<button type="button" className="button button-quiet button-full" onClick={() => setSelectedJob(null)}>Back to results</button></div>
         </aside>
@@ -1325,8 +1598,9 @@ function RequirementList({
       {items.length > 0 ? (
         <ul>
           {items.map((item, index) => (
-            <li key={`${kind}-${index}`}>
+            <li key={`${kind}-${index}`} className={`${item.criticality === "critical" && item.status !== "supported" ? "requirement-critical" : ""}`}>
               <strong>{item.requirement}</strong>
+              <span className={`requirement-priority priority-${item.criticality ?? "important"}`}>{item.criticality === "critical" ? "Critical requirement" : item.criticality === "nice_to_have" ? "Nice to have" : item.importance === "required" ? "Required" : item.importance === "preferred" ? "Preferred" : "Priority not explicit"}</span>
               {item.evidence && <q className="requirement-evidence">{item.evidence}</q>}
               {item.explanation && <span className="requirement-explanation">{item.explanation}</span>}
             </li>

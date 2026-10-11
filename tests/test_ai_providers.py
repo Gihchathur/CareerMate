@@ -160,6 +160,9 @@ def test_cv_analysis_uses_the_shared_selected_provider(tmp_path, monkeypatch):
     assert captured["schema"]["type"] == "object"
 
 
+LONG_COVER_LETTER = "Dear hiring team,\n\nI am applying for the Software Engineer role because the responsibilities described align with the engineering work and technical interests reflected in my reviewed profile. I have built and maintained production software and have worked across backend services, APIs, deployment workflows, and operational concerns. These experiences have taught me to consider reliability and maintainability alongside the immediate feature request.\n\nIn my recent work, I have contributed to systems that use platform engineering practices, automation, and observability to improve the way software is built and operated. My experience with Kubernetes, CI/CD, and service monitoring gives me a practical understanding of how application code behaves after release. I use that perspective when investigating failures, improving delivery pipelines, and making changes that need to be safe for users.\n\nI can also bring a backend-focused development background and experience collaborating across related technical areas. Where a role calls for new frameworks or domain knowledge, I would be careful to distinguish my existing experience from areas I would need to learn rather than overstate my background. I prefer to make technical choices based on the problem, the operational context, and the long-term impact on the product.\n\nThe position's focus on improving real product capabilities and delivering maintainable software is a useful match for this approach. I would welcome the opportunity to discuss how my software engineering and platform experience could contribute to the team, and to learn more about the priorities for this role.\n\nKind regards,\nExample Candidate"
+
+
 def test_cover_letter_generation_uses_shared_provider_layer(monkeypatch):
     from app.models.application import ApplicationRecord
     from app.services import application_drafts
@@ -170,7 +173,7 @@ def test_cover_letter_generation_uses_shared_provider_layer(monkeypatch):
     def fake_generate(prompt, **kwargs):
         captured["prompt"] = prompt
         captured["kwargs"] = kwargs
-        return "Dear hiring team, this is a draft."
+        return LONG_COVER_LETTER
 
     monkeypatch.setattr(application_drafts, "generate_text", fake_generate)
     profile = CandidateProfile.model_validate({"personal": {"name": "Example Candidate"}, "summary": "Platform engineering"})
@@ -179,8 +182,11 @@ def test_cover_letter_generation_uses_shared_provider_layer(monkeypatch):
     result = application_drafts.generate_cover_letter(application, profile)
 
     assert result.startswith("Dear hiring team")
-    assert captured["kwargs"]["max_tokens"] == 1200
+    assert captured["kwargs"]["max_tokens"] == 3000
+    assert captured["kwargs"]["context_window"] == 16384
     assert "Platform engineering" in captured["prompt"]
+    assert "Sanitized text extracted from the candidate's current CV" in captured["prompt"]
+    assert len(result.split()) >= 200
 
 
 def test_cloud_matching_uses_four_way_bounded_concurrency(tmp_path, monkeypatch):

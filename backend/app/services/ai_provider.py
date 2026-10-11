@@ -26,7 +26,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 BACKEND_DIR = PROJECT_ROOT / "backend"
 SETTINGS_PATH = PROJECT_ROOT / "data" / "settings" / "ai_settings.json"
 DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
-DEFAULT_OLLAMA_MODEL = "gemma4:e4b"
+DEFAULT_OLLAMA_MODEL = "qwen3:4b"
 DEFAULT_OPENAI_MODEL = "gpt-6-luna"
 
 

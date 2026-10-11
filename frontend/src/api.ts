@@ -6,6 +6,8 @@ import type {
   ApplicationsResponse,
   ApplicationStatus,
   ApplicationAnswer,
+  BrowserDiagnostics,
+  LocalDataSummary,
   BrowserFieldDraft,
   BrowserFormSession,
   CandidateProfile,
@@ -49,6 +51,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   return payload;
 }
+
+export async function getLocalDataSummary(): Promise<LocalDataSummary> {
+  return request<LocalDataSummary>("/api/data/summary");
+}
+
+export async function clearLocalCaches(): Promise<LocalDataSummary> {
+  return request<LocalDataSummary>("/api/data/clear-cache", { method: "POST" });
+}
+
+export async function resetLocalWorkspaceData(confirmation: string): Promise<LocalDataSummary> {
+  return request<LocalDataSummary>("/api/data/reset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirmation }),
+  });
+}
+
+export async function getBrowserDiagnostics(): Promise<BrowserDiagnostics> {
+  return request<BrowserDiagnostics>("/api/browser/diagnostics");
+}
+
 
 export async function getHealth(): Promise<{ status: string; service: string }> {
   return request("/api/health");
@@ -127,6 +150,25 @@ export async function searchJobs(options: JobSearchOptions): Promise<JobSearchRe
   params.set("limit", String(options.limit));
   params.set("offset", String(options.offset));
   return request(`/api/jobs/search?${params.toString()}`);
+}
+
+export async function enrichJobDetails(
+  jobId: string,
+  forceRefresh = false,
+): Promise<{ success: boolean; message: string; job: JobResult }> {
+  return request("/api/jobs/enrich", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ job_id: jobId, force_refresh: forceRefresh }),
+  });
+}
+
+export async function enrichApplicationDescription(
+  applicationId: string,
+): Promise<{ success: boolean; message: string; application: ApplicationRecord }> {
+  return request(`/api/applications/${encodeURIComponent(applicationId)}/enrich-description`, {
+    method: "POST",
+  });
 }
 
 export async function matchJobs(

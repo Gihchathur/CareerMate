@@ -65,6 +65,15 @@ def _merge_job(old: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
         **{name: value for name, value in new.items() if value not in ("", None, [])},
     }
 
+    # Once a fuller description has been retrieved from the original listing,
+    # a later search-result snippet must not replace it with truncated text.
+    old_is_full = old.get("description_source") == "original_listing"
+    new_is_full = new.get("description_source") == "original_listing"
+    if old_is_full and not new_is_full:
+        for key in ("description", "description_source", "description_fetch_status", "description_fetched_at", "description_fetch_message"):
+            if old.get(key) not in (None, ""):
+                merged[key] = old[key]
+
     # Keep all role queries that surfaced a job when the same result appears
     # in searches for multiple roles.
     old_roles = old.get("search_roles", [])
