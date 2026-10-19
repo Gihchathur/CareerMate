@@ -7,6 +7,8 @@ import type {
   ApplicationStatus,
   ApplicationAnswer,
   BrowserDiagnostics,
+  BrowserNavigationIntent,
+  BrowserAnswerSuggestion,
   LocalDataSummary,
   BrowserFieldDraft,
   BrowserFormSession,
@@ -17,10 +19,12 @@ import type {
   JobSearchOptions,
   JobSearchResponse,
   JobSourcesResponse,
+  JobSourceConfiguration,
+  JobSourceConfigurationResponse,
 } from "./types";
 
 const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
-export const API_BASE = (configuredApiUrl || "http://127.0.0.1:8000").replace(/\/+$/, "");
+export const API_BASE = configuredApiUrl === "/same-origin" ? "" : (configuredApiUrl || "http://127.0.0.1:8000").replace(/\/+$/, "");
 
 type ApiEnvelope<T> = T & { detail?: string | Array<{ msg?: string }> };
 
@@ -140,6 +144,18 @@ export async function getJobSources(): Promise<JobSourcesResponse> {
   return request<JobSourcesResponse>("/api/jobs/sources");
 }
 
+export async function getJobSourceConfig(): Promise<JobSourceConfigurationResponse> {
+  return request<JobSourceConfigurationResponse>("/api/jobs/source-config");
+}
+
+export async function saveJobSourceConfig(config: JobSourceConfiguration): Promise<JobSourceConfigurationResponse> {
+  return request<JobSourceConfigurationResponse>("/api/jobs/source-config", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
+}
+
 export async function searchJobs(options: JobSearchOptions): Promise<JobSearchResponse> {
   const params = new URLSearchParams();
   options.roles.forEach((role) => params.append("roles", role));
@@ -254,14 +270,62 @@ export async function scanBrowserForm(): Promise<BrowserFormSession> {
   return request<BrowserFormSession>("/api/browser/scan", { method: "POST" });
 }
 
+export async function advanceBrowserStep(
+  applicationId: string,
+  intent: BrowserNavigationIntent,
+): Promise<BrowserFormSession> {
+  return request<BrowserFormSession>(`/api/applications/${encodeURIComponent(applicationId)}/browser/advance`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ intent }),
+  });
+}
+
+export async function selectBrowserPage(
+  applicationId: string,
+  pageIndex: number,
+): Promise<BrowserFormSession> {
+  return request<BrowserFormSession>(`/api/applications/${encodeURIComponent(applicationId)}/browser/select-page`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ page_index: pageIndex }),
+  });
+}
+
+export async function suggestBrowserAnswers(
+  applicationId: string,
+  fieldIds: string[],
+  expectedUrl?: string,
+): Promise<{ success: boolean; suggestions: BrowserAnswerSuggestion[]; message: string }> {
+  return request(`/api/applications/${encodeURIComponent(applicationId)}/browser/suggest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ field_ids: fieldIds, expected_url: expectedUrl }),
+  });
+}
+
+export async function submitBrowserApplication(
+  applicationId: string,
+  confirmSubmission: boolean,
+  expectedUrl?: string,
+  submittedDetails: ApplicationAnswer[] = [],
+): Promise<{ success: boolean; clicked: boolean; confirmation_detected: boolean; message: string; url: string; title: string }> {
+  return request(`/api/applications/${encodeURIComponent(applicationId)}/browser/submit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirm_submission: confirmSubmission, expected_url: expectedUrl, submitted_details: submittedDetails }),
+  });
+}
+
 export async function fillBrowserForm(
   applicationId: string,
   fields: BrowserFieldDraft[],
-): Promise<{ filled_count: number; skipped: { field_id: string; reason: string }[]; message: string }> {
-  return request<{ filled_count: number; skipped: { field_id: string; reason: string }[]; message: string }>(`/api/applications/${encodeURIComponent(applicationId)}/browser/fill`, {
+  expectedUrl?: string,
+): Promise<{ filled_count: number; filled_field_ids?: string[]; skipped: { field_id: string; reason: string }[]; message: string }> {
+  return request<{ filled_count: number; filled_field_ids?: string[]; skipped: { field_id: string; reason: string }[]; message: string }>(`/api/applications/${encodeURIComponent(applicationId)}/browser/fill`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fields: fields.filter((field) => field.include && field.value.trim()).map(({ field_id, value }) => ({ field_id, value })) }),
+    body: JSON.stringify({ fields: fields.filter((field) => field.include && field.value.trim()).map(({ field_id, value }) => ({ field_id, value })), expected_url: expectedUrl }),
   });
 }
 

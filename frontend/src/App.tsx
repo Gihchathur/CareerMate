@@ -10,6 +10,10 @@ import {
   enrichApplicationDescription,
   enrichJobDetails,
   fillBrowserForm,
+  advanceBrowserStep,
+  selectBrowserPage,
+  suggestBrowserAnswers,
+  submitBrowserApplication,
   generateApplicationAnswer,
   generateCoverLetter,
   getApplications,
@@ -20,6 +24,8 @@ import {
   getProfile,
   getSavedJobs,
   getJobSources,
+  getJobSourceConfig,
+  saveJobSourceConfig,
   openApplicationBrowser,
   scanBrowserForm,
   matchJobs,
@@ -37,6 +43,7 @@ import type {
   ApplicationRecord,
   BrowserFieldDraft,
   BrowserFormSession,
+  BrowserNavigationIntent,
   ApplicationStatus,
   CandidatePersonal,
   CandidateProfile,
@@ -49,6 +56,8 @@ import type {
   JobSearchCriteria,
   JobSourceId,
   JobSourceStatus,
+  JobBoardConfig,
+  JobSourceConfiguration,
   WorkMode,
 } from "./types";
 
@@ -67,6 +76,13 @@ const SOURCE_OPTIONS: { id: JobSourceId; title: string }[] = [
   { id: "teamtailor", title: "Teamtailor" },
 ];
 
+type PlatformShortcut = { id: string; name: string; url: string; enabled: boolean; description?: string };
+const DEFAULT_PLATFORM_SHORTCUTS: PlatformShortcut[] = [
+  { id: "linkedin", name: "LinkedIn Jobs", url: "https://www.linkedin.com/jobs/search/?keywords={query}&location={location}", enabled: true, description: "Open a LinkedIn job search in your browser; not scraped automatically." },
+  { id: "wellfound", name: "Wellfound", url: "https://wellfound.com/jobs?query={query}", enabled: true, description: "Startup roles; sign in if the site requires it." },
+  { id: "indeed", name: "Indeed", url: "https://www.indeed.com/jobs?q={query}&l={location}", enabled: false, description: "Open an external search; not scraped automatically." },
+];
+
 const APPLICATION_STATUS_LABELS: Record<ApplicationStatus, string> = {
   saved: "Saved",
   preparing: "Preparing",
@@ -76,6 +92,8 @@ const APPLICATION_STATUS_LABELS: Record<ApplicationStatus, string> = {
   rejected: "Rejected",
   withdrawn: "Withdrawn",
 };
+
+const EMPTY_JOB_SOURCE_CONFIG: JobSourceConfiguration = { greenhouse: [], lever: [], teamtailor: [] };
 
 const EMPTY_SOURCE_STATUS: Record<JobSourceId, JobSourceStatus> = {
   jobtech_links: { configured: true, employers: null, requires_api_key: false },
@@ -103,6 +121,7 @@ function safeExternalUrl(value: string): string | null {
 }
 
 function suggestedBrowserValue(key: string, profile: CandidateProfile | null, application: ApplicationRecord | null): string {
+  if (key === "cv_file") return "__CAREERMATE_CURRENT_CV__";
   if (!profile) return "";
   const fullName = profile.personal?.name?.trim() ?? "";
   switch (key) {
@@ -136,6 +155,7 @@ function suggestedBrowserValueLabel(key: string): string {
     "personal.linkedin": "LinkedIn URL",
     "personal.github": "GitHub URL",
     "personal.portfolio": "Portfolio URL",
+    cv_file: "Saved CV PDF attachment",
     summary: "Professional summary",
     skills: "Skills",
     languages: "Languages",
@@ -148,10 +168,30 @@ function suggestedBrowserValueLabel(key: string): string {
 
 function makeBrowserFieldDrafts(session: BrowserFormSession, profile: CandidateProfile | null, application: ApplicationRecord | null): BrowserFieldDraft[] {
   return session.fields.map((field) => {
-    const value = suggestedBrowserValue(field.suggested_key, profile, application);
-    return { ...field, value, include: Boolean(value.trim()) };
+    let value = suggestedBrowserValue(field.suggested_key, profile, application);
+    if (!value && !["file", "checkbox", "radio"].includes(field.kind)) value = field.current_value ?? "";
+    if (field.kind === "select" && value && field.options?.length) {
+      const option = field.options.find((item) => item.value.toLocaleLowerCase() === value.toLocaleLowerCase())
+        ?? field.options.find((item) => item.label.toLocaleLowerCase() === value.toLocaleLowerCase())
+        ?? field.options.find((item) => value.toLocaleLowerCase().includes(item.label.toLocaleLowerCase()) || item.label.toLocaleLowerCase().includes(value.toLocaleLowerCase()));
+      value = option?.value ?? "";
+    }
+    if (field.kind === "radio" && !value) value = field.current_value ?? "";
+    if (field.kind === "checkbox" && !value) value = field.current_value ?? "false";
+    const include = Boolean(value.trim()) && !["radio", "checkbox"].includes(field.kind);
+    return { ...field, value, include };
   });
 }
+
+type PreparedBrowserStep = {
+  step: number;
+  title: string;
+  url: string;
+  fields: { label: string; value: string; required: boolean; filled: boolean }[];
+  filled_count: number;
+  status: "completed" | "ready" | "needs_attention";
+  note: string;
+};
 
 function Field({
   label,
@@ -233,7 +273,7 @@ function Icon({ name }: { name: "search" | "file" | "sparkles" | "briefcase" | "
   return <svg aria-hidden="true" className="icon" viewBox="0 0 24 24" fill="none"><path d={paths[name]} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
-type WorkspaceView = "overview" | "discover" | "matches" | "applications" | "profile" | "ai" | "data";
+type WorkspaceView = "overview" | "discover" | "platforms" | "matches" | "applications" | "profile" | "ai" | "data";
 
 function App() {
   const [file, setFile] = useState<File | null>(null);
@@ -245,7 +285,17 @@ function App() {
   const [saving, setSaving] = useState(false);
   const [jobLoading, setJobLoading] = useState(false);
   const [matchLoading, setMatchLoading] = useState(false);
+  const [analyzingJobIds, setAnalyzingJobIds] = useState<string[]>([]);
   const [jobSources, setJobSources] = useState<Record<JobSourceId, JobSourceStatus>>(EMPTY_SOURCE_STATUS);
+  const [sourceConfig, setSourceConfig] = useState<JobSourceConfiguration>(EMPTY_JOB_SOURCE_CONFIG);
+  const [sourceConfigLoading, setSourceConfigLoading] = useState(false);
+  const [sourceConfigSaving, setSourceConfigSaving] = useState(false);
+  const [newBoardProvider, setNewBoardProvider] = useState<"greenhouse" | "lever" | "teamtailor">("greenhouse");
+  const [newBoardIdentifier, setNewBoardIdentifier] = useState("");
+  const [newBoardCompany, setNewBoardCompany] = useState("");
+  const [newBoardCountry, setNewBoardCountry] = useState("Sweden");
+  const [newBoardRegion, setNewBoardRegion] = useState("eu");
+  const [newBoardApiKeyEnv, setNewBoardApiKeyEnv] = useState("CAREERMATE_TEAMTAILOR_API_KEY");
   const [selectedSources, setSelectedSources] = useState<JobSourceId[]>(["jobtech_links"]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -270,16 +320,24 @@ function App() {
   const [searchFilterNote, setSearchFilterNote] = useState("");
   const [activeSearch, setActiveSearch] = useState<JobSearchCriteria | null>(null);
   const [jobs, setJobs] = useState<JobResult[]>([]);
+  const [availableMatchJobs, setAvailableMatchJobs] = useState<JobResult[]>([]);
   const [matches, setMatches] = useState<JobMatchResult[]>([]);
-  const [matchLimit, setMatchLimit] = useState(3);
+  const [selectedMatchJobIds, setSelectedMatchJobIds] = useState<string[]>([]);
+  const [matchSelectionSearch, setMatchSelectionSearch] = useState("");
   const [activeView, setActiveView] = useState<WorkspaceView>("overview");
   const [selectedJob, setSelectedJob] = useState<JobResult | null>(null);
+  const [activeInsightJobId, setActiveInsightJobId] = useState<string | null>(null);
   const [enrichingJobId, setEnrichingJobId] = useState<string | null>(null);
   const [manualAdvertJobId, setManualAdvertJobId] = useState<string | null>(null);
   const [manualAdvertText, setManualAdvertText] = useState("");
   const [manualAdvertSavingId, setManualAdvertSavingId] = useState<string | null>(null);
   const [enrichingApplicationId, setEnrichingApplicationId] = useState<string | null>(null);
   const [jobFilter, setJobFilter] = useState("");
+  const [platformShortcuts, setPlatformShortcuts] = useState<PlatformShortcut[]>(DEFAULT_PLATFORM_SHORTCUTS);
+  const [platformPrefsLoaded, setPlatformPrefsLoaded] = useState(false);
+  const [customPlatformName, setCustomPlatformName] = useState("");
+  const [customPlatformUrl, setCustomPlatformUrl] = useState("");
+  const [applicationListTab, setApplicationListTab] = useState<"all" | "active" | "submitted" | "offers">("all");
   const [applications, setApplications] = useState<ApplicationRecord[]>([]);
   const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
   const [applicationStatus, setApplicationStatus] = useState<ApplicationStatus>("saved");
@@ -296,6 +354,12 @@ function App() {
   const [browserOpening, setBrowserOpening] = useState(false);
   const [browserScanning, setBrowserScanning] = useState(false);
   const [browserFilling, setBrowserFilling] = useState(false);
+  const [browserNavigating, setBrowserNavigating] = useState(false);
+  const [browserSuggesting, setBrowserSuggesting] = useState(false);
+  const [browserAutoPreparing, setBrowserAutoPreparing] = useState(false);
+  const [browserPreparedSteps, setBrowserPreparedSteps] = useState<PreparedBrowserStep[]>([]);
+  const [browserSubmitting, setBrowserSubmitting] = useState(false);
+  const [browserSubmitApproved, setBrowserSubmitApproved] = useState(false);
   const [dataSummary, setDataSummary] = useState<LocalDataSummary | null>(null);
   const [dataLoading, setDataLoading] = useState(false);
   const [dataResetBusy, setDataResetBusy] = useState(false);
@@ -304,6 +368,30 @@ function App() {
   const [resetConfirmationText, setResetConfirmationText] = useState("");
   const [browserDiagnostics, setBrowserDiagnostics] = useState<BrowserDiagnostics | null>(null);
   const [browserDiagnosticsLoading, setBrowserDiagnosticsLoading] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("careermate.platform-shortcuts.v1");
+      if (saved) {
+        const parsed: unknown = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter((item): item is PlatformShortcut => Boolean(item) && typeof item === "object"
+            && typeof (item as PlatformShortcut).id === "string"
+            && typeof (item as PlatformShortcut).name === "string"
+            && typeof (item as PlatformShortcut).url === "string"
+            && typeof (item as PlatformShortcut).enabled === "boolean");
+          if (cleaned.length) setPlatformShortcuts(cleaned.slice(0, 20));
+        }
+      }
+    } catch { /* Keep built-in shortcuts if saved preferences are malformed. */ }
+    setPlatformPrefsLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!platformPrefsLoaded) return;
+    try { localStorage.setItem("careermate.platform-shortcuts.v1", JSON.stringify(platformShortcuts)); }
+    catch { /* Platform shortcuts remain usable for this session if storage is unavailable. */ }
+  }, [platformShortcuts, platformPrefsLoaded]);
 
   const refreshStatus = useCallback(async () => {
     const status = await getCvStatus();
@@ -317,10 +405,11 @@ function App() {
 
     async function loadInitialData() {
       try {
-        const [status, savedJobs, sourceResponse, applicationResponse, aiResponse] = await Promise.all([
+        const [status, savedJobs, sourceResponse, sourceConfigResponse, applicationResponse, aiResponse] = await Promise.all([
           getCvStatus(),
           getSavedJobs(),
           getJobSources().catch(() => null),
+          getJobSourceConfig().catch(() => null),
           getApplications().catch((applicationsError) => {
             if (!cancelled) setError(applicationsError instanceof Error ? applicationsError.message : "Could not load application records.");
             return null;
@@ -331,6 +420,8 @@ function App() {
         setCvStatus(status);
         setProfileSaved(status.profile_saved);
         setJobs(savedJobs);
+        setAvailableMatchJobs(savedJobs);
+        setSelectedMatchJobIds(savedJobs.slice(0, 3).map((job) => job.id));
         if (applicationResponse) {
           setApplications(applicationResponse.applications);
           if (applicationResponse.applications.length) selectApplication(applicationResponse.applications[0]);
@@ -342,9 +433,10 @@ function App() {
           setAiBaseUrlDraft(aiResponse.providers[aiResponse.provider].base_url);
           setCloudAiConsent(false);
         }
-        if (sourceResponse) {
-          const mergedStatus = { ...EMPTY_SOURCE_STATUS, ...sourceResponse.sources };
+        if (sourceResponse || sourceConfigResponse) {
+          const mergedStatus = { ...EMPTY_SOURCE_STATUS, ...(sourceConfigResponse?.sources ?? sourceResponse?.sources ?? {}) };
           setJobSources(mergedStatus);
+          if (sourceConfigResponse?.config) setSourceConfig({ ...EMPTY_JOB_SOURCE_CONFIG, ...sourceConfigResponse.config });
           const availableSources = SOURCE_OPTIONS
             .map((source) => source.id)
             .filter((source) => canSelectSource(source, mergedStatus[source]));
@@ -387,11 +479,16 @@ function App() {
 
   useEffect(() => {
     if (!selectedJob) return;
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     function closeOnEscape(event: KeyboardEvent) {
       if (event.key === "Escape") setSelectedJob(null);
     }
     window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape);
+      document.body.style.overflow = previousBodyOverflow;
+    };
   }, [selectedJob]);
 
   async function handleUploadCv() {
@@ -527,6 +624,13 @@ function App() {
       const result = await searchJobs({ ...criteria, offset });
       setActiveSearch(criteria);
       setJobs(result.jobs);
+      setAvailableMatchJobs((current) => {
+        const merged = new Map(current.map((job) => [job.id, job]));
+        result.jobs.forEach((job) => merged.set(job.id, { ...merged.get(job.id), ...job }));
+        return Array.from(merged.values());
+      });
+      setSelectedMatchJobIds((current) => [...new Set([...current, ...result.jobs.slice(0, 3).map((job) => job.id)])].slice(0, 20));
+      setMatchSelectionSearch("");
       setSelectedJob(null);
       setMatches([]);
       setSearchOffset(result.offset);
@@ -562,6 +666,85 @@ function App() {
       if (checked) return current.includes(source) ? current : [...current, source];
       return current.filter((item) => item !== source);
     });
+  }
+
+  async function handleRefreshSourceConfig() {
+    setSourceConfigLoading(true);
+    setError("");
+    try {
+      const result = await getJobSourceConfig();
+      setSourceConfig({ ...EMPTY_JOB_SOURCE_CONFIG, ...result.config });
+      setJobSources({ ...EMPTY_SOURCE_STATUS, ...result.sources });
+      setNotice("Job source status refreshed.");
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : "Could not refresh job platform configuration.");
+      setNotice("");
+    } finally { setSourceConfigLoading(false); }
+  }
+
+  async function handleSaveSourceConfig() {
+    setSourceConfigSaving(true);
+    setError("");
+    try {
+      const result = await saveJobSourceConfig(sourceConfig);
+      setSourceConfig({ ...EMPTY_JOB_SOURCE_CONFIG, ...result.config });
+      setJobSources({ ...EMPTY_SOURCE_STATUS, ...result.sources });
+      const available = SOURCE_OPTIONS.map((item) => item.id).filter((item) => canSelectSource(item, result.sources[item]));
+      setSelectedSources((current) => current.filter((item) => canSelectSource(item, result.sources[item])).length
+        ? current.filter((item) => canSelectSource(item, result.sources[item]))
+        : (available.length ? available : ["jobtech_links"]));
+      setNotice(result.message || "Job platform settings saved locally.");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Could not save job platform settings.");
+      setNotice("");
+    } finally { setSourceConfigSaving(false); }
+  }
+
+  function addEmployerBoard() {
+    const identifier = newBoardIdentifier.trim();
+    const company = newBoardCompany.trim() || identifier;
+    if (newBoardProvider !== "teamtailor" && !identifier) { setError(`Enter the ${newBoardProvider === "greenhouse" ? "Greenhouse board token" : "Lever site slug"}.`); return; }
+    if (newBoardProvider === "teamtailor" && !company) { setError("Enter the Teamtailor company/account name."); return; }
+    if (newBoardProvider === "teamtailor" && !/^[A-Z][A-Z0-9_]{0,99}$/.test(newBoardApiKeyEnv.trim())) { setError("Use an environment variable name such as CAREERMATE_TEAMTAILOR_ACME_API_KEY, not the API key value."); return; }
+    const entry: JobBoardConfig = {
+      enabled: true,
+      company,
+      country: newBoardCountry.trim(),
+      ...(newBoardProvider === "greenhouse" ? { board_token: identifier } : {}),
+      ...(newBoardProvider === "lever" ? { site: identifier, region: newBoardRegion === "na" || newBoardRegion === "apac" ? "global" : newBoardRegion } : {}),
+      ...(newBoardProvider === "teamtailor" ? { api_key_env: newBoardApiKeyEnv.trim(), region: newBoardRegion } : {}),
+    };
+    setSourceConfig((current) => ({ ...current, [newBoardProvider]: [...current[newBoardProvider], entry] }));
+    setNewBoardIdentifier(""); setNewBoardCompany(""); setError("");
+    setNotice("Board added to the pending configuration. Save platform settings to activate it.");
+  }
+
+  function updateEmployerBoard(provider: "greenhouse" | "lever" | "teamtailor", index: number, changes: Partial<JobBoardConfig>) {
+    setSourceConfig((current) => ({ ...current, [provider]: current[provider].map((board, itemIndex) => itemIndex === index ? { ...board, ...changes } : board) }));
+  }
+
+  function removeEmployerBoard(provider: "greenhouse" | "lever" | "teamtailor", index: number) {
+    setSourceConfig((current) => ({ ...current, [provider]: current[provider].filter((_, itemIndex) => itemIndex !== index) }));
+  }
+
+  function platformSearchUrl(platform: PlatformShortcut): string | null {
+    const query = jobRoles.split("\n").map((item) => item.trim()).filter(Boolean).join(" ") || "software engineer";
+    const location = [jobCity.trim(), jobCountry.trim()].filter(Boolean).join(", ");
+    const candidate = platform.url.replaceAll("{query}", encodeURIComponent(query)).replaceAll("{location}", encodeURIComponent(location));
+    return safeExternalUrl(candidate);
+  }
+
+  function addCustomPlatformShortcut() {
+    const name = customPlatformName.trim();
+    const url = customPlatformUrl.trim();
+    if (!name || !url) { setError("Enter both a platform name and its public HTTPS search URL."); return; }
+    let parsed: URL;
+    try { parsed = new URL(url); } catch { setError("Enter a valid HTTPS URL for the platform."); return; }
+    if (parsed.protocol !== "https:") { setError("Custom platform links must use HTTPS."); return; }
+    if (platformShortcuts.length >= 20) { setError("Keep at most 20 platform shortcuts."); return; }
+    const id = `custom-${Date.now()}`;
+    setPlatformShortcuts((current) => [...current, { id, name, url, enabled: true, description: "Custom external search link." }]);
+    setCustomPlatformName(""); setCustomPlatformUrl(""); setError(""); setNotice(`Added ${name} to your local platform shortcuts.`);
   }
 
   async function handleSearchJobs(event: FormEvent<HTMLFormElement>) {
@@ -617,8 +800,9 @@ function App() {
       setNotice("");
       return;
     }
-    if (jobs.length === 0) {
-      setError("Search for jobs before analyzing matches.");
+    const selectedJobs = availableMatchJobs.filter((job) => selectedMatchJobIds.includes(job.id));
+    if (selectedJobs.length === 0) {
+      setError("Select at least one job from the Find jobs list before analyzing matches.");
       setNotice("");
       return;
     }
@@ -627,17 +811,20 @@ function App() {
     setError("");
     const activeProviderLabel = aiSettings?.providers[aiSettings.provider]?.label ?? "the selected AI provider";
     setNotice(aiSettings?.provider === "ollama"
-      ? `Analyzing up to ${Math.min(matchLimit, jobs.length)} jobs with local Ollama. The first run can take time on this computer.`
-      : `Analyzing up to ${Math.min(matchLimit, jobs.length)} jobs with ${activeProviderLabel}. Selected jobs can run concurrently; API usage may be billed.`);
+      ? `Analyzing ${selectedJobs.length} selected job(s) with local Ollama. The first run can take time on this computer.`
+      : `Analyzing ${selectedJobs.length} selected job(s) with ${activeProviderLabel}. Selected jobs can run concurrently; API usage may be billed.`);
     try {
       // Always persist the current, user-reviewed version before matching.
       await saveProfile(profile);
       setProfileSaved(true);
       setCvStatus((current) => ({ ...current, profile_saved: true }));
 
-      const selectedJobs = jobs.slice(0, matchLimit);
-      const result = await matchJobs(matchLimit, selectedJobs.map((job) => job.id));
-      setMatches(result.jobs);
+      const boundedJobs = selectedJobs.slice(0, 20);
+      const result = await matchJobs(boundedJobs.length, boundedJobs.map((job) => job.id));
+      setMatches((current) => [
+        ...result.jobs,
+        ...current.filter((item) => !result.jobs.some((updated) => updated.id === item.id)),
+      ]);
       setNotice(`Analyzed ${result.analyzed} job(s) with ${activeProviderLabel}. Results are evidence-coverage estimates, not hiring probabilities.`);
     } catch (matchError) {
       setError(matchError instanceof Error ? matchError.message : "Could not analyze job matches.");
@@ -645,6 +832,47 @@ function App() {
     } finally {
       setMatchLoading(false);
     }
+  }
+
+
+  async function handleAnalyzeSingleJob(job: JobResult) {
+    if (!profile) {
+      setError("Analyze your CV first so CareerMate has a candidate profile to compare.");
+      setNotice("");
+      return;
+    }
+    if (matchLoading || analyzingJobIds.includes(job.id)) return;
+
+    setAnalyzingJobIds((current) => current.includes(job.id) ? current : [...current, job.id]);
+    setError("");
+    setNotice(`Analyzing ${job.title} at ${job.company || "this employer"}…`);
+    try {
+      // Persist the user's reviewed profile before asking the matcher to analyse a single job.
+      await saveProfile(profile);
+      setProfileSaved(true);
+      setCvStatus((current) => ({ ...current, profile_saved: true }));
+
+      const result = await matchJobs(1, [job.id]);
+      const updated = result.jobs.find((item) => item.id === job.id) ?? result.jobs[0];
+      if (!updated) throw new Error("CareerMate did not return an insight for this job. Please retry.");
+
+      setMatches((current) => [updated, ...current.filter((item) => item.id !== updated.id)]);
+      setActiveInsightJobId(updated.id);
+      setJobs((current) => current.map((item) => item.id === updated.id ? { ...item, ...updated } : item));
+      setAvailableMatchJobs((current) => current.map((item) => item.id === updated.id ? { ...item, ...updated } : item));
+      setNotice(updated.match_score === null
+        ? `Analysis finished for ${updated.title}, but the score is unavailable. Open the insight to review the reason.`
+        : `Insight ready for ${updated.title}: ${updated.match_score}/100 evidence coverage. This is not a hiring probability.`);
+    } catch (matchError) {
+      setError(matchError instanceof Error ? matchError.message : `Could not analyze ${job.title}.`);
+      setNotice("");
+    } finally {
+      setAnalyzingJobIds((current) => current.filter((id) => id !== job.id));
+    }
+  }
+
+  function openExistingInsight(jobId: string) {
+    setActiveInsightJobId(jobId);
   }
 
   function selectApplication(application: ApplicationRecord) {
@@ -881,6 +1109,8 @@ function App() {
       setCvStatus(EMPTY_STATUS);
       setProfileSaved(false);
       setJobs([]);
+      setAvailableMatchJobs([]);
+      setSelectedMatchJobIds([]);
       setMatches([]);
       setApplications([]);
       setSelectedApplicationId(null);
@@ -955,73 +1185,350 @@ function App() {
   async function handleOpenBrowserAssistant() {
     if (!selectedApplication) return;
     setBrowserOpening(true);
+    setBrowserSubmitApproved(false);
+    setBrowserPreparedSteps([]);
     setError("");
-    setNotice("Opening a visible browser at the tracked job link. Review the page and navigate to the application form manually if needed.");
+    setNotice("Opening the employer page and detecting the current application step…");
     try {
       const session = await openApplicationBrowser(selectedApplication.id);
       setBrowserSession(session);
       setBrowserFieldDrafts(makeBrowserFieldDrafts(session, profile, selectedApplication));
       setNotice(session.field_count > 0
-        ? `Browser opened and ${session.field_count} supported fields scanned. Review suggested values before filling.`
-        : "Browser opened. If this is a job listing, navigate to its application form manually and then scan the fields.");
+        ? `Browser opened. ${session.field_count} supported field(s) are ready for review. CareerMate can suggest answers and prepare this step.`
+        : "Browser opened. Use Find application form to follow the safe Apply link, or sign in/complete verification manually if the employer requires it.");
     } catch (browserError) {
       let message = browserError instanceof Error ? browserError.message : "Could not open browser assistance.";
       try {
         const diagnostics = await getBrowserDiagnostics();
         setBrowserDiagnostics(diagnostics);
-        if (!diagnostics.playwright_installed || !diagnostics.chromium_installed) {
-          message = `${diagnostics.message} In the activated backend virtual environment, run: ${diagnostics.install_command}`;
-        }
-      } catch {
-        // Keep the original server error if diagnostics aren't reachable.
-      }
+        if (!diagnostics.playwright_installed || !diagnostics.chromium_installed) message = `${diagnostics.message} In the activated backend virtual environment, run: ${diagnostics.install_command}`;
+      } catch { /* Keep the original browser error. */ }
       setError(message);
       setNotice("");
-    } finally {
-      setBrowserOpening(false);
-    }
+    } finally { setBrowserOpening(false); }
+  }
+
+  async function refreshBrowserSession(session: BrowserFormSession, message?: string) {
+    setBrowserSession(session);
+    setBrowserFieldDrafts(makeBrowserFieldDrafts(session, profile, selectedApplication));
+    setBrowserSubmitApproved(false);
+    setNotice(message ?? session.message);
   }
 
   async function handleScanBrowserForm() {
     setBrowserScanning(true);
     setError("");
-    setNotice("Scanning visible form fields. Password, verification, CAPTCHA, file upload and submit controls are excluded.");
+    setNotice("Scanning the current application step, including supported dropdowns and choices…");
     try {
       const session = await scanBrowserForm();
-      setBrowserSession(session);
-      setBrowserFieldDrafts(makeBrowserFieldDrafts(session, profile, selectedApplication));
-      setNotice(`Scanned ${session.field_count} supported field(s). Choose and review values before filling.`);
+      await refreshBrowserSession(session, `Scanned ${session.field_count} field(s). Review every proposed answer before filling.`);
     } catch (browserError) {
       setError(browserError instanceof Error ? browserError.message : "Could not scan the current form.");
       setNotice("");
-    } finally {
-      setBrowserScanning(false);
-    }
+    } finally { setBrowserScanning(false); }
   }
 
-  async function handleFillBrowserForm() {
+  async function handleAdvanceBrowserStep(intent: BrowserNavigationIntent) {
     if (!selectedApplication) return;
-    const selectedFields = browserFieldDrafts.filter((field) => field.include && field.value.trim());
-    if (selectedFields.length === 0) {
-      setError("Select at least one field and review its value before filling.");
+    setBrowserNavigating(true);
+    setError("");
+    setNotice(intent === "apply" ? "Opening the employer's application form…" : "Moving to the next application step…");
+    try {
+      const session = await advanceBrowserStep(selectedApplication.id, intent);
+      await refreshBrowserSession(session, session.message);
+    } catch (browserError) {
+      setError(browserError instanceof Error ? browserError.message : "Could not navigate to the next application step.");
+      setNotice("");
+    } finally { setBrowserNavigating(false); }
+  }
+
+  async function handleAutoPrepareApplication() {
+    if (!selectedApplication) return;
+    if (!profile) {
+      setError("Review and save your CV profile before using Auto prepare application.");
       setNotice("");
       return;
     }
-    setBrowserFilling(true);
+
+    setBrowserAutoPreparing(true);
+    setBrowserSubmitApproved(false);
+    setBrowserPreparedSteps([]);
     setError("");
-    setNotice(`Filling ${selectedFields.length} reviewed field(s). CareerMate will not submit the form.`);
+    setNotice("Starting automatic application preparation. CareerMate will use saved profile data and eligible AI drafts, follow supported application steps, and pause before final submission.");
+
+    const prepared: PreparedBrowserStep[] = [];
+    const seenSteps = new Set<string>();
+    const maxSteps = 12;
+    let session: BrowserFormSession;
+    let stopMessage = "";
+
     try {
-      const result = await fillBrowserForm(selectedApplication.id, selectedFields);
-      setNotice(`${result.message} Filled ${result.filled_count} field(s); skipped ${result.skipped.length}.`);
-      if (result.skipped.length) {
-        setError(result.skipped.map((item) => `${item.field_id}: ${item.reason}`).join(" "));
+      session = browserSession?.application_id === selectedApplication.id
+        ? browserSession
+        : await openApplicationBrowser(selectedApplication.id);
+      setBrowserSession(session);
+      setBrowserFieldDrafts(makeBrowserFieldDrafts(session, profile, selectedApplication));
+
+      for (let stepNumber = 1; stepNumber <= maxSteps; stepNumber += 1) {
+        // Some job pages expose only an Apply button; follow it before trying
+        // to treat the listing as a form step.
+        if (session.field_count === 0 && (session.has_apply_action || session.has_continue_action)) {
+          const navIntent: BrowserNavigationIntent = session.has_apply_action ? "apply" : "continue";
+          const navigationKey = `${session.url}|navigation:${navIntent}`;
+          if (seenSteps.has(navigationKey)) {
+            stopMessage = "The same navigation step appeared twice. CareerMate stopped to avoid a loop; inspect the current page in Chromium.";
+            break;
+          }
+          seenSteps.add(navigationKey);
+          session = await advanceBrowserStep(selectedApplication.id, navIntent);
+          setBrowserSession(session);
+          setBrowserFieldDrafts(makeBrowserFieldDrafts(session, profile, selectedApplication));
+          continue;
+        }
+
+        if (session.field_count === 0) {
+          stopMessage = "No supported application fields or safe next-step control were found. This page may require sign-in, a security check, or a site-specific widget.";
+          break;
+        }
+
+        const fingerprint = `${session.url}|${session.fields.map((field) => `${field.label}:${field.kind}`).join("|")}`;
+        if (seenSteps.has(fingerprint)) {
+          stopMessage = "CareerMate detected a repeated application step and stopped to avoid looping. Review the current page before continuing.";
+          setBrowserSession(session);
+          setBrowserFieldDrafts(makeBrowserFieldDrafts(session, profile, selectedApplication));
+          break;
+        }
+        seenSteps.add(fingerprint);
+
+        let drafts = makeBrowserFieldDrafts(session, profile, selectedApplication);
+        let aiNotice = "";
+        const questionIds = drafts
+          .filter((field) => ["text", "textarea"].includes(field.kind) && !field.value.trim())
+          .map((field) => field.field_id)
+          .slice(0, 20);
+        if (questionIds.length > 0) {
+          try {
+            const result = await suggestBrowserAnswers(selectedApplication.id, questionIds, session.url);
+            const suggestions = new Map(result.suggestions.map((item) => [item.field_id, item.value]));
+            drafts = drafts.map((field) => {
+              const suggestion = suggestions.get(field.field_id);
+              return suggestion && !field.value.trim()
+                ? { ...field, value: suggestion, include: true }
+                : field;
+            });
+            if (result.message) aiNotice = result.message;
+          } catch (aiError) {
+            aiNotice = aiError instanceof Error ? aiError.message : "AI suggestions were unavailable for this step.";
+          }
+        }
+
+        setBrowserSession(session);
+        setBrowserFieldDrafts(drafts);
+        const fillable = drafts.filter((field) => field.include && field.value.trim());
+        let filledCount = 0;
+        let filledIds = new Set<string>();
+        let fillProblem = "";
+        if (fillable.length > 0) {
+          try {
+            const fillResult = await fillBrowserForm(selectedApplication.id, fillable, session.url);
+            filledCount = fillResult.filled_count;
+            filledIds = new Set(fillResult.filled_field_ids ?? []);
+            if (fillResult.skipped.length) fillProblem = fillResult.skipped.map((item) => item.reason).join(" ");
+          } catch (fillError) {
+            fillProblem = fillError instanceof Error ? fillError.message : "CareerMate could not fill one or more reviewed fields.";
+          }
+        }
+
+        const missingRequired = drafts.filter((field) => {
+          if (!field.required) return false;
+          if (["checkbox", "radio"].includes(field.kind)) {
+            if (field.kind === "checkbox") return field.value.toLowerCase() !== "true";
+            return !field.value.trim();
+          }
+          return !field.value.trim() || (field.include && filledCount >= 0 && fillable.some((item) => item.field_id === field.field_id) && !filledIds.has(field.field_id) && Boolean(fillProblem));
+        });
+
+        let status: PreparedBrowserStep["status"] = "completed";
+        let note = `${filledCount} value(s) filled from your saved profile, existing application drafts, or eligible AI suggestions.`;
+        if (aiNotice && !drafts.some((field) => questionIds.includes(field.field_id) && field.value.trim())) {
+          note += ` AI answer generation did not produce an answer on this step: ${aiNotice}`;
+        }
+        if (fillProblem) note += ` Some fields may need attention: ${fillProblem}`;
+
+        if (missingRequired.length > 0) {
+          status = "needs_attention";
+          note = `CareerMate stopped because ${missingRequired.length} required field(s) still need a trustworthy answer or explicit choice: ${missingRequired.map((field) => field.label).join(", ")}. Review them in the editable current-step panel.`;
+        } else if (session.submit_available) {
+          status = "ready";
+          note += " Final submission control detected; CareerMate will pause here for your review and separate approval.";
+        }
+
+        const historyItem: PreparedBrowserStep = {
+          step: stepNumber,
+          title: session.title || `Application step ${stepNumber}`,
+          url: session.url,
+          fields: drafts.map((field) => ({
+            label: field.label,
+            value: field.value,
+            required: field.required,
+            filled: filledIds.has(field.field_id),
+          })),
+          filled_count: filledCount,
+          status,
+          note,
+        };
+        prepared.push(historyItem);
+        setBrowserPreparedSteps([...prepared]);
+        setBrowserFieldDrafts(drafts);
+
+        if (missingRequired.length > 0) {
+          stopMessage = note;
+          break;
+        }
+        if (session.submit_available) {
+          stopMessage = "Automatic preparation reached a likely final submission step. Review the entire preparation summary and the live form before submitting.";
+          break;
+        }
+        if (!session.has_continue_action && !session.has_apply_action) {
+          status = "needs_attention";
+          stopMessage = "CareerMate filled supported fields, but could not identify a safe Next/Continue control. Use the employer page to proceed, then refresh the current step.";
+          prepared[prepared.length - 1] = { ...historyItem, status, note: stopMessage };
+          setBrowserPreparedSteps([...prepared]);
+          break;
+        }
+
+        const intent: BrowserNavigationIntent = session.has_continue_action ? "continue" : "apply";
+        session = await advanceBrowserStep(selectedApplication.id, intent);
+        setBrowserSession(session);
+        setBrowserFieldDrafts(makeBrowserFieldDrafts(session, profile, selectedApplication));
+        setBrowserSubmitApproved(false);
       }
-    } catch (browserError) {
-      setError(browserError instanceof Error ? browserError.message : "Could not fill the reviewed fields.");
+
+      if (!stopMessage && prepared.length >= maxSteps) {
+        stopMessage = `Stopped after ${maxSteps} steps to avoid an endless navigation loop. Review the current form and continue manually if the application has more sections.`;
+      }
+      setBrowserPreparedSteps([...prepared]);
+      if (prepared.length > 0 && prepared[prepared.length - 1].status === "ready") {
+        setNotice(`${stopMessage || "Application preparation finished."} ${prepared.length} step(s) processed. Previous-step values are summarized below; the current step remains editable.`);
+        setError("");
+      } else if (prepared.length > 0) {
+        setNotice(`${stopMessage || "Application preparation paused."} ${prepared.length} step(s) processed. Review the highlighted current step; nothing has been submitted.`);
+        if (prepared[prepared.length - 1].status === "needs_attention") setError(stopMessage);
+      } else {
+        setError(stopMessage || "CareerMate could not prepare this application automatically.");
+        setNotice("");
+      }
+    } catch (prepareError) {
+      setError(prepareError instanceof Error ? prepareError.message : "CareerMate could not prepare the full application.");
       setNotice("");
     } finally {
-      setBrowserFilling(false);
+      setBrowserAutoPreparing(false);
     }
+  }
+
+  async function handleSelectBrowserPage(pageIndex: number) {
+    if (!selectedApplication) return;
+    setBrowserScanning(true);
+    setError("");
+    setNotice("Switching CareerMate to the selected application tab and scanning its form…");
+    try {
+      const session = await selectBrowserPage(selectedApplication.id, pageIndex);
+      await refreshBrowserSession(session, `Selected ${session.title || "application tab"}. Scanned ${session.field_count} supported field(s).`);
+    } catch (browserError) {
+      setError(browserError instanceof Error ? browserError.message : "Could not select that browser tab.");
+      setNotice("");
+    } finally { setBrowserScanning(false); }
+  }
+
+  async function handleSuggestBrowserAnswers() {
+    if (!selectedApplication) return;
+    const ids = browserFieldDrafts
+      .filter((field) => ["text", "textarea"].includes(field.kind))
+      .map((field) => field.field_id);
+    if (!ids.length) { setError("There are no eligible text questions on this step for AI suggestions."); return; }
+    setBrowserSuggesting(true);
+    setError("");
+    setNotice("Generating one batch of CV-grounded draft answers. Nothing will be filled until you approve it.");
+    try {
+      const result = await suggestBrowserAnswers(selectedApplication.id, ids, browserSession?.url);
+      const suggestionsById = new Map(result.suggestions.map((item) => [item.field_id, item.value]));
+      setBrowserFieldDrafts((current) => current.map((field) => {
+        const suggestion = suggestionsById.get(field.field_id);
+        if (!suggestion || (field.value.trim() && field.suggested_key !== "latest_answer")) return field;
+        return { ...field, value: suggestion, include: true, suggestion_source: result.suggestions.find((item) => item.field_id === field.field_id)?.source || "AI draft" };
+      }));
+      if (result.suggestions.length) {
+        setNotice(result.message);
+        setError("");
+      } else {
+        setError(result.message || "No usable drafts were returned. Required unanswered fields are highlighted for your input.");
+        setNotice("");
+      }
+    } catch (suggestError) {
+      setError(suggestError instanceof Error ? suggestError.message : "AI answer suggestions failed. You can still enter values manually.");
+      setNotice("");
+    } finally { setBrowserSuggesting(false); }
+  }
+
+  async function handleFillBrowserForm(continueAfterFill = false) {
+    if (!selectedApplication) return;
+    const selectedFields = browserFieldDrafts.filter((field) => field.include && field.value.trim());
+    if (selectedFields.length === 0 && !continueAfterFill) {
+      setError("Select at least one field with a reviewed value before filling."); setNotice(""); return;
+    }
+    setBrowserFilling(true);
+    setError("");
+    setNotice(continueAfterFill ? "Filling approved values before moving to the next step…" : `Filling ${selectedFields.length} reviewed field(s). The application will not be submitted by this action.`);
+    try {
+      let filledCount = 0;
+      let skipped: { field_id: string; reason: string }[] = [];
+      if (selectedFields.length) {
+        const result = await fillBrowserForm(selectedApplication.id, selectedFields, browserSession?.url);
+        filledCount = result.filled_count;
+        skipped = result.skipped;
+      }
+      if (continueAfterFill) {
+        const next = await advanceBrowserStep(selectedApplication.id, "continue");
+        await refreshBrowserSession(next, `Approved values filled (${filledCount}); moved to the next step. ${next.field_count} field(s) are ready for review.`);
+      } else {
+        const refreshed = await scanBrowserForm();
+        setBrowserSession(refreshed);
+        setBrowserFieldDrafts((current) => current.map((field) => ({ ...field, include: false })));
+        setBrowserSubmitApproved(false);
+        setNotice(`Filled ${filledCount} field(s). CareerMate has not submitted the application. Review the visible employer form${skipped.length ? `; ${skipped.length} field(s) were skipped` : ""}.`);
+      }
+      if (skipped.length) setError(skipped.map((item) => `${item.field_id}: ${item.reason}`).join(" "));
+    } catch (browserError) {
+      setError(browserError instanceof Error ? browserError.message : "Could not fill the reviewed fields or continue to the next step.");
+      setNotice("");
+    } finally { setBrowserFilling(false); }
+  }
+
+  async function handleSubmitBrowserApplication() {
+    if (!selectedApplication || !browserSubmitApproved) return;
+    setBrowserSubmitting(true);
+    setError("");
+    setNotice("Submitting the final application step after your explicit approval…");
+    try {
+      const submittedDetails = [
+        ...browserPreparedSteps.flatMap((step) => step.fields.filter((field) => field.filled).map((field) => ({ question: `Step ${step.step}: ${field.label}`, answer: field.value, updated_at: new Date().toISOString() }))),
+        ...browserFieldDrafts.map((field) => ({ question: `${browserSession?.title || "Final step"}: ${field.label}`, answer: field.value, updated_at: new Date().toISOString() })),
+      ].filter((detail) => detail.answer.trim()).filter((detail, index, all) => all.findIndex((candidate) => candidate.question === detail.question && candidate.answer === detail.answer) === index).slice(0, 50);
+      const result = await submitBrowserApplication(selectedApplication.id, true, browserSession?.url, submittedDetails);
+      setBrowserSession((current) => current ? { ...current, url: result.url, title: result.title, submit_available: false } : current);
+      setBrowserSubmitApproved(false);
+      if (result.confirmation_detected) {
+        const all = await getApplications();
+        setApplications(all.applications);
+        const updated = all.applications.find((item) => item.id === selectedApplication.id);
+        if (updated) selectApplication(updated);
+      }
+      setNotice(result.message);
+      if (!result.confirmation_detected) setError("Check the employer's page before updating the status. No successful application confirmation was detected.");
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Could not safely submit this application.");
+      setNotice("");
+    } finally { setBrowserSubmitting(false); }
   }
 
   async function handleCloseBrowserAssistant() {
@@ -1029,7 +1536,9 @@ function App() {
       await closeBrowserSession();
       setBrowserSession(null);
       setBrowserFieldDrafts([]);
-      setNotice("Browser session closed. Form values were not stored in CareerMate.");
+      setBrowserPreparedSteps([]);
+      setBrowserSubmitApproved(false);
+      setNotice("Browser session closed. Drafts stay local to this browser workspace.");
       setError("");
     } catch (browserError) {
       setError(browserError instanceof Error ? browserError.message : "Could not close the browser session.");
@@ -1038,6 +1547,15 @@ function App() {
 
   function updateBrowserField(fieldId: string, changes: Partial<BrowserFieldDraft>) {
     setBrowserFieldDrafts((current) => current.map((field) => field.field_id === fieldId ? { ...field, ...changes } : field));
+  }
+
+  function selectAllBrowserProposals() {
+    setBrowserFieldDrafts((current) => current.map((field) => ({
+      ...field,
+      include: Boolean(field.value.trim()) && !["radio", "checkbox"].includes(field.kind),
+    })));
+    setNotice("All non-empty proposed values are selected for your review. Radio/checkbox choices still require an explicit selection.");
+    setError("");
   }
 
   function editApplicationAnswer(index: number, answer: string) {
@@ -1129,7 +1647,49 @@ function App() {
   }
 
   const savedCountLabel = jobs.length.toLocaleString();
-  const canAnalyzeMatches = Boolean(profile && jobs.length && !matchLoading && !jobLoading && !cvLoading && !saving);
+  const canAnalyzeMatches = Boolean(profile && selectedMatchJobIds.some((id) => availableMatchJobs.some((job) => job.id === id)) && !matchLoading && !jobLoading && !cvLoading && !saving);
+  const matchByJobId = new Map<string, JobMatchResult>(matches.map((match) => [match.id, match] as const));
+  const availableMatchJobOrder = new Map<string, number>(availableMatchJobs.map((job, index) => [job.id, index] as const));
+  const matchSelectionCandidates = availableMatchJobs.filter((job) => {
+    const query = matchSelectionSearch.trim().toLocaleLowerCase();
+    return !query || `${job.title} ${job.company} ${job.location} ${job.source}`.toLocaleLowerCase().includes(query);
+  }).sort((first, second) => {
+    const firstMatch = matchByJobId.get(first.id);
+    const secondMatch = matchByJobId.get(second.id);
+    // Put all analyzed jobs first, ordered by evidence-coverage score from highest to lowest.
+    if (Boolean(firstMatch) !== Boolean(secondMatch)) return firstMatch ? -1 : 1;
+    if (firstMatch && secondMatch) {
+      const firstScore = firstMatch.match_score ?? -1;
+      const secondScore = secondMatch.match_score ?? -1;
+      if (firstScore !== secondScore) return secondScore - firstScore;
+    }
+    return (availableMatchJobOrder.get(first.id) ?? 0) - (availableMatchJobOrder.get(second.id) ?? 0);
+  });
+  const activeInsight = activeInsightJobId ? matchByJobId.get(activeInsightJobId) ?? null : null;
+
+  useEffect(() => {
+    if (!activeInsightJobId || activeView !== "matches") return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setActiveInsightJobId(null);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [activeInsightJobId, activeView]);
+  const toggleMatchSelection = (jobId: string, checked: boolean) => {
+    setSelectedMatchJobIds((current) => checked
+      ? (current.includes(jobId) || current.length >= 20 ? current : [...current, jobId])
+      : current.filter((id) => id !== jobId));
+  };
+  const applicationForJob = (jobId: string) => applications.find((application) => application.job_id === jobId);
+  const hasAppliedToJob = (jobId: string) => {
+    const application = applicationForJob(jobId);
+    return Boolean(application?.applied_at) || Boolean(application && ["applied", "interview", "offer", "rejected", "withdrawn"].includes(application.status));
+  };
   const profileCompletionFields = profile ? [
     profile.personal?.name,
     profile.personal?.email,
@@ -1149,6 +1709,12 @@ function App() {
   const selectedApplication = applications.find((application) => application.id === selectedApplicationId) ?? null;
   const activeApplicationCount = applications.filter((application) => !["rejected", "withdrawn", "offer"].includes(application.status)).length;
   const submittedApplicationCount = applications.filter((application) => ["applied", "interview", "offer", "rejected", "withdrawn"].includes(application.status)).length;
+  const visibleApplications = applications.filter((application) => {
+    if (applicationListTab === "active") return ["saved", "preparing"].includes(application.status);
+    if (applicationListTab === "submitted") return ["applied", "interview", "offer", "rejected", "withdrawn"].includes(application.status);
+    if (applicationListTab === "offers") return ["interview", "offer"].includes(application.status);
+    return true;
+  });
   const canGenerateApplicationDraft = Boolean(selectedApplication && profile && !applicationSaving && !draftingAnswer && !draftingCoverLetter);
   const pageMeta: Record<WorkspaceView, { title: string; eyebrow: string; description: string }> = {
     overview: {
@@ -1160,6 +1726,11 @@ function App() {
       title: "Find your next opportunity",
       eyebrow: "JOB DISCOVERY",
       description: "Search the sources you have configured, compare options, and open a focused view of each role.",
+    },
+    platforms: {
+      title: "Choose your job platforms",
+      eyebrow: "SOURCE CONFIGURATION",
+      description: "Configure employer-specific ATS boards, choose integrated sources, and manage external job-search shortcuts.",
     },
     matches: {
       title: "Know why a role fits",
@@ -1213,6 +1784,7 @@ function App() {
             <span className="source-chip">{sourceLabel(job.source)}</span>
             {(job.search_roles ?? []).slice(0, 2).map((role) => <span className="job-role-badge" key={role}>{role}</span>)}
             {match?.match_score !== undefined && match.match_score !== null && <span className="match-chip">{match.match_score}% CV match</span>}
+            {hasAppliedToJob(job.id) && <span className="job-history-pill">Already applied{applicationForJob(job.id)?.status === "offer" ? " · Offer" : ""}</span>}
           </div>
           {!compact && job.description && <p className="job-row-description">{job.description}</p>}
         </div>
@@ -1245,6 +1817,7 @@ function App() {
           <nav className="sidebar-nav" aria-label="Main navigation">
             <button type="button" className={`nav-item${activeView === "overview" ? " active" : ""}`} onClick={() => { setActiveView("overview"); setSelectedJob(null); }}><Icon name="grid" /><span>Overview</span></button>
             <button type="button" className={`nav-item${activeView === "discover" ? " active" : ""}`} onClick={() => { setActiveView("discover"); setSelectedJob(null); }}><Icon name="search" /><span>Find jobs</span><span className="nav-count">{jobs.length}</span></button>
+            <button type="button" className={`nav-item${activeView === "platforms" ? " active" : ""}`} onClick={() => { setActiveView("platforms"); setSelectedJob(null); }}><Icon name="layers" /><span>Job platforms</span><span className="nav-status nav-status-ready" /></button>
             <button type="button" className={`nav-item${activeView === "matches" ? " active" : ""}`} onClick={() => { setActiveView("matches"); setSelectedJob(null); }}><Icon name="sparkles" /><span>Match insights</span>{matches.length > 0 && <span className="nav-count">{matches.length}</span>}</button>
             <button type="button" className={`nav-item${activeView === "applications" ? " active" : ""}`} onClick={() => { setActiveView("applications"); setSelectedJob(null); }}><Icon name="briefcase" /><span>Applications</span>{applications.length > 0 && <span className="nav-count">{applications.length}</span>}</button>
             <button type="button" className={`nav-item${activeView === "profile" ? " active" : ""}`} onClick={() => { setActiveView("profile"); setSelectedJob(null); }}><Icon name="user" /><span>My profile</span><span className={`nav-status ${profile && profileSaved ? "nav-status-ready" : ""}`} /></button>
@@ -1343,7 +1916,8 @@ function App() {
                   <p className="panel-description">Search up to five job titles or keywords. One title per line.</p>
                   <form onSubmit={handleSearchJobs}>
                     <TextAreaField label="Job titles or keywords" value={jobRoles} onChange={setJobRoles} placeholder={"Platform Engineer\nDevOps Engineer\nSite Reliability Engineer"} rows={4} />
-                    <label className="field"><span>Country</span><select value={jobCountry} onChange={(event) => setJobCountry(event.target.value)}><option value="Sweden">Sweden</option><option value="Norway">Norway</option><option value="Denmark">Denmark</option><option value="Finland">Finland</option><option value="Germany">Germany</option><option value="Netherlands">Netherlands</option><option value="United Kingdom">United Kingdom</option><option value="United States">United States</option><option value="Canada">Canada</option><option value="France">France</option><option value="Switzerland">Switzerland</option><option value="Any country">Any country</option></select></label>
+                    <label className="field"><span>Country</span><input list="careermate-country-options" value={jobCountry} onChange={(event) => setJobCountry(event.target.value)} placeholder="Type any country or choose a suggestion" maxLength={100} required /></label>
+                    <datalist id="careermate-country-options"><option value="Sweden" /><option value="Norway" /><option value="Denmark" /><option value="Finland" /><option value="Germany" /><option value="Netherlands" /><option value="United Kingdom" /><option value="United States" /><option value="Canada" /><option value="France" /><option value="Switzerland" /><option value="Ireland" /><option value="Spain" /><option value="Italy" /><option value="Poland" /><option value="Australia" /><option value="India" /><option value="Singapore" /><option value="Japan" /><option value="Any country" /></datalist>
                     <Field label="City or location" value={jobCity} onChange={setJobCity} placeholder="e.g. Stockholm" />
                     <label className="field"><span>Work arrangement</span><select value={workMode} onChange={(event) => setWorkMode(event.target.value as WorkMode)}><option value="any">Any / not specified</option><option value="remote">Remote</option><option value="hybrid">Hybrid</option><option value="on_site">On-site</option></select></label>
                     <label className="field"><span>Results per page</span><select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value={10}>10 jobs</option><option value={20}>20 jobs</option><option value={40}>40 jobs</option></select></label>
@@ -1357,8 +1931,22 @@ function App() {
                             return <label className={`source-option${selectable ? "" : " source-option-disabled"}`} key={source.id}><input type="checkbox" checked={selectedSources.includes(source.id)} disabled={!selectable} onChange={(event) => toggleJobSource(source.id, event.target.checked)} /><span className="source-option-copy"><strong>{source.title}</strong><small>{countLabel}</small></span></label>;
                           })}
                         </div>
-                        <p className="helper-text">Company boards are configured locally. CareerMate does not crawl every company on these platforms.</p>
+                        <p className="helper-text">Select integrated sources above for automatic search. Company boards such as Greenhouse, Lever and Teamtailor are configured per employer. LinkedIn and custom shortcuts open an external search; CareerMate does not scrape those sites automatically.</p>
                       </fieldset>
+                      <div className="platform-shortcuts-panel">
+                        <div className="platform-shortcuts-heading"><strong>External platform shortcuts</strong><span>Saved on this device</span></div>
+                        <div className="platform-shortcuts-list">
+                          {platformShortcuts.map((platform) => {
+                            const href = platformSearchUrl(platform);
+                            return <div className="platform-shortcut-row" key={platform.id}>
+                              <label className="platform-shortcut-toggle"><input type="checkbox" checked={platform.enabled} onChange={(event) => setPlatformShortcuts((items) => items.map((item) => item.id === platform.id ? { ...item, enabled: event.target.checked } : item))} /><span><strong>{platform.name}</strong><small>{platform.description || platform.url}</small></span></label>
+                              <div className="platform-shortcut-actions">{platform.enabled && href && <a className="text-action" href={href} target="_blank" rel="noopener noreferrer">Open search ↗</a>}{platform.id.startsWith("custom-") && <button className="text-action platform-remove" type="button" onClick={() => setPlatformShortcuts((items) => items.filter((item) => item.id !== platform.id))}>Remove</button>}</div>
+                            </div>;
+                          })}
+                        </div>
+                        <div className="platform-shortcut-add"><input value={customPlatformName} onChange={(event) => setCustomPlatformName(event.target.value)} maxLength={80} placeholder="Platform name" aria-label="Custom platform name" /><input value={customPlatformUrl} onChange={(event) => setCustomPlatformUrl(event.target.value)} maxLength={1000} placeholder="https://example.com/jobs?query={query}" aria-label="Custom platform HTTPS URL" /><button type="button" className="button button-secondary button-small" onClick={addCustomPlatformShortcut}>Add platform</button></div>
+                        <p className="helper-text">Use <code>{"{query}"}</code> and <code>{"{location}"}</code> in custom URLs to pass the current search terms. These are shortcuts only; automatic listing retrieval requires a supported API or adapter.</p>
+                      </div>
                     </details>
                     <button className="button button-primary button-full search-submit" disabled={jobLoading} type="submit">{jobLoading ? <><span className="spinner spinner-light" /> Searching jobs…</> : <><Icon name="search" /> Search opportunities</>}</button>
                   </form>
@@ -1376,34 +1964,138 @@ function App() {
             </div>
           )}
 
+          {activeView === "platforms" && (
+            <div className="view-stack platforms-view">
+              <section className="panel platforms-hero">
+                <div className="platforms-hero-copy">
+                  <span className="match-toolbar-symbol"><Icon name="layers" /></span>
+                  <div>
+                    <p className="eyebrow">PERSONAL SOURCE DIRECTORY</p>
+                    <h2>Bring your job platforms together</h2>
+                    <p className="panel-description">Choose ready-made public feeds, add employer-specific ATS boards, and keep shortcuts for platforms you use. Board settings are stored locally; API secrets stay in your private environment file.</p>
+                  </div>
+                </div>
+                <button className="button button-secondary" type="button" onClick={() => void handleRefreshSourceConfig()} disabled={sourceConfigLoading || sourceConfigSaving}>{sourceConfigLoading ? <><span className="spinner" /> Refreshing…</> : <><Icon name="refresh" /> Refresh status</>}</button>
+              </section>
+
+              <section className="platform-metrics-grid">
+                <article className="platform-metric-card"><span className="platform-metric-icon"><Icon name="search" /></span><strong>{SOURCE_OPTIONS.filter((item) => canSelectSource(item.id, jobSources[item.id])).length}</strong><span>Integrated sources available</span></article>
+                <article className="platform-metric-card"><span className="platform-metric-icon"><Icon name="briefcase" /></span><strong>{sourceConfig.greenhouse.length + sourceConfig.lever.length + sourceConfig.teamtailor.length}</strong><span>Configured employer boards</span></article>
+                <article className="platform-metric-card"><span className="platform-metric-icon"><Icon name="shield" /></span><strong>Local</strong><span>Board settings stay on this device</span></article>
+              </section>
+
+              <section className="panel platform-integrated-panel">
+                <div className="panel-titlebar"><div><p className="eyebrow">INTEGRATED SEARCH</p><h2>Sources for your next search</h2><p className="panel-description">Select the sources you want to query in Find jobs. Availability varies by region and source.</p></div></div>
+                <div className="source-option-grid source-option-grid-platforms">
+                  {SOURCE_OPTIONS.map((source) => {
+                    const status = jobSources[source.id];
+                    const selectable = canSelectSource(source.id, status);
+                    const description = source.id === "jobtech_links" ? "Sweden-focused public job feed" : source.id === "remoteok" ? "Public remote-job feed" : source.id === "arbeitnow" ? "Public job feed with strong European coverage" : source.id === "teamtailor" ? (status.credentials_ready ? `${status.employers ?? 0} employer board(s) · credentials ready` : `${status.employers ?? 0} boards · API key setup required`) : `${status.employers ?? 0} employer board(s) configured`;
+                    return <label className={`source-option platform-source-option${selectable ? "" : " source-option-disabled"}`} key={source.id}><input type="checkbox" checked={selectedSources.includes(source.id)} disabled={!selectable} onChange={(event) => toggleJobSource(source.id, event.target.checked)} /><span className="source-option-copy"><strong>{source.title}</strong><small>{description}</small></span><span className={`platform-source-state${selectable ? " ready" : " setup"}`}>{selectable ? "Available" : "Set up"}</span></label>;
+                  })}
+                </div>
+                <p className="helper-text">LinkedIn, Indeed and other sites without a supported authorized feed can be saved as external shortcuts in Find jobs. CareerMate does not scrape those pages automatically.</p>
+              </section>
+
+              <section className="panel platform-shortcuts-manager">
+                <div className="panel-titlebar"><div><p className="eyebrow">EXTERNAL SEARCH SHORTCUTS</p><h2>Choose the platforms you use</h2><p className="panel-description">Enable links such as LinkedIn Jobs, Wellfound, Indeed, or a custom career site. These shortcuts open searches in a new browser tab and do not imply automatic access to the site's listings.</p></div><span className="platform-count-chip">{platformShortcuts.filter((platform) => platform.enabled).length} enabled</span></div>
+                <div className="platform-shortcuts-list">
+                  {platformShortcuts.map((platform) => {
+                    const href = platformSearchUrl(platform);
+                    return <div className="platform-shortcut-row" key={platform.id}>
+                      <label className="platform-shortcut-toggle"><input type="checkbox" checked={platform.enabled} onChange={(event) => setPlatformShortcuts((items) => items.map((item) => item.id === platform.id ? { ...item, enabled: event.target.checked } : item))} /><span><strong>{platform.name}</strong><small>{platform.description || platform.url}</small></span></label>
+                      <div className="platform-shortcut-actions">{platform.enabled && href && <a className="text-action" href={href} target="_blank" rel="noopener noreferrer">Open search ↗</a>}{platform.id.startsWith("custom-") && <button className="text-action platform-remove" type="button" onClick={() => setPlatformShortcuts((items) => items.filter((item) => item.id !== platform.id))}>Remove</button>}</div>
+                    </div>;
+                  })}
+                </div>
+                <div className="platform-shortcut-add"><input value={customPlatformName} onChange={(event) => setCustomPlatformName(event.target.value)} maxLength={80} placeholder="Platform name (e.g. local job portal)" aria-label="Custom platform name" /><input value={customPlatformUrl} onChange={(event) => setCustomPlatformUrl(event.target.value)} maxLength={1000} placeholder="https://example.com/jobs?query={query}" aria-label="Custom platform HTTPS URL" /><button type="button" className="button button-secondary button-small" onClick={addCustomPlatformShortcut}>Add platform</button></div>
+                <p className="helper-text">Use <code>{"{query}"}</code> and <code>{"{location}"}</code> placeholders in custom URLs. Shortcuts are saved in this browser's local storage. Use integrated adapters below when you need supported automatic retrieval.</p>
+              </section>
+
+              <section className="panel platform-board-editor">
+                <div className="panel-titlebar"><div><p className="eyebrow">EMPLOYER CAREER BOARDS</p><h2>Add an ATS board</h2><p className="panel-description">Configure the public identifier used by an employer’s Greenhouse or Lever board, or the Teamtailor company/account and API key environment variable.</p></div><span className="platform-count-chip">{sourceConfig.greenhouse.length + sourceConfig.lever.length + sourceConfig.teamtailor.length} boards</span></div>
+                <div className="platform-form-grid">
+                  <label className="field"><span>Platform</span><select value={newBoardProvider} onChange={(event) => { const provider = event.target.value as "greenhouse" | "lever" | "teamtailor"; setNewBoardProvider(provider); setNewBoardRegion(provider === "teamtailor" ? "eu" : "global"); }}><option value="greenhouse">Greenhouse</option><option value="lever">Lever</option><option value="teamtailor">Teamtailor</option></select></label>
+                  {newBoardProvider !== "teamtailor" && <label className="field"><span>{newBoardProvider === "greenhouse" ? "Board token" : "Site slug"}</span><input value={newBoardIdentifier} onChange={(event) => setNewBoardIdentifier(event.target.value)} placeholder={newBoardProvider === "greenhouse" ? "e.g. acme" : "e.g. acme"} maxLength={200} /></label>}
+                  <label className="field"><span>Company display name</span><input value={newBoardCompany} onChange={(event) => setNewBoardCompany(event.target.value)} placeholder="e.g. Example AB" maxLength={200} /></label>
+                  <label className="field"><span>Country</span><input value={newBoardCountry} onChange={(event) => setNewBoardCountry(event.target.value)} placeholder="e.g. Sweden" maxLength={100} /></label>
+                  {(newBoardProvider === "lever" || newBoardProvider === "teamtailor") && <label className="field"><span>API region</span><select value={newBoardRegion} onChange={(event) => setNewBoardRegion(event.target.value)}>{(newBoardProvider === "lever" ? [{value:"global", label:"Global"},{value:"eu", label:"Europe"}] : [{value:"eu",label:"Europe"},{value:"na",label:"North America"},{value:"apac",label:"Asia Pacific"}]).map((region) => <option key={region.value} value={region.value}>{region.label}</option>)}</select></label>}
+                  {newBoardProvider === "teamtailor" && <label className="field"><span>API key environment variable name</span><input value={newBoardApiKeyEnv} onChange={(event) => setNewBoardApiKeyEnv(event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_"))} placeholder="CAREERMATE_TEAMTAILOR_API_KEY" maxLength={100} /><small>Enter the variable name, not the secret value; define its value in backend/.env.</small></label>}
+                </div>
+                <div className="platform-editor-actions"><button type="button" className="button button-secondary" onClick={addEmployerBoard}><Icon name="plus" /> Add board</button><button type="button" className="button button-primary" onClick={() => void handleSaveSourceConfig()} disabled={sourceConfigSaving}>{sourceConfigSaving ? <><span className="spinner spinner-light" /> Saving…</> : <><Icon name="check" /> Save platform settings</>}</button></div>
+                <p className="helper-text">No credentials are entered here. Teamtailor requires an API key variable in your private environment configuration. Do not commit backend/.env.</p>
+              </section>
+
+              <section className="panel configured-boards-panel">
+                <div className="panel-titlebar"><div><p className="eyebrow">YOUR BOARD DIRECTORY</p><h2>Configured employer boards</h2><p className="panel-description">Enable or disable a board without deleting its settings. Changes become active after saving.</p></div></div>
+                {(["greenhouse", "lever", "teamtailor"] as const).map((provider) => <div className="configured-provider-group" key={provider}>
+                  <div className="configured-provider-heading"><h3>{provider === "greenhouse" ? "Greenhouse" : provider === "lever" ? "Lever" : "Teamtailor"}</h3><span>{sourceConfig[provider].length} configured</span></div>
+                  {sourceConfig[provider].length === 0 ? <p className="platform-empty-note">No {provider === "teamtailor" ? "Teamtailor" : provider === "greenhouse" ? "Greenhouse" : "Lever"} boards configured yet.</p> : sourceConfig[provider].map((board, index) => <article className="configured-board-row" key={`${provider}-${board.company}-${index}`}>
+                    <div className="configured-board-topline"><label className="configured-board-enabled"><input type="checkbox" checked={board.enabled} onChange={(event) => updateEmployerBoard(provider, index, { enabled: event.target.checked })} /><span><strong>{board.company || (provider === "greenhouse" ? board.board_token : provider === "lever" ? board.site : "Teamtailor board")}</strong><small>{provider === "greenhouse" ? `Greenhouse · ${board.board_token}` : provider === "lever" ? `Lever · ${board.site} · ${board.region || "global"}` : `Teamtailor · ${board.region || "eu"} · key variable: ${board.api_key_env}`}</small></span></label><button type="button" className="text-action platform-remove" onClick={() => removeEmployerBoard(provider, index)}><Icon name="trash" /> Remove</button></div>
+                    <div className="configured-board-fields"><label><span>Display name</span><input value={board.company || ""} onChange={(event) => updateEmployerBoard(provider, index, { company: event.target.value })} maxLength={200} /></label><label><span>Country</span><input value={board.country || ""} onChange={(event) => updateEmployerBoard(provider, index, { country: event.target.value })} maxLength={100} /></label>{provider === "teamtailor" && <label><span>API key environment variable</span><input value={board.api_key_env || ""} onChange={(event) => updateEmployerBoard(provider, index, { api_key_env: event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_" )})} maxLength={100} /></label>}</div>
+                  </article>)}
+                </div>)}
+                <div className="platform-editor-actions"><button className="button button-primary" type="button" onClick={() => void handleSaveSourceConfig()} disabled={sourceConfigSaving}>{sourceConfigSaving ? "Saving…" : "Save all board changes"}</button></div>
+              </section>
+            </div>
+          )}
+
           {activeView === "matches" && (
             <div className="view-stack">
               <section className="match-toolbar panel">
                 <div className="match-toolbar-copy"><span className="match-toolbar-symbol"><Icon name="sparkles" /></span><div><p className="eyebrow">EVIDENCE-BASED COMPARISON</p><h2>Understand the fit, not just the score</h2><p className="panel-description">CareerMate compares requirements with facts in your reviewed profile. Scores estimate evidence coverage, not your chance of being hired.</p></div></div>
-                <div className="match-controls"><label className="compact-field"><span>Analyze</span><select value={matchLimit} onChange={(event) => setMatchLimit(Number(event.target.value))} disabled={matchLoading}><option value={1}>1 job</option><option value={3}>3 jobs</option><option value={5}>5 jobs</option><option value={10}>10 jobs</option><option value={20}>20 jobs</option></select></label><button className="button button-primary" onClick={handleMatchJobs} disabled={!canAnalyzeMatches} type="button">{matchLoading ? <><span className="spinner spinner-light" /> Analyzing…</> : <><Icon name="sparkles" /> Analyze matches</>}</button></div>
+                <div className="match-controls"><span className="selected-job-count">{selectedMatchJobIds.filter((id) => availableMatchJobs.some((job) => job.id === id)).length} selected · max 20</span><button className="button button-primary" onClick={handleMatchJobs} disabled={!canAnalyzeMatches} type="button">{matchLoading ? <><span className="spinner spinner-light" /> Analyzing…</> : <><Icon name="sparkles" /> Analyze selected jobs</>}</button></div>
+              </section>
+              <section className="panel match-job-picker">
+                <div className="match-job-picker-heading"><div><p className="eyebrow">CHOOSE ROLES TO ANALYSE</p><h3>Find jobs and select the roles you care about</h3><p>Choose from the jobs currently loaded or saved in your Find jobs history. New search results are added to this list. The first three results are preselected as a starting point.</p></div><span className="count-pill">{selectedMatchJobIds.filter((id) => availableMatchJobs.some((job) => job.id === id)).length} / 20</span></div>
+                <div className="match-job-picker-tools"><input className="match-job-search" type="search" aria-label="Search jobs to analyze" value={matchSelectionSearch} onChange={(event) => setMatchSelectionSearch(event.target.value)} placeholder="Search title, company, location or source…" /><button type="button" className="text-action" onClick={() => setSelectedMatchJobIds((current) => [...new Set([...current, ...matchSelectionCandidates.map((job) => job.id)])].slice(0, 20))} disabled={selectedMatchJobIds.length >= 20 || !matchSelectionCandidates.some((job) => !selectedMatchJobIds.includes(job.id))}>Select visible</button><button type="button" className="text-action" onClick={() => setSelectedMatchJobIds([])} disabled={selectedMatchJobIds.length === 0}>Clear</button></div>
+                {availableMatchJobs.length ? <div className="match-job-picker-list">{matchSelectionCandidates.map((job) => {
+                  const existing = applicationForJob(job.id);
+                  const applied = hasAppliedToJob(job.id);
+                  const checked = selectedMatchJobIds.includes(job.id);
+                  const insight = matchByJobId.get(job.id);
+                  const isAnalyzing = analyzingJobIds.includes(job.id);
+                  const scoreClass = insight?.match_score == null ? "score-unavailable" : insight.match_score >= 75 ? "score-strong" : insight.match_score >= 50 ? "score-medium" : "score-low";
+                  const actionLabel = isAnalyzing ? "Analyzing…" : insight && insight.match_score !== null ? "View insight" : insight ? "Retry analysis" : "Analyze job";
+                  return <div className={`match-job-option${checked ? " selected" : ""}${insight ? " has-insight" : ""}`} key={job.id}>
+                    <input type="checkbox" aria-label={`Select ${job.title} for bulk analysis`} checked={checked} disabled={(!checked && selectedMatchJobIds.length >= 20) || matchLoading || isAnalyzing} onChange={(event) => toggleMatchSelection(job.id, event.target.checked)} />
+                    <span className="match-job-option-copy"><button type="button" className="match-job-title-button" onClick={() => { if (insight) openExistingInsight(job.id); else void handleAnalyzeSingleJob(job); }} disabled={isAnalyzing || matchLoading || !profile} aria-label={`${insight ? "View insight for" : "Analyze"} ${job.title}`}>{job.title}</button><small>{job.company || "Company not listed"} · {job.location || "Location not listed"}</small><small className="match-job-row-status">{insight ? `${insight.requirements?.length ?? 0} criteria assessed · ${insight.match_confidence || "confidence unavailable"}` : "Not analysed yet · Select Analyze job to view a report"}</small></span>
+                    {insight && <span className={`match-list-score ${scoreClass}`} title="Evidence-coverage score, not a hiring probability">{insight.match_score === null ? "N/A" : `${insight.match_score}/100`}</span>}
+                    {applied ? <span className="job-history-pill">Already applied{existing?.status === "offer" ? " · Offer" : ""}</span> : null}
+                    <button className={`button button-small ${insight && insight.match_score !== null ? "button-secondary" : "button-primary"} match-job-insight-action`} type="button" disabled={matchLoading || isAnalyzing || jobLoading || cvLoading || saving || !profile} onClick={() => { if (insight && insight.match_score !== null) openExistingInsight(job.id); else void handleAnalyzeSingleJob(job); }} title={!profile ? "Analyze your CV and save your profile first" : undefined}>
+                      {isAnalyzing ? <><span className="spinner" /> {actionLabel}</> : insight && insight.match_score !== null ? <><Icon name="arrow" /> {actionLabel}</> : <><Icon name="sparkles" /> {actionLabel}</>}
+                    </button>
+                  </div>;
+                })}{matchSelectionCandidates.length === 0 && <p className="helper-text">No jobs match that search.</p>}</div> : <div className="match-job-picker-empty"><p>No job results are loaded yet.</p><button className="button button-secondary button-small" type="button" onClick={() => setActiveView("discover")}>Find jobs first <Icon name="arrow" /></button></div>}
               </section>
               {!profile && <div className="inline-hint setup-hint"><Icon name="user" /><div><strong>Your profile is the starting point</strong><p>Upload and analyze your CV, review the extracted facts, and save the profile before running match analysis.</p><button className="button button-secondary" type="button" onClick={() => setActiveView("profile")}>Set up profile <Icon name="arrow" /></button></div></div>}
               {profile && !profileSaved && <div className="inline-hint"><Icon name="info" /><span>Your profile has unsaved edits. CareerMate saves the reviewed version before matching.</span><button className="text-action" type="button" onClick={() => setActiveView("profile")}>Review profile</button></div>}
               {matchLoading && <div className="inline-progress match-progress"><span className="spinner" /><div><strong>Retrieving full job descriptions and comparing requirements</strong><p>CareerMate first tries to read the public original listing when the saved description is only a short snippet, then checks the requirements against your profile. Results are cached for repeat runs.</p></div></div>}
-              {!matchLoading && matches.length === 0 && <div className="panel empty-state match-empty"><span className="empty-icon"><Icon name="sparkles" /></span><h3>Your fit report will appear here</h3><p>Search for jobs and make sure your CV profile has been reviewed. Then analyze the roles you want to compare.</p><div className="empty-state-actions"><button className="button button-primary" type="button" onClick={() => setActiveView("discover")}>Find jobs <Icon name="arrow" /></button>{!profile && <button className="button button-secondary" type="button" onClick={() => setActiveView("profile")}>Review CV profile</button>}</div></div>}
-              {matches.length > 0 && <div className="match-results">{matches.map((job) => <article className="match-card" key={job.id}>
-                <div className="match-card-header"><div><p className="eyebrow">MATCH REPORT</p><h3>{job.title}</h3><p>{job.company} · {job.location}</p>{job.description_fetch_message?.startsWith("Manually pasted advert text") ? <span className="manual-advert-label">USER-PASTED ADVERT · VERIFY SOURCE</span> : job.description_source !== "original_listing" && <span className="provisional-score-label">PRELIMINARY SCORE · FULL ADVERT NOT RETRIEVED</span>}</div><div className={`score-badge ${job.match_score === null ? "score-unavailable" : job.match_score >= 75 ? "score-strong" : job.match_score >= 50 ? "score-medium" : "score-low"}`}><strong>{job.match_score === null ? "N/A" : job.match_score}</strong><span>{job.match_score === null ? "Score unavailable" : "/ 100"}</span></div></div>
-                {job.match_score !== null ? <div className="score-track"><span style={{ width: `${Math.max(0, Math.min(100, job.match_score))}%` }} /></div> : <div className="score-unavailable-explainer"><strong>No reliable score was produced</strong><p>{job.match_confidence === "unavailable" ? job.match_explanation || "The AI provider did not return a reliable requirement assessment." : (job.requirements ?? []).length === 0 ? "CareerMate could not extract usable requirements from the text available for this role. The score is intentionally withheld rather than guessing." : job.match_explanation || "The extracted requirements could not be weighted reliably, so CareerMate has withheld the score."}</p></div>}
-                <div className="match-meta"><span>Confidence: {job.match_confidence}</span><span>Requirements found: {(job.requirements ?? []).length}</span><span>{job.description_fetch_message?.startsWith("Manually pasted advert text") ? "Pasted advert analysed" : job.job_description_source === "original_listing" ? "Full listing analysed" : "Search snippet analysed"}</span><button className="text-action" type="button" onClick={() => { setSelectedJob(job); }}>Open role details <Icon name="arrow" /></button></div>
-                <section className={`decision-panel ${job.recommendation === "review_critical_gaps" || job.recommendation === "significant_gaps" ? "decision-panel-warning" : job.recommendation === "incomplete_description" ? "decision-panel-incomplete" : job.recommendation === "strong_potential_fit" ? "decision-panel-positive" : "decision-panel-neutral"}`}>
-                  <div className="decision-panel-heading"><div><p className="eyebrow">APPLICATION GUIDANCE</p><h4>{job.recommendation_label ?? "Review the requirements"}</h4></div><span className={`decision-gap-count${(job.critical_gaps?.length ?? 0) > 0 ? " has-critical-gaps" : ""}`}>{job.critical_gaps?.length ?? 0} critical gaps</span></div>
-                  <p>{job.recommendation_explanation ?? job.match_explanation}</p>
-                  {(job.critical_gaps?.length ?? 0) > 0 && <div className="critical-gap-list">{(job.critical_gaps ?? []).map((item, index) => <div className="critical-gap-item" key={`${item.requirement}-${index}`}><span>CRITICAL GAP</span><div><strong>{item.requirement}</strong><p>{item.status === "partially_supported" ? "Only partly supported by the current profile." : "Not evidenced in the current profile; verify against the full CV before deciding."} {item.explanation}</p></div></div>)}</div>}
+              {matches.length === 0 && !matchLoading && <p className="match-list-empty-hint">Your analysis reports open in a separate panel. Choose <strong>Analyze job</strong> on any row to create the first report.</p>}
+              {activeInsight && <div className="match-insight-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setActiveInsightJobId(null); }}>
+                <section className="match-insight-drawer" role="dialog" aria-modal="true" aria-labelledby="active-match-report-title">
+                  <header className="match-insight-drawer-header"><div><p className="eyebrow">MATCH INSIGHT</p><h2 id="active-match-report-title">{activeInsight.title}</h2><p>{activeInsight.company || "Company not listed"} · {activeInsight.location || "Location not listed"}</p></div><button type="button" className="match-insight-close" onClick={() => setActiveInsightJobId(null)} aria-label="Close match insight">×</button></header>
+                  <div className="match-insight-drawer-body"><article className="match-card">
+                <div className="match-card-header"><div><p className="eyebrow">MATCH REPORT</p><h3>{activeInsight.title}</h3><p>{activeInsight.company} · {activeInsight.location}</p>{activeInsight.description_fetch_message?.startsWith("Manually pasted advert text") ? <span className="manual-advert-label">USER-PASTED ADVERT · VERIFY SOURCE</span> : activeInsight.description_source !== "original_listing" && <span className="provisional-score-label">PRELIMINARY SCORE · FULL ADVERT NOT RETRIEVED</span>}</div><div className={`score-badge ${activeInsight.match_score === null ? "score-unavailable" : activeInsight.match_score >= 75 ? "score-strong" : activeInsight.match_score >= 50 ? "score-medium" : "score-low"}`}><strong>{activeInsight.match_score === null ? "N/A" : activeInsight.match_score}</strong><span>{activeInsight.match_score === null ? "Score unavailable" : "/ 100"}</span></div></div>
+                {activeInsight.match_score !== null ? <div className="score-track"><span style={{ width: `${Math.max(0, Math.min(100, activeInsight.match_score))}%` }} /></div> : <div className="score-unavailable-explainer"><strong>No reliable score was produced</strong><p>{activeInsight.match_confidence === "unavailable" ? activeInsight.match_explanation || "The AI provider did not return a reliable requirement assessment." : (activeInsight.requirements ?? []).length === 0 ? "CareerMate could not extract usable requirements from the text available for this role. The score is intentionally withheld rather than guessing." : activeInsight.match_explanation || "The extracted requirements could not be weighted reliably, so CareerMate has withheld the score."}</p></div>}
+                <div className="match-meta"><span>Confidence: {activeInsight.match_confidence}</span><span>Requirements found: {(activeInsight.requirements ?? []).length}</span><span>{activeInsight.description_fetch_message?.startsWith("Manually pasted advert text") ? "Pasted advert analysed" : activeInsight.job_description_source === "original_listing" ? "Full listing analysed" : "Search snippet analysed"}</span><button className="text-action" type="button" onClick={() => { setSelectedJob(activeInsight); setActiveInsightJobId(null); }}>Open role details <Icon name="arrow" /></button></div>
+                <section className={`decision-panel ${activeInsight.recommendation === "review_critical_gaps" || activeInsight.recommendation === "significant_gaps" ? "decision-panel-warning" : activeInsight.recommendation === "incomplete_description" ? "decision-panel-incomplete" : activeInsight.recommendation === "strong_potential_fit" ? "decision-panel-positive" : "decision-panel-neutral"}`}>
+                  <div className="decision-panel-heading"><div><p className="eyebrow">APPLICATION GUIDANCE</p><h4>{activeInsight.recommendation_label ?? "Review the requirements"}</h4></div><span className={`decision-gap-count${(activeInsight.critical_gaps?.length ?? 0) > 0 ? " has-critical-gaps" : ""}`}>{activeInsight.critical_gaps?.length ?? 0} critical gaps</span></div>
+                  <p>{activeInsight.recommendation_explanation ?? activeInsight.match_explanation}</p>
+                  {(activeInsight.critical_gaps?.length ?? 0) > 0 && <div className="critical-gap-list">{(activeInsight.critical_gaps ?? []).map((item, index) => <div className="critical-gap-item" key={`${item.requirement}-${index}`}><span>CRITICAL GAP</span><div><strong>{item.requirement}</strong><p>{item.status === "partially_supported" ? "Only partly supported by the current profile." : "Not evidenced in the current profile; verify against the full CV before deciding."} {item.explanation}</p></div></div>)}</div>}
                 </section>
-                <p className="match-explanation">{job.match_explanation}</p>
-                {job.description_source !== "original_listing" && <div className="match-incomplete-notice"><div><strong>Don't decide from this score yet</strong><p>{job.description_fetch_message || "The original employer advert has not been retrieved. The requirements below may be incomplete, so this score is provisional."}</p></div><div className="match-incomplete-actions"><button className="button button-secondary button-small" type="button" onClick={() => void handleEnrichAndReanalyze(job)} disabled={enrichingJobId === job.id || matchLoading}>{enrichingJobId === job.id ? <><span className="spinner" /> Fetching…</> : <><Icon name="refresh" /> Fetch &amp; reanalyse</>}</button><button className="button button-secondary button-small" type="button" onClick={() => { setManualAdvertJobId(manualAdvertJobId === job.id ? null : job.id); setManualAdvertText(""); }} disabled={matchLoading}>{manualAdvertJobId === job.id ? "Close paste form" : "Paste advert text"}</button></div></div>}
-                {manualAdvertJobId === job.id && <div className="manual-advert-entry"><div><strong>Paste the original advert</strong><p>Open “Review original job advert”, copy the job description and paste it here. It will be stored in your local CareerMate workspace; it is not independently verified.</p></div><textarea aria-label="Paste original job advert text" value={manualAdvertText} onChange={(event) => setManualAdvertText(event.target.value)} rows={8} maxLength={30000} placeholder="Paste responsibilities, requirements, qualifications and bonus skills…" /><div className="manual-advert-actions"><span>{manualAdvertText.trim().length.toLocaleString()} / 30,000 characters · at least 300 required</span><button className="button button-primary button-small" type="button" onClick={() => void handleSaveManualAdvert(job)} disabled={manualAdvertSavingId === job.id || manualAdvertText.trim().length < 300}>{manualAdvertSavingId === job.id ? <><span className="spinner spinner-light" /> Saving &amp; analysing…</> : "Save advert & reanalyse"}</button></div></div>}
-                <div className="requirement-summary-bar"><span><strong>{(job.requirements ?? []).length}</strong> criteria extracted</span><span><strong>{(job.requirements ?? []).filter((item) => item.status === "supported").length}</strong> evidenced</span><span className={(job.critical_gaps?.length ?? 0) > 0 ? "requirement-summary-alert" : ""}><strong>{job.critical_gaps?.length ?? 0}</strong> critical gaps</span></div>
-                <div className="requirement-grid"><RequirementList title="Supported · evidence found" kind="supported" items={(job.requirements ?? []).filter((item) => item.status === "supported")} /><RequirementList title="Partially supported · review" kind="partial" items={(job.requirements ?? []).filter((item) => item.status === "partially_supported")} /><RequirementList title="Missing from CV evidence" kind="missing" items={(job.requirements ?? []).filter((item) => item.status === "not_evidenced")} /></div>
-                <details className="match-job-description"><summary>Read full job description used for this analysis</summary><p className="description-source-note">{job.description_fetch_message?.startsWith("Manually pasted advert text") ? "Pasted by you from the advert page; CareerMate has not independently verified the text." : job.job_description_source === "original_listing" ? `Retrieved from the public original listing${job.description_fetched_at ? ` · ${job.description_fetched_at}` : ""}.` : "Only the search-result description was available. Fetch the original listing from role details for a more complete analysis."}</p><div className="full-job-description">{job.description?.trim() || "No job description was provided by the source."}</div></details>
-                <p className="score-note">{job.score_note}</p>
-                {safeExternalUrl(job.source_url || job.apply_url) && <a className="text-link" href={safeExternalUrl(job.source_url || job.apply_url) ?? undefined} target="_blank" rel="noopener noreferrer">Review original job advert <Icon name="arrow" /></a>}
-              </article>)}</div>}
+                <p className="match-explanation">{activeInsight.match_explanation}</p>
+                {activeInsight.description_source !== "original_listing" && <div className="match-incomplete-notice"><div><strong>Don't decide from this score yet</strong><p>{activeInsight.description_fetch_message || "The original employer advert has not been retrieved. The requirements below may be incomplete, so this score is provisional."}</p></div><div className="match-incomplete-actions"><button className="button button-secondary button-small" type="button" onClick={() => void handleEnrichAndReanalyze(activeInsight)} disabled={enrichingJobId === activeInsight.id || matchLoading}>{enrichingJobId === activeInsight.id ? <><span className="spinner" /> Fetching…</> : <><Icon name="refresh" /> Fetch &amp; reanalyse</>}</button><button className="button button-secondary button-small" type="button" onClick={() => { setManualAdvertJobId(manualAdvertJobId === activeInsight.id ? null : activeInsight.id); setManualAdvertText(""); }} disabled={matchLoading}>{manualAdvertJobId === activeInsight.id ? "Close paste form" : "Paste advert text"}</button></div></div>}
+                {manualAdvertJobId === activeInsight.id && <div className="manual-advert-entry"><div><strong>Paste the original advert</strong><p>Open “Review original job advert”, copy the job description and paste it here. It will be stored in your local CareerMate workspace; it is not independently verified.</p></div><textarea aria-label="Paste original job advert text" value={manualAdvertText} onChange={(event) => setManualAdvertText(event.target.value)} rows={8} maxLength={30000} placeholder="Paste responsibilities, requirements, qualifications and bonus skills…" /><div className="manual-advert-actions"><span>{manualAdvertText.trim().length.toLocaleString()} / 30,000 characters · at least 300 required</span><button className="button button-primary button-small" type="button" onClick={() => void handleSaveManualAdvert(activeInsight)} disabled={manualAdvertSavingId === activeInsight.id || manualAdvertText.trim().length < 300}>{manualAdvertSavingId === activeInsight.id ? <><span className="spinner spinner-light" /> Saving &amp; analysing…</> : "Save advert & reanalyse"}</button></div></div>}
+                <div className="requirement-summary-bar"><span><strong>{(activeInsight.requirements ?? []).length}</strong> criteria extracted</span><span><strong>{(activeInsight.requirements ?? []).filter((item) => item.status === "supported").length}</strong> evidenced</span><span className={(activeInsight.critical_gaps?.length ?? 0) > 0 ? "requirement-summary-alert" : ""}><strong>{activeInsight.critical_gaps?.length ?? 0}</strong> critical gaps</span></div>
+                <div className="requirement-grid"><RequirementList title="Supported · evidence found" kind="supported" items={(activeInsight.requirements ?? []).filter((item) => item.status === "supported")} /><RequirementList title="Partially supported · review" kind="partial" items={(activeInsight.requirements ?? []).filter((item) => item.status === "partially_supported")} /><RequirementList title="Missing from CV evidence" kind="missing" items={(activeInsight.requirements ?? []).filter((item) => item.status === "not_evidenced")} /></div>
+                <details className="match-job-description"><summary>Read full job description used for this analysis</summary><p className="description-source-note">{activeInsight.description_fetch_message?.startsWith("Manually pasted advert text") ? "Pasted by you from the advert page; CareerMate has not independently verified the text." : activeInsight.job_description_source === "original_listing" ? `Retrieved from the public original listing${activeInsight.description_fetched_at ? ` · ${activeInsight.description_fetched_at}` : ""}.` : "Only the search-result description was available. Fetch the original listing from role details for a more complete analysis."}</p><div className="full-job-description">{activeInsight.description?.trim() || "No job description was provided by the source."}</div></details>
+                <p className="score-note">{activeInsight.score_note}</p>
+                {safeExternalUrl(activeInsight.source_url || activeInsight.apply_url) && <a className="text-link" href={safeExternalUrl(activeInsight.source_url || activeInsight.apply_url) ?? undefined} target="_blank" rel="noopener noreferrer">Review original job advert <Icon name="arrow" /></a>}
+                  </article></div>
+                  <footer className="match-insight-drawer-footer"><button className="button button-secondary" type="button" onClick={() => { setActiveInsightJobId(null); setActiveView("discover"); }}>Find more jobs</button><button className="button button-primary" type="button" onClick={() => { setSelectedJob(activeInsight); setActiveInsightJobId(null); }}>Open job details <Icon name="arrow" /></button></footer>
+                </section>
+              </div>}
             </div>
           )}
 
@@ -1420,14 +2112,21 @@ function App() {
                 <div className="applications-layout">
                   <section className="panel application-list-panel">
                     <div className="panel-titlebar"><div><p className="eyebrow">YOUR PIPELINE</p><h2>Tracked applications <span className="count-pill">{applications.length}</span></h2><p>Choose a role to update its stage or prepare materials.</p></div></div>
+                    <div className="application-list-tabs" role="tablist" aria-label="Filter applications">
+                      <button type="button" role="tab" aria-selected={applicationListTab === "all"} className={applicationListTab === "all" ? "active" : ""} onClick={() => setApplicationListTab("all")}>All <span>{applications.length}</span></button>
+                      <button type="button" role="tab" aria-selected={applicationListTab === "active"} className={applicationListTab === "active" ? "active" : ""} onClick={() => setApplicationListTab("active")}>To do <span>{applications.filter((item) => ["saved", "preparing"].includes(item.status)).length}</span></button>
+                      <button type="button" role="tab" aria-selected={applicationListTab === "submitted"} className={applicationListTab === "submitted" ? "active" : ""} onClick={() => setApplicationListTab("submitted")}>Submitted / completed <span>{submittedApplicationCount}</span></button>
+                      <button type="button" role="tab" aria-selected={applicationListTab === "offers"} className={applicationListTab === "offers" ? "active" : ""} onClick={() => setApplicationListTab("offers")}>Interviews & offers <span>{applications.filter((item) => ["interview", "offer"].includes(item.status)).length}</span></button>
+                    </div>
                     <div className="application-list">
-                      {applications.map((application) => (
+                      {visibleApplications.map((application) => (
                         <button type="button" key={application.id} className={`application-list-item${application.id === selectedApplicationId ? " selected" : ""}`} onClick={() => selectApplication(application)} aria-pressed={application.id === selectedApplicationId}>
                           <span className="application-company-avatar">{(application.company || "?").trim().charAt(0).toUpperCase()}</span>
                           <span className="application-list-copy"><strong>{application.title}</strong><small>{application.company || "Company not listed"} · {application.location || "Location not listed"}</small><span className={`application-status-pill status-${application.status}`}>{APPLICATION_STATUS_LABELS[application.status]}</span></span>
                           <Icon name="chevron" />
                         </button>
                       ))}
+                      {visibleApplications.length === 0 && <div className="application-filter-empty"><strong>No applications in this view yet.</strong><p>Applications move here when you update their stage in the details panel.</p></div>}
                     </div>
                   </section>
                   {selectedApplication ? (
@@ -1456,28 +2155,55 @@ function App() {
                         <div className="application-question-action"><button className="button button-secondary" type="button" onClick={() => void handleDraftAnswer()} disabled={!canGenerateApplicationDraft || !profile || applicationQuestion.trim().length < 5}>{draftingAnswer ? <><span className="spinner" /> Drafting answer…</> : <><Icon name="sparkles" /> Draft answer</>}</button></div>
                         {applicationAnswers.length > 0 && <div className="application-answers-list">{applicationAnswers.map((answer, index) => <div className="application-answer-editor" key={`${answer.question}-${index}`}><div className="application-answer-question"><strong>{answer.question}</strong><button className="text-action" type="button" onClick={() => setApplicationAnswers((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></div><TextAreaField label="Edit answer" value={answer.answer} onChange={(value) => editApplicationAnswer(index, value)} rows={5} /></div>)}</div>}
                       </section>
+                      {selectedApplication.submitted_details?.length ? <section className="application-draft-section"><div className="application-section-heading"><div><p className="eyebrow">APPLICATION HISTORY</p><h3>Details captured at submission</h3><p>Locally stored snapshot of the answers CareerMate had prepared when submission was confirmed. Use this as a reference during interviews or offers.</p></div></div><details className="submitted-details-panel"><summary>Show submitted details ({selectedApplication.submitted_details.length})</summary><div className="submitted-details-list">{selectedApplication.submitted_details.map((detail, index) => <div key={`${detail.question}-${index}`}><strong>{detail.question}</strong><p>{detail.answer || "(empty)"}</p></div>)}</div></details></section> : null}
                       <section className="application-draft-section browser-assist-section">
-                        <div className="application-section-heading"><div><p className="eyebrow">STEP 14 · BROWSER ASSISTANCE</p><h3>Prepare the employer form</h3><p>Open a visible browser, review suggested values, then choose which fields to fill.</p></div></div>
-                        <div className="browser-assist-safety"><Icon name="shield" /><span>CareerMate never clicks Submit, uploads files, fills password/verification fields, or bypasses CAPTCHA or sign-in checks. Form values stay in browser memory and are not saved to the JSON tracker.</span></div>
-                      <div className="browser-setup-line"><span><Icon name="info" /> Visible browser setup</span><button className="text-action" type="button" onClick={() => void handleCheckBrowserSetup()} disabled={browserDiagnosticsLoading}>{browserDiagnosticsLoading ? "Checking…" : "Check Playwright / Chromium"}</button>{browserDiagnostics && <small className={browserDiagnostics.playwright_installed && browserDiagnostics.chromium_installed ? "browser-setup-ok" : "browser-setup-error"}>{browserDiagnostics.message}{!browserDiagnostics.chromium_installed && ` Install with: ${browserDiagnostics.install_command}`}</small>}</div>
+                        <div className="application-section-heading"><div><p className="eyebrow">AUTO APPLY · REVIEW FIRST</p><h3>Prepare and submit the employer application</h3><p>CareerMate can follow supported Apply and Continue steps, draft answers from your saved profile, fill approved fields, and submit only after your final confirmation.</p></div></div>
+                        <div className="browser-assist-safety"><Icon name="shield" /><span>Every proposed value is editable. CareerMate never guesses salary, work authorization, identity, financial, password, verification, or legal-consent answers. Login and CAPTCHA must be completed by you. The final submit button is separate and requires explicit approval.</span></div>
+                        <div className="browser-setup-line"><span><Icon name="info" /> Visible browser setup</span><button className="text-action" type="button" onClick={() => void handleCheckBrowserSetup()} disabled={browserDiagnosticsLoading}>{browserDiagnosticsLoading ? "Checking…" : "Check Playwright / Chromium"}</button>{browserDiagnostics && <small className={browserDiagnostics.playwright_installed && browserDiagnostics.chromium_installed ? "browser-setup-ok" : "browser-setup-error"}>{browserDiagnostics.message}{!browserDiagnostics.chromium_installed && ` Install with: ${browserDiagnostics.install_command}`}</small>}</div>
                         <div className="browser-assist-actions">
-                          <button className="button button-secondary button-small" type="button" onClick={() => void handleOpenBrowserAssistant()} disabled={!selectedApplication.job_url || browserOpening || browserScanning || browserFilling}>{browserOpening ? <><span className="spinner" /> Opening browser…</> : "Open application page"}</button>
+                          <button className="button button-secondary button-small" type="button" onClick={() => void handleOpenBrowserAssistant()} disabled={!selectedApplication.job_url || browserOpening || browserScanning || browserFilling || browserNavigating || browserAutoPreparing}>{browserOpening ? <><span className="spinner" /> Opening browser…</> : "Open application page"}</button>
+                          <button className="button button-primary button-small" type="button" onClick={() => void handleAutoPrepareApplication()} disabled={!selectedApplication.job_url || browserOpening || browserScanning || browserFilling || browserNavigating || browserSubmitting || browserAutoPreparing}>{browserAutoPreparing ? <><span className="spinner spinner-light" /> Preparing full application…</> : "Auto prepare entire application"}</button>
                           {browserSession?.application_id === selectedApplication.id && <>
-                            <button className="button button-secondary button-small" type="button" onClick={() => void handleScanBrowserForm()} disabled={browserOpening || browserScanning || browserFilling}>{browserScanning ? <><span className="spinner" /> Scanning…</> : "Refresh form fields"}</button>
-                            <button className="button button-quiet button-small" type="button" onClick={() => void handleCloseBrowserAssistant()} disabled={browserFilling}>Close browser session</button>
+                            {browserSession.has_apply_action && <button className="button button-secondary button-small" type="button" onClick={() => void handleAdvanceBrowserStep("apply")} disabled={browserNavigating || browserOpening || browserScanning || browserFilling || browserAutoPreparing}>{browserNavigating ? <><span className="spinner spinner-light" /> Opening application…</> : "Find application form automatically"}</button>}
+                            <button className="button button-secondary button-small" type="button" onClick={() => void handleScanBrowserForm()} disabled={browserOpening || browserScanning || browserFilling || browserNavigating || browserAutoPreparing}>{browserScanning ? <><span className="spinner" /> Scanning…</> : "Refresh current step"}</button>
+                            <button className="button button-quiet button-small" type="button" onClick={() => void handleCloseBrowserAssistant()} disabled={browserFilling || browserSubmitting || browserNavigating || browserAutoPreparing}>Close browser session</button>
                           </>}
                         </div>
+                        <p className="browser-auto-prepare-help">Auto prepare follows supported Apply/Continue steps across tabs and scans supported embedded forms. It fills profile-backed values and eligible AI drafts, then stops for missing required answers, unsupported controls, or security checks. It never submits without the separate final approval below.</p>
                         {browserSession?.application_id === selectedApplication.id && <>
-                          <div className="browser-assist-page"><strong>{browserSession.title || "Employer page"}</strong><span>{browserSession.url}</span><small>Visible Chromium session · page navigation and sign-in remain manual</small></div>
+                          <div className="browser-assist-page"><strong>{browserSession.title || "Employer page"}</strong><span>{browserSession.url}</span><small>Multi-tab Chromium session · CareerMate automatically switches to newly opened application tabs and scans supported embedded forms. Final submission still requires your approval.</small>
+                            {(browserSession.open_pages?.length ?? 0) > 1 && <label className="browser-page-selector">Open application tabs<select className="browser-field-select" value={browserSession.active_page_index ?? 0} onChange={(event) => void handleSelectBrowserPage(Number(event.target.value))} disabled={browserScanning || browserOpening || browserFilling || browserNavigating}><option value={-1} disabled>Select a tab…</option>{browserSession.open_pages?.map((page) => <option key={`${page.page_index}-${page.url}`} value={page.page_index}>{page.active ? "● " : ""}{page.title || "Untitled tab"} · {page.url}</option>)}</select><small>Choose the tab that currently contains the employer's application form.</small></label>}
+                            {browserSession.cookie_action && <small>Cookie preference applied: {browserSession.cookie_action}</small>}
+                          </div>
+                          {browserPreparedSteps.length > 0 && <section className="browser-prepared-summary">
+                            <div className="browser-field-heading"><strong>Full application preparation preview</strong><span>{browserPreparedSteps.length} step(s) visited · {browserPreparedSteps.reduce((sum, step) => sum + step.filled_count, 0)} field(s) filled · nothing submitted yet</span></div>
+                            {browserPreparedSteps.map((step) => <details className="browser-prepared-step" key={`${step.step}-${step.url}`} open={step.status === "needs_attention" || step.status === "ready"}>
+                              <summary><span>Step {step.step}: {step.title}</span><em className={`browser-prepared-status ${step.status}`}>{step.status === "ready" ? "Ready for final review" : step.status === "needs_attention" ? "Needs attention" : "Prepared"}</em></summary>
+                              <small className="browser-prepared-url">{step.url}</small>
+                              <p>{step.note}</p>
+                              <div className="browser-prepared-values">{step.fields.map((field, index) => <div key={`${step.step}-${index}`}><span>{field.label}{field.required ? " *" : ""}</span><code>{field.value || "(empty)"}</code><small>{field.filled ? "Filled" : "Not filled"}</small></div>)}</div>
+                            </details>)}
+                            <p className="browser-auto-prepare-help">Previous-step entries are a record of what CareerMate filled. To change an earlier answer, use Chromium Back or select that earlier tab, then refresh the step and edit/refill it. The editable controls for the currently selected step remain below.</p>
+                          </section>}
                           {browserFieldDrafts.length > 0 ? <>
-                            <div className="browser-field-heading"><strong>Review fields ({browserFieldDrafts.length})</strong><span>Only checked fields with a value will be filled</span></div>
-                            <div className="browser-field-list">{browserFieldDrafts.map((field) => <article className="browser-field-card" key={field.field_id}>
-                              <div className="browser-field-card-header"><label className="browser-field-include"><input type="checkbox" checked={field.include} onChange={(event) => updateBrowserField(field.field_id, { include: event.target.checked })} /><span>{field.label}{field.required && <em>Required</em>}</span></label><span className="browser-field-kind">{field.kind}</span></div>
-                              {field.suggested_key && <small className="browser-field-source">Suggested from: {suggestedBrowserValueLabel(field.suggested_key)}</small>}
-                              <TextAreaField label="Proposed value — review and edit" value={field.value} onChange={(value) => updateBrowserField(field.field_id, { value })} rows={field.kind === "textarea" || field.value.length > 160 ? 3 : 2} placeholder={field.suggested_key ? "Review the suggested value" : "Enter a value yourself after reviewing the form label"} />
-                            </article>)}</div>
-                            <button className="button button-primary" type="button" onClick={() => void handleFillBrowserForm()} disabled={browserFilling || browserOpening || browserScanning || !browserFieldDrafts.some((field) => field.include && field.value.trim())}>{browserFilling ? <><span className="spinner spinner-light" /> Filling reviewed fields…</> : "Fill selected fields — do not submit"}</button>
-                          </> : <p className="helper-text">No supported fields found yet. If the browser is showing a listing page, manually open its application form and select “Refresh form fields”. Password, file, CAPTCHA and submit fields are deliberately excluded.</p>}
+                            <div className="browser-field-heading"><strong>Review this step ({browserFieldDrafts.length} fields)</strong><span>Checked rows are the only values CareerMate will apply to the employer page.</span><button className="text-action" type="button" onClick={selectAllBrowserProposals}>Select all proposed values</button></div>
+                            <div className="browser-field-list">{browserFieldDrafts.map((field) => { const looksLikeQuestion = /\b(why|what|how|describe|tell us|explain|motivation|achievement|impressive|compensation|salary|notice period|work authori[sz]ation|visa|sponsorship)\b|\?/.test(field.label.toLocaleLowerCase()); const needsUserInput = (!field.value.trim() && (field.required || field.kind === "textarea" || looksLikeQuestion)) || Boolean(field.suggestion_source?.startsWith("Local fallback")); return <article className={`browser-field-card${needsUserInput ? " needs-user-input" : ""}`} key={field.field_id}>
+                              <div className="browser-field-card-header"><label className="browser-field-include"><input type="checkbox" checked={field.include} onChange={(event) => updateBrowserField(field.field_id, { include: event.target.checked })} /><span>{field.label}{field.required && <em>Required</em>}{needsUserInput && <em className="needs-input-badge">{field.value.trim() ? "Needs review" : "Needs your input"}</em>}</span></label><span className="browser-field-kind">{field.kind}</span></div>
+                              {field.suggestion_source ? <small className={`browser-field-source${field.suggestion_source.startsWith("Local fallback") ? " browser-field-source-warning" : ""}`}>{field.suggestion_source}</small> : field.suggested_key && <small className="browser-field-source">Suggested from: {suggestedBrowserValueLabel(field.suggested_key)}</small>}
+                              {field.kind === "file" ? <p className="browser-file-guidance">{field.suggested_key === "cv_file" ? "Attach the saved CV PDF (current.pdf). Untick this row if the application asks for a different document." : "No saved CV PDF is available for automatic attachment."}</p>
+                                : field.kind === "select" || field.kind === "radio" ? <label className="browser-control-label">Review selection<select className="browser-field-select" value={field.value} onChange={(event) => updateBrowserField(field.field_id, { value: event.target.value })}><option value="">Choose an option…</option>{(field.options ?? []).map((option) => <option key={`${field.field_id}-${option.value}`} value={option.value}>{option.label || option.value}</option>)}</select></label>
+                                : field.kind === "checkbox" ? <label className="browser-control-label">Set checkbox value<select className="browser-field-select" value={field.value || "false"} onChange={(event) => updateBrowserField(field.field_id, { value: event.target.value })}><option value="true">Yes / checked</option><option value="false">No / unchecked</option></select><small>Only applies if the row is checked above. Legal consent controls are excluded.</small></label>
+                                : field.kind === "textarea" || field.value.length > 160 ? <TextAreaField label="Proposed value — review and edit" value={field.value} onChange={(value) => updateBrowserField(field.field_id, { value })} rows={field.kind === "textarea" || field.value.length > 160 ? 4 : 2} placeholder={field.suggested_key ? "Review the suggested value" : "Use AI suggestions or enter a value after reviewing the question"} />
+                                : <label className="browser-control-label">Proposed value — review and edit<input className="browser-field-input" type={(["email", "tel", "url", "date", "number", "search"].includes(field.kind) ? field.kind : "text")} value={field.value} onChange={(event) => updateBrowserField(field.field_id, { value: event.target.value })} placeholder={field.placeholder || (field.suggested_key ? "Review suggested value" : "Enter a value or request an AI suggestion")} /></label>}
+                            </article>; })}</div>
+                            <div className="browser-review-actions">
+                              <button className="button button-secondary" type="button" onClick={() => void handleSuggestBrowserAnswers()} disabled={browserSuggesting || browserFilling || browserNavigating || !browserFieldDrafts.some((field) => ["text", "textarea"].includes(field.kind))}>{browserSuggesting ? <><span className="spinner" /> Drafting answers…</> : "Generate AI suggestions for questions"}</button>
+                              <button className="button button-primary" type="button" onClick={() => void handleFillBrowserForm(false)} disabled={browserFilling || browserOpening || browserScanning || browserNavigating || !browserFieldDrafts.some((field) => field.include && field.value.trim())}>{browserFilling ? <><span className="spinner spinner-light" /> Filling reviewed values…</> : "Approve & fill this step"}</button>
+                              {browserSession.has_continue_action && browserFieldDrafts.some((field) => field.include && field.value.trim()) && <button className="button button-primary" type="button" onClick={() => void handleFillBrowserForm(true)} disabled={browserFilling || browserOpening || browserScanning || browserNavigating}>{browserFilling ? <><span className="spinner spinner-light" /> Filling & continuing…</> : "Approve, fill & continue automatically"}</button>}
+                              {browserSession.has_continue_action && !browserFieldDrafts.some((field) => field.include && field.value.trim()) && <button className="button button-secondary" type="button" onClick={() => void handleAdvanceBrowserStep("continue")} disabled={browserNavigating || browserFilling}>{browserNavigating ? "Continuing…" : "Continue to next step"}</button>}
+                            </div>
+                          </> : <div className="browser-no-fields"><strong>No supported application fields on this page yet.</strong><p>{browserSession.has_apply_action ? "CareerMate detected an Apply control. Choose Find application form automatically to open the next page." : browserSession.has_continue_action ? "A Continue control was detected. Use it after completing any required manual checks." : "If the employer requires sign-in or security verification, complete it manually in Chromium, then choose Refresh current step."}</p></div>}
+                          {browserSession.submit_available && <div className="browser-final-submit"><div><p className="eyebrow">FINAL STEP</p><h4>Review and approve submission</h4><p>CareerMate detected a likely final application control. The application will not be sent until you check the confirmation below and press the submit button.</p></div><label className="browser-submit-confirm"><input type="checkbox" checked={browserSubmitApproved} onChange={(event) => setBrowserSubmitApproved(event.target.checked)} /><span>I reviewed the completed form and all attached documents, and I authorize CareerMate to submit this application to the employer.</span></label><button className="button button-danger" type="button" onClick={() => void handleSubmitBrowserApplication()} disabled={!browserSubmitApproved || browserSubmitting || browserFilling || browserNavigating}>{browserSubmitting ? <><span className="spinner spinner-light" /> Submitting after approval…</> : "Submit application to employer"}</button><small>If CAPTCHA, login, or verification is required, complete it yourself first. If CareerMate cannot verify the result, check the employer page before marking the application as applied.</small></div>}
                         </>}
                       </section>
                       <div className="application-save-row"><p className="helper-text">Saved locally in <code>data/applications/applications.json</code>. Nothing is submitted automatically.</p><button className="button button-primary" type="button" onClick={() => void handleSaveApplication()} disabled={applicationSaving || draftingAnswer || draftingCoverLetter}>{applicationSaving ? <><span className="spinner spinner-light" /> Saving…</> : <><Icon name="check" /> Save application</>}</button></div>
@@ -1608,10 +2334,11 @@ function App() {
           <p className="drawer-company">{selectedJob.company || "Company not listed"}</p>
           <div className="drawer-meta"><span><Icon name="pin" />{selectedJob.location || "Location not listed"}</span><span><Icon name="briefcase" />{workModeLabel(selectedJob.work_mode)}</span>{selectedJob.published_at && <span><Icon name="clock" />{selectedJob.published_at}</span>}</div>
           {selectedJob.search_roles?.length ? <div className="drawer-tags">{selectedJob.search_roles.map((role) => <span className="job-role-badge" key={role}>{role}</span>)}</div> : null}
+          {hasAppliedToJob(selectedJob.id) && <div className="drawer-application-history"><div><strong>Already applied</strong><span>{APPLICATION_STATUS_LABELS[applicationForJob(selectedJob.id)?.status ?? "applied"]} · application details saved locally</span></div><button type="button" className="text-action" onClick={() => void handleTrackJob(selectedJob.id)}>Open tracker <Icon name="arrow" /></button></div>}
           {matches.find((item) => item.id === selectedJob.id) && <div className="drawer-match-summary"><span className="drawer-match-score">{matches.find((item) => item.id === selectedJob.id)?.match_score ?? "—"}<small>/ 100</small></span><span><strong>CV match estimate</strong><small>Evidence coverage, not a hiring probability</small></span><button type="button" className="text-action" onClick={() => { setSelectedJob(null); setActiveView("matches"); }}>View analysis <Icon name="arrow" /></button></div>}
-          <div className="drawer-section"><div className="drawer-section-heading"><h3>About this role</h3><span className={`description-quality-pill ${selectedJob.description_source === "original_listing" ? "description-quality-full" : "description-quality-snippet"}`}>{selectedJob.description_fetch_message?.startsWith("Manually pasted advert text") ? "Pasted advert" : selectedJob.description_source === "original_listing" ? "Full listing" : "Search snippet"}</span></div><div className="drawer-description">{selectedJob.description?.trim() || "The source did not provide a description in the search response. Fetch the original public listing or open it below."}</div>{selectedJob.description_source !== "original_listing" && <button type="button" className="button button-secondary button-full fetch-description-button" onClick={() => void handleEnrichJobDetails(selectedJob)} disabled={enrichingJobId === selectedJob.id}>{enrichingJobId === selectedJob.id ? <><span className="spinner" /> Fetching full job details…</> : "Fetch full job description"}</button>}{selectedJob.description_fetch_status === "failed" && selectedJob.description_fetch_message && <p className="description-fetch-warning">{selectedJob.description_fetch_message}</p>}</div>
+          <div className="drawer-section"><div className="drawer-section-heading"><h3>About this role</h3><span className={`description-quality-pill ${selectedJob.description_source === "original_listing" ? "description-quality-full" : "description-quality-snippet"}`}>{selectedJob.description_fetch_message?.startsWith("Manually pasted advert text") ? "Pasted advert" : selectedJob.description_source === "original_listing" ? "Full listing" : "Search snippet"}</span></div>{(() => { const description = selectedJob.description?.trim() || "The source did not provide a description in the search response. Fetch the original public listing or open it below."; const longDescription = description.length > 900; return longDescription ? <><div className="drawer-description drawer-description-preview">{description.slice(0, 760).trimEnd()}…</div><details className="drawer-description-more"><summary>Show full job description ({description.length.toLocaleString()} characters)</summary><div className="drawer-description">{description}</div></details></> : <div className="drawer-description">{description}</div>; })()}{selectedJob.description_source !== "original_listing" && <button type="button" className="button button-secondary button-full fetch-description-button" onClick={() => void handleEnrichJobDetails(selectedJob)} disabled={enrichingJobId === selectedJob.id}>{enrichingJobId === selectedJob.id ? <><span className="spinner" /> Fetching full job details…</> : "Fetch full job description"}</button>}{selectedJob.description_fetch_status === "failed" && selectedJob.description_fetch_message && <p className="description-fetch-warning">{selectedJob.description_fetch_message}</p>}</div>
           <div className="drawer-facts"><div><span>Work arrangement</span><strong>{workModeLabel(selectedJob.work_mode)}</strong></div><div><span>Source</span><strong>{sourceLabel(selectedJob.source)}</strong></div><div><span>Published</span><strong>{selectedJob.published_at || "Not provided"}</strong></div></div>
-          <div className="drawer-footer"><p>Review the original description and requirements before applying.</p><button type="button" className="button button-secondary button-full" onClick={() => void handleTrackJob(selectedJob.id)}>{applications.some((application) => application.job_id === selectedJob.id) ? "Open in application tracker" : "Add to application tracker"} <Icon name="briefcase" /></button>{safeExternalUrl(selectedJob.source_url) ? <a className="button button-primary button-full" href={safeExternalUrl(selectedJob.source_url) ?? undefined} target="_blank" rel="noopener noreferrer">View original listing · {sourceLabel(selectedJob.source)} <Icon name="arrow" /></a> : null}{safeExternalUrl(selectedJob.apply_url) && selectedJob.apply_url !== selectedJob.source_url ? <a className="button button-secondary button-full" href={safeExternalUrl(selectedJob.apply_url) ?? undefined} target="_blank" rel="noopener noreferrer">Open application website <Icon name="arrow" /></a> : !safeExternalUrl(selectedJob.source_url) && !safeExternalUrl(selectedJob.apply_url) ? <span className="helper-text">No public listing URL was provided for this job.</span> : null}<button type="button" className="button button-quiet button-full" onClick={() => setSelectedJob(null)}>Back to results</button></div>
+          <div className="drawer-footer"><p>Review the original description and requirements before applying.</p><button type="button" className="button button-secondary button-full" onClick={() => void handleTrackJob(selectedJob.id)}>{hasAppliedToJob(selectedJob.id) ? "Already applied · open tracker" : applications.some((application) => application.job_id === selectedJob.id) ? "Open in application tracker" : "Add to application tracker"} <Icon name="briefcase" /></button>{safeExternalUrl(selectedJob.source_url) ? <a className="button button-primary button-full" href={safeExternalUrl(selectedJob.source_url) ?? undefined} target="_blank" rel="noopener noreferrer">View original listing · {sourceLabel(selectedJob.source)} <Icon name="arrow" /></a> : null}{safeExternalUrl(selectedJob.apply_url) && selectedJob.apply_url !== selectedJob.source_url ? <a className="button button-secondary button-full" href={safeExternalUrl(selectedJob.apply_url) ?? undefined} target="_blank" rel="noopener noreferrer">{hasAppliedToJob(selectedJob.id) ? "Reopen application website (already applied)" : "Open application website"} <Icon name="arrow" /></a> : !safeExternalUrl(selectedJob.source_url) && !safeExternalUrl(selectedJob.apply_url) ? <span className="helper-text">No public listing URL was provided for this job.</span> : null}<button type="button" className="button button-quiet button-full" onClick={() => setSelectedJob(null)}>Back to results</button></div>
         </aside>
       </div>}
     </main>

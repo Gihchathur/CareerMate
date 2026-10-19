@@ -58,6 +58,29 @@ export type JobSourcesResponse = {
   sources: Record<JobSourceId, JobSourceStatus>;
 };
 
+export type JobBoardConfig = {
+  enabled: boolean;
+  company?: string;
+  country?: string;
+  board_token?: string;
+  site?: string;
+  api_key_env?: string;
+  region?: string;
+};
+
+export type JobSourceConfiguration = {
+  greenhouse: JobBoardConfig[];
+  lever: JobBoardConfig[];
+  teamtailor: JobBoardConfig[];
+};
+
+export type JobSourceConfigurationResponse = {
+  success: boolean;
+  config: JobSourceConfiguration;
+  sources: Record<JobSourceId, JobSourceStatus>;
+  message?: string;
+};
+
 export type JobResult = {
   id: string;
   source: string;
@@ -190,6 +213,7 @@ export type ApplicationRecord = {
   follow_up_date: string;
   cover_letter: string;
   answers: ApplicationAnswer[];
+  submitted_details?: ApplicationAnswer[];
   created_at: string;
   updated_at: string;
   applied_at: string;
@@ -203,6 +227,10 @@ export type ApplicationsResponse = {
 };
 
 
+export type BrowserFieldOption = { label: string; value: string };
+export type BrowserNavigationIntent = "apply" | "continue";
+export type BrowserPageInfo = { page_index: number; title: string; url: string; active: boolean };
+
 export type BrowserFormField = {
   field_id: string;
   label: string;
@@ -211,6 +239,10 @@ export type BrowserFormField = {
   placeholder: string;
   autocomplete: string;
   suggested_key: string;
+  options?: BrowserFieldOption[];
+  current_value?: string;
+  group_name?: string;
+  frame_index?: number;
 };
 
 export type BrowserFormSession = {
@@ -221,10 +253,17 @@ export type BrowserFormSession = {
   title: string;
   field_count: number;
   fields: BrowserFormField[];
+  has_apply_action?: boolean;
+  has_continue_action?: boolean;
+  submit_available?: boolean;
+  open_pages?: BrowserPageInfo[];
+  active_page_index?: number;
+  cookie_action?: string;
   message: string;
 };
 
-export type BrowserFieldDraft = BrowserFormField & { include: boolean; value: string };
+export type BrowserFieldDraft = BrowserFormField & { include: boolean; value: string; suggestion_source?: string };
+export type BrowserAnswerSuggestion = { field_id: string; value: string; source: string };
 
 
 export type AIProviderId = "ollama" | "openai" | "openai_compatible";

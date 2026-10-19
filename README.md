@@ -1,244 +1,173 @@
 # CareerMate
 
 <p align="center">
-  <img src="frontend/public/careermate-logo.svg" alt="CareerMate — your AI job search assistant" width="456" />
+  <img src="frontend/public/careermate-logo.svg" alt="CareerMate logo" width="420" />
 </p>
 
-CareerMate is a local-first, open-source job discovery and application workspace. It searches public job feeds and configured employer boards, extracts a candidate profile from a CV, and compares job requirements against evidence in that profile using a selectable AI provider: local Ollama, OpenAI API, or an OpenAI-compatible API.
+<p align="center">
+  <strong>Local-first, AI-assisted job search and application preparation.</strong><br />
+  Search opportunities, understand CV-to-role evidence, prepare application materials, and review supported form fields before submitting.
+</p>
 
-## Current capabilities
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
+  <img src="https://img.shields.io/badge/privacy-local--first-2c8a65" alt="Local first" />
+  <img src="https://img.shields.io/badge/status-community%20project-596579" alt="Community project" />
+</p>
 
-- Read PDF, DOCX, and TXT CVs locally.
-- Extract a structured candidate profile using the selected AI provider (Ollama, OpenAI API, or an OpenAI-compatible API).
-- Review and edit the profile before matching.
-- Search Arbetsförmedlingen's public JobAd Links API for up to five roles per search.
-- Search public Remote OK remote listings and Arbeitnow's documented job-board API, while preserving provider attribution and listing URLs. Remote OK results are cached for one hour and Arbeitnow results for six hours in disposable local JSON cache files.
-- Optionally include employer-specific Greenhouse, Lever, and Teamtailor boards configured locally.
-- Paginate results and apply local work-mode classification where listing metadata or brief text supports it.
-- Save normalized job listings in local JSON files.
-- Expose `/api/jobs/sources` to report configured source counts without returning credentials.
-- Retry temporary provider errors with a bounded backoff, validate listing payloads, and preserve results from healthy employer boards when another board fails.
-- Reject incomplete enabled-source configuration early and show warnings instead of silently presenting malformed responses as zero results.
-- Fetch fuller descriptions from public job pages when possible, including a bounded JavaScript-rendered fallback for public ATS pages. When automated extraction fails, paste the original advert text and reanalyse; pasted text is clearly labelled as unverified. Search-snippet-only scores are marked preliminary, and unavailable scores explain why requirements could not be assessed. Cloud-provider matches can run concurrently (up to four at a time); Ollama remains sequential to reduce local CPU/RAM pressure.
-- Cache successful match analyses locally by job, profile, provider, and model to reduce repeated model calls.
-- Use a focused workspace with separate Overview, Find jobs, Match insights, and My profile views.
-- Open full job details in a side drawer while keeping search results compact.
-- See processing states and transient success/error notifications without losing the current view.
-- Track saved roles through application stages with notes, follow-up dates, draft cover letters, and employer-question answers in local JSON.
-- Generate cover letters from the reviewed profile, sanitized text extracted from the current CV, and the full saved advert. A quality gate retries short/overlong/incomplete letters and refuses to save them if they still fail; employer-question answers also use the configured AI provider. Generated content is not submitted automatically.
+CareerMate runs on your computer. Candidate profiles, job records, application drafts and caches are stored in local JSON files. You can use local Ollama inference or configure an online AI API. Hosted AI sends the task content needed for the operation to that provider, and CareerMate requires explicit consent before using a hosted provider.
 
-## UI and user experience
+## Features
 
-The frontend separates job discovery, match reports, and profile maintenance so the CV fields do not appear below the job results in one long page. Overview provides quick status and recent opportunities; Find jobs keeps search filters alongside compact results; selecting a job opens a detail drawer; Applications manages status, notes, follow-up dates and draft materials; My profile contains the editable CV-derived profile. Processing states remain visible in the workspace header, and success/error messages appear as dismissible, auto-closing notifications. The layout adapts to mobile screens. See [`docs/ui-redesign.md`](docs/ui-redesign.md) for UX decisions and the research references used.
+- Import CV text from PDF, DOCX or TXT and review the extracted candidate profile.
+- Search supported public feeds and selected employer career boards.
+- Choose country, city, work arrangement and sources for each search.
+- Compare job requirements against profile evidence, with supported, partially supported and not-evidenced classifications.
+- Draft tailored cover letters and employer-question answers without intentionally inventing qualifications.
+- Track applications, notes, follow-ups and draft materials locally.
+- Prepare supported application forms in Chromium, including multi-tab and embedded-frame flows, review values, and explicitly approve final submission.
+- Use Ollama locally or configure OpenAI and OpenAI-compatible APIs.
 
-## Requirements
+AI output is a draft, not a factual guarantee. Review generated claims before using them. Browser support varies by employer site; CareerMate does not bypass sign-in, MFA, CAPTCHA, anti-bot protections, rate limits or access controls. Some sites and custom controls are unsupported.
 
-- Windows 10/11, macOS, or Linux
-- Python 3.10+
-- Node.js 20.19+ or 22.12+
-- Ollama installed locally with a compatible model (default: `gemma4:e4b`) if you want local inference; this is optional when using a hosted provider
-- An API key and API billing configured with your chosen provider if you want hosted inference
+## Quick start with Docker
 
-## Run the backend
+Docker Compose is the easiest way to run the web UI and backend together. Use Docker Desktop on Windows/macOS or Docker Engine with the Compose plugin on Linux.
 
-From the repository root, open PowerShell:
+1. Clone the repository and enter its root folder.
+2. Create your private provider configuration from the example:
+
+   **PowerShell**
+   ```powershell
+   Copy-Item backend/.env.example backend/.env
+   ```
+
+   **macOS/Linux**
+   ```bash
+   cp backend/.env.example backend/.env
+   ```
+
+3. Edit `backend/.env` to choose an AI provider. For Docker, Ollama should be running on the host; the Compose file points the container to `host.docker.internal:11434`. Alternatively, add your hosted provider key to `backend/.env`.
+4. Build and start the application:
+
+   ```bash
+   docker compose up --build
+   ```
+5. Open [http://localhost:8080](http://localhost:8080). Stop the application with `Ctrl+C`, or run `docker compose down` in another terminal.
+
+The Compose file binds the UI to `127.0.0.1` by default so it is not published to your LAN. Local workspace data is persisted in `./data`. Back up this directory before upgrading or deleting the project.
+
+**Docker browser limitation:** the Playwright browser runs headlessly inside the container. You can use supported browser preparation steps through CareerMate's review UI, but login, OTP, CAPTCHA and other interactive verification require the native install below. For the full visible Chromium experience, use the native setup.
+
+## Native setup (visible Chromium)
+
+Requirements: Python 3.12 recommended, Node.js 22 LTS, and Chromium installed through Playwright for the backend's active Python environment.
+
+Backend, in PowerShell from the repository root:
 
 ```powershell
 cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt
+python -m playwright install chromium
 uvicorn app.main:app --reload
 ```
 
-The API binds to `127.0.0.1:8000` by default. API documentation: <http://127.0.0.1:8000/docs>.
-
-For a new PowerShell session on Windows, activate the virtual environment again before running the backend.
-
-## Run the frontend
-
-In a second terminal, from the repository root:
+Frontend, in a separate terminal:
 
 ```powershell
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
-Open the local URL Vite prints (normally <http://localhost:5173>).
+Open [http://localhost:5173](http://localhost:5173). The API runs at [http://127.0.0.1:8000](http://127.0.0.1:8000); API docs are at `/docs`.
 
-The frontend can point to another local API URL by setting `VITE_API_URL` in `frontend/.env.local`, for example:
-
-```dotenv
-VITE_API_URL=http://127.0.0.1:8000
-```
-
-The backend CORS origins can be configured with `CAREERMATE_CORS_ORIGINS`, as a comma-separated list. Do not bind the API to a public interface without adding an appropriate authentication and security design.
-
-## Configure Ollama
-
-The defaults are:
-
-- `CAREERMATE_OLLAMA_HOST=http://127.0.0.1:11434`
-- `CAREERMATE_OLLAMA_MODEL=gemma4:e4b`
-
-Change these using environment variables if needed. For example in PowerShell:
+If Playwright raises `NotImplementedError` on Windows during browser startup, stop Uvicorn and run it without `--reload` as a workaround:
 
 ```powershell
-$env:CAREERMATE_OLLAMA_MODEL = "gemma4:e4b"
+uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Ensure the model is available locally (`ollama list`). Model inference time depends on the model, available memory, and CV/job text length.
+## Configure job sources for your country
 
-## Local data
+The **Find jobs** workspace lets you choose the sources used by each search. Built-in sources have different coverage; selecting a source does not mean CareerMate has access to every employer on that platform.
 
-User data is written under `data/`:
+| Source | Coverage and setup |
+| --- | --- |
+| JobAd Links / Arbetsförmedlingen | Sweden-focused public job feed. |
+| Remote OK | Public remote-job feed; availability and location metadata vary. |
+| Arbeitnow | Public feed especially useful for selected European markets. |
+| Greenhouse | Configure specific public board tokens in `data/sources.json`. |
+| Lever | Configure specific company site identifiers and region in `data/sources.json`. |
+| Teamtailor | Configure specific company boards and an API key environment-variable name in `data/sources.json`; put the key value in `backend/.env`. |
 
-- `data/cv/current.*`: uploaded CV
-- `data/cv/extracted_text.txt`: extracted CV text
-- `data/cv/profile.json`: structured candidate profile
-- `data/jobs/jobs.json`: saved job listings
-- `data/jobs/match_cache.json`: successful match results
-- `data/applications/applications.json`: application tracking records, notes, cover-letter drafts, and answer drafts
-- `data/source_cache/arbeitnow.json`: six-hour cached public job feed (not personal data)
+To configure employer boards, copy `data/sources.example.json` to `data/sources.json` and replace the examples with employer-specific values. Keep `enabled` set to `false` until an entry is correctly configured. `data/sources.json` is ignored by Git because your board configuration may contain private details. Do not put API key values in that file.
 
-These files are ignored by Git. Only `.gitkeep` files and clearly synthetic `*.example.json` files should be committed. Never commit your actual CV, extracted text, saved profile, application answers, cookies, or browser state.
+Country and city filters are best-effort because public feeds often omit structured location data. For country-specific coverage, configure employer boards relevant to that market and check source warnings in the search result. The adapter architecture can be extended for other public APIs, but arbitrary career pages are not automatically supported; a new source requires an adapter, normalization and tests.
 
-Job search sends the user's search terms to the selected public job source; it does not upload the CV. AI processing uses the provider selected under **AI provider**. With Ollama, inference runs on the configured local host. With a hosted provider, task-specific text is sent to that external service. Job matching uses professional profile facts without direct contact details; application-draft prompts exclude email, phone, and profile URLs.
+Official source docs: [JobAd Links](https://links.api.jobtechdev.se/), [Remote OK](https://remoteok.com/faq), [Arbeitnow API](https://www.arbeitnow.com/blog/job-board-api), [Greenhouse Job Board API](https://docs.greenhouse.io/job-board.html), [Lever Postings API](https://github.com/lever/postings-api), and [Teamtailor API](https://docs.teamtailor.com/).
 
-## Job discovery sources (Steps 10, 11 and 15)
+## Configure AI
 
-CareerMate combines the public Arbetsförmedlingen JobAd Links feed for Sweden, Remote OK's public remote-jobs feed, Arbeitnow's public job-board API, and locally configured employer-specific Greenhouse, Lever and Teamtailor boards. Remote OK and Arbeitnow require no API key; CareerMate preserves source labels and original listing links. Remote OK focuses on remote jobs and is not a global source for every on-site or hybrid role. Arbeitnow is a Europe-oriented aggregator and is currently used for Germany, the United Kingdom, France and Switzerland. Its public API is cached locally for six hours to avoid needless repeated requests.
+Open **AI provider** in the app to select Ollama, OpenAI API or an OpenAI-compatible provider.
 
-The search UI supports Sweden, Norway, Denmark, Finland, Germany, Netherlands, United Kingdom, United States, Canada, France, Switzerland, and Any country. International availability depends on Remote OK's remote listings, Arbeitnow where supported, and the specific employer boards configured in `data/sources.json`; this is not a universal search across every job website. JobAd Links is Sweden-focused. City, country, and work-mode filters are best-effort local filters because providers do not consistently publish structured location metadata. Unknown work modes are excluded when a specific work mode is selected. Job totals can be approximate due to local filtering, provider pagination, and deduplication. Always open the original job listing to confirm that it is current and review the full requirements.
+- **Ollama:** install Ollama on the host, pull a model suited to your hardware, and confirm the host URL/model in AI settings. Native default: `http://127.0.0.1:11434`. In Docker Compose, the default host URL is set to `http://host.docker.internal:11434`. If you already saved an Ollama URL in CareerMate's AI settings, update that saved URL there as well, because saved provider preferences take precedence over environment defaults.
+- **OpenAI API:** set `OPENAI_API_KEY` in `backend/.env` and select a model ID available to your account.
+- **OpenAI-compatible API:** set `CAREERMATE_OPENAI_COMPATIBLE_API_KEY`, `CAREERMATE_OPENAI_COMPATIBLE_BASE_URL`, and a valid `CAREERMATE_OPENAI_COMPATIBLE_MODEL` in `backend/.env`. This supports providers that document OpenAI compatibility; model capabilities and JSON-output support vary.
 
-## Optional employer career boards (Step 10)
+Never commit `backend/.env`. AI API usage is billed separately from ChatGPT subscriptions. For provider privacy, model names and configuration details, see [AI and data configuration](docs/CONFIGURATION.md). Model IDs and free-tier quotas change, so confirm them in the provider's official docs. [OpenAI models](https://platform.openai.com/docs/models), [Gemini models](https://ai.google.dev/gemini-api/docs/models), [Groq models](https://console.groq.com/docs/models), [Ollama library](https://ollama.com/library).
 
-CareerMate can search the public listings from specific employers that use Greenhouse or Lever, plus Teamtailor accounts for which you have a Public Read API key. These are employer-specific connections; they do **not** create a global search across all companies using these platforms. JobTech remains enabled independently.
+## Privacy and safety
 
-1. Copy the template to a private local configuration file from the repository root:
+- Data stays in the local `data/` directory unless you explicitly choose an online AI provider; there is no required account or hosted database.
+- API keys belong in environment variables or `backend/.env`, never in source code, JSON preferences, screenshots or commits.
+- Browser automation only handles supported public HTTPS pages and is subject to employer-site restrictions.
+- Review all proposed answers. Final submission requires a separate explicit approval step; some forms need manual action.
+- Never commit your CV, extracted CV text, saved applications, caches, or `data/sources.json`.
 
-   ```powershell
-   Copy-Item data/sources.example.json data/sources.json
-   ```
+See [Privacy and browser boundaries](docs/PRIVACY-AND-SAFETY.md) and the [application automation guide](docs/APPLICATION-AUTOMATION.md).
 
-2. In `data/sources.json`, set `enabled` to `true` for a company you want to include and replace the example identifier. Greenhouse uses the job-board token from the employer's Greenhouse career-board URL. Lever uses the site slug from its hosted job-board URL; set `region` to `global` or `eu`. `country` is an optional fallback when a board omits its country in job data.
+## Screenshots
 
-3. Teamtailor requires a company API key with **Public Read** permissions. Keep the key out of JSON and Git. Set the environment variable named by `api_key_env` in the same PowerShell window before starting the backend, for example:
+Screenshots are intentionally not fabricated. Add sanitized images captured from your running copy under [`docs/screenshots/`](docs/screenshots/README.md), then link them here. Useful screenshots are the overview, job-source selection, match report, AI settings with credentials hidden, and application review screen.
 
-   ```powershell
-   cd backend
-   $env:CAREERMATE_TEAMTAILOR_EXAMPLE_API_KEY = "paste-your-local-key-here"
-   uvicorn app.main:app --reload
-   ```
+## Development and quality checks
 
-   Use the environment-variable name you configured in `sources.json`. You need the employer's permission to create/access its Teamtailor API key; do not use a key you are not authorized to use.
+From the repository root, install backend test dependencies:
 
-4. Restart the backend and refresh the frontend after changing configuration. Check <http://127.0.0.1:8000/api/jobs/sources> to confirm which adapters are configured. Configured and ready sources become selectable in the **Job sources** checkboxes; unconfigured sources remain disabled. This endpoint reports counts, whether a key is required, and whether the configured Teamtailor environment variables are present; it never returns key values.
-
-The adapters fetch public or explicitly authorized read-only job data, normalize it into CareerMate's shared job format, then filter employer-board results locally by title/description, city, country information, and known work mode. Employer boards may expose incomplete location or remote-work metadata, so a result can be missed or its location/work mode can remain unknown. Open the original advert to verify it before applying. The private `data/sources.json` is ignored by Git; only `data/sources.example.json` belongs in the repository.
-
-### Source reliability (Step 11)
-
-Provider GET requests now use a bounded retry policy for transient network failures and HTTP 429/500/502/503/504 responses. Client errors such as 401/403 are not retried. Enabled source configurations are validated before fetching, each board is isolated so a failing employer does not discard successful results from other boards, and response payloads must contain the expected jobs/listing array. Search responses include warnings for sources that fail or have no enabled employer boards. These checks use mocked provider responses in the local test suite; live API availability depends on your network, employer board configuration, and provider service status. See [`docs/job-source-reliability.md`](docs/job-source-reliability.md).
-
-Official documentation: [JobAd Links API](https://links.api.jobtechdev.se/), [Remote OK public feeds](https://remoteok.com/faq), [Arbeitnow Job Board API](https://www.arbeitnow.com/blog/job-board-api) and [terms](https://www.arbeitnow.com/terms), [Greenhouse Job Board API](https://docs.greenhouse.io/job-board.html), [Lever Postings API](https://github.com/lever/postings-api), and [Teamtailor API](https://docs.teamtailor.com/).
-
-
-## Application tracker and draft assistant (Step 12)
-
-The **Applications** workspace lets you add a saved job to a local tracker, record the current stage, keep notes, set a follow-up date, edit a cover-letter draft, and store draft answers to employer questions. AI-generated materials use the currently selected provider. A job is stored as a snapshot when it is tracked so a later search does not remove its description or change the application record. Adding a job that is already tracked returns the existing record rather than creating a duplicate.
-
-Application stages are `saved`, `preparing`, `applied`, `interview`, `offer`, `rejected`, and `withdrawn`. Updating a record to `applied` records an application timestamp when one has not already been set. The API endpoints are:
-
-- `GET /api/applications` — list records and counts by stage.
-- `POST /api/applications` — add a saved `job_id` to the tracker (`{"job_id": "..."}`).
-- `PUT /api/applications/{application_id}` — save status, notes, follow-up date, cover-letter text, and answer drafts.
-- `POST /api/applications/{application_id}/draft-cover-letter` — generate and save a draft with the selected AI provider.
-- `POST /api/applications/{application_id}/draft-answer` — generate an answer for a question (`{"question": "..."}`).
-
-Drafts use the saved CV profile and the job description snapshot. The prompt excludes the candidate's email, phone, and profile links, instructs the model not to fabricate qualifications or experience, and treats the source text as untrusted. These are safeguards, not a guarantee that model output is perfect: review all generated content and correct any unsupported claim before use. CareerMate does not automatically fill employer forms or submit applications. The final submission must be completed and confirmed by you on the employer's site.
-
-The application store is created automatically as `data/applications/applications.json` on the first tracked job. The committed `data/applications/applications.example.json` is synthetic documentation data only and should not be copied over an actual store unless you intend to add that example record.
-
-### Browser-assisted application preparation (Steps 13–14)
-
-From an application record, CareerMate can open a visible local Chromium browser at the job URL, scan supported visible fields, suggest values from your reviewed profile and drafts, and fill only the fields you explicitly select. It never clicks Submit, uploads files, fills password/OTP/CAPTCHA/security fields, or attempts to bypass sign-in, MFA, bot detection, access controls, or rate limits. Browser automation is blocked on LinkedIn, Indeed, and Glassdoor. You must navigate to the application form yourself where necessary, review the proposed values, and submit manually on the employer's site.
-
-Install the browser binary once after installing backend dependencies:
-
-```powershell
-cd backend
-.\.venv\Scripts\Activate.ps1
-python -m playwright install chromium
+```bash
+python -m pip install -r backend/requirements-dev.txt
+python -m compileall -q backend/app
 ```
 
-Browser form values and browser cookies are not written to CareerMate's JSON stores. The browser session exists only while the backend process is running; close the browser session after you're done. See [`docs/steps-13-15.md`](docs/steps-13-15.md) for the complete workflow and local verification checklist.
-
-
-## AI provider settings
-
-Open **AI provider** in the workspace navigation to choose between local Ollama, the OpenAI API, and a generic OpenAI-compatible endpoint. API keys belong in the private `backend/.env` file; they are never saved in JSON preferences or returned by the settings API. For hosted providers, the UI requires explicit acknowledgement that task content (CV text, profile facts, and job/application details as needed) may be sent to the provider. Test connection sends only a generic ping. Open `docs/ai-providers.md` for setup, supported configuration, privacy notes, performance behavior, and official references.
-
-**Billing note:** ChatGPT subscriptions and OpenAI API usage have separate billing. A paid ChatGPT subscription does not automatically cover this application's API usage. See the [official billing explanation](https://help.openai.com/en/articles/9039756-managing-billing-for-chatgpt-and-the-api-platform).
-
-## Detailed job analysis and matching
-
-Job feeds often provide truncated teasers. CareerMate attempts to fetch a fuller public employer listing before matching; if retrieval fails, the match insight clearly labels the score as preliminary and offers **Fetch full advert & reanalyse**. You can also trigger a refresh from the job detail or application view. The public-page fetcher only requests public HTTPS pages, restricts private/internal network destinations, limits response size, and does not log in, solve CAPTCHAs, run page JavaScript, or bypass access controls.
-
-The matcher aims to extract the material responsibilities, required experience, skills, education/certifications, work model/location, languages, and nice-to-haves from the full description (up to 40 distinct criteria). Criteria are classified as supported, partially supported, or not evidenced; critical unmet requirements are highlighted separately from ordinary gaps. Numeric minimum experience, required language, work eligibility, and required location can be critical, while explicitly optional/preferred items should remain nice-to-have. These categories are AI-assisted and can be wrong, so open the full advert and verify important criteria manually.
-
-The match score is a weighted coverage estimate based on job requirements and evidence in the reviewed profile. It is not a probability of interview or offer. “Not evidenced” means the profile did not establish the requirement; it does not prove the candidate lacks it. A preliminary score based on an incomplete snippet should not be used as an application decision.
-
-## Cover-letter quality
-
-Cover letters use the selected AI provider, the reviewed candidate profile, sanitized text extracted from the current CV, and the saved job advert. The prompt targets approximately 280–350 words in multiple purposeful paragraphs and forbids inventing qualifications, metrics, dates, years of experience, language levels, or authorization. A quality gate retries once if the response is very short, overlong, or poorly structured; incomplete output is not saved. If a job has only a short search snippet and the public advert cannot be retrieved, CareerMate asks you to fetch/review the full advert before drafting. Always read and edit the result before sending. Hosted-provider requests leave your computer; follow the selected provider’s privacy terms.
-
-## Tests
-
-Install test dependencies:
-
-```powershell
-pip install -r backend/requirements.txt
-pip install -r backend/requirements-dev.txt
-```
-
-From the repository root:
+Run backend tests with `PYTHONPATH` set (PowerShell):
 
 ```powershell
 $env:PYTHONPATH = "backend"
-pytest
+python -m pytest -q
+```
+
+On macOS/Linux:
+
+```bash
+PYTHONPATH=backend python -m pytest -q
 ```
 
 Frontend checks:
 
-```powershell
+```bash
 cd frontend
+npm ci
 npm run build
 npm run lint
 ```
 
-## Project principles
+GitHub Actions runs these backend and frontend checks on pushes and pull requests. Unit tests use mocked providers and do not submit real applications. Before a public release, also run `docker compose config`, build both images, smoke-test `/api/health`, and test native Chromium against an application page you are allowed to access.
 
-- Local-first storage; no SQL database.
-- No bypassing CAPTCHA, MFA, bot detection, access controls, or rate limits.
-- No automatic assessments, legal declarations, or unattended application submission.
-- AI output is a draft and must be reviewed before use.
+See [Development guide](docs/DEVELOPMENT.md) for architecture, test setup and release verification.
 
+## License
 
-## Continuous integration
-
-GitHub Actions runs the backend tests and Python compilation, then installs frontend dependencies and runs the Vite production build and ESLint. See [`.github/workflows/ci.yml`](.github/workflows/ci.yml). The automated suite uses mocked provider responses and does not bypass authentication or interact with live employer forms.
-
-For the complete acceptance procedure, browser assistance safety boundaries, source limitations, and official API references, see [`docs/steps-13-15.md`](docs/steps-13-15.md). For detailed job-requirement analysis and cover-letter quality behavior, see [`docs/job-analysis-and-cover-letters.md`](docs/job-analysis-and-cover-letters.md).
-
-## Browser setup and data cleanup
-
-For browser-assisted application preparation, Playwright's Python package and Chromium browser binary must both be installed in the backend virtual environment. With `.venv` activated in `backend`, run `python -m playwright install chromium`, restart Uvicorn, and use the **Check Playwright / Chromium** action in Applications if browser opening fails.
-
-The **Data management** page can clear derived search/match caches or permanently clean local workspace data. A destructive reset requires typing `DELETE ALL LOCAL DATA`, preserves `.example.json` templates, and does not delete `backend/.env`, source code, or the Python virtual environment. See [Browser setup and local data management](docs/browser-setup-and-data-management.md) for details.
-
-
-## Matching accuracy and local performance
-
-See [`docs/matching-accuracy-and-ollama-performance.md`](docs/matching-accuracy-and-ollama-performance.md) for profile fact validation, critical-gap rules, cache invalidation, and recommended Ollama settings for lower-resource computers.
+MIT. See [LICENSE](LICENSE).

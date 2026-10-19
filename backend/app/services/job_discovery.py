@@ -18,10 +18,6 @@ class JobDiscoveryError(Exception):
 
 
 COUNTRY_ANY = "any country"
-SUPPORTED_COUNTRIES = {
-    "sweden", "sverige", "norway", "denmark", "finland", "germany", "netherlands",
-    "united kingdom", "united states", "canada", "france", "switzerland", COUNTRY_ANY,
-}
 ARBEITNOW_COUNTRIES = {"germany", "united kingdom", "france", "switzerland"}
 
 
@@ -217,18 +213,14 @@ def search_multiple_roles(
         raise JobDiscoveryError(f"Unsupported job source(s): {', '.join(unknown_sources)}.")
     if not selected_sources:
         raise JobDiscoveryError("Select at least one job source.")
-    if _normalize(country) not in SUPPORTED_COUNTRIES:
+    country = " ".join(str(country or "").split())
+    if not country:
+        raise JobDiscoveryError("Enter a country or choose Any country.")
+    if len(country) > 100:
+        raise JobDiscoveryError("Country must be 100 characters or fewer.")
+    if selected_sources == ["jobtech_links"] and _normalize(country) not in {"sweden", "sverige"} and not _is_any_country(country):
         raise JobDiscoveryError(
-            "Choose a supported country, or select Any country. Global remote listings and configured employer boards "
-            "can cover more countries; JobAd Links is Sweden-focused."
-        )
-    international_source_selected = any(
-        source in {"remoteok", "greenhouse", "lever", "teamtailor"} for source in selected_sources
-    ) or ("arbeitnow" in selected_sources and _normalize(country) in ARBEITNOW_COUNTRIES)
-    if _normalize(country) not in {"sweden", "sverige"} and not _is_any_country(country) and not international_source_selected:
-        raise JobDiscoveryError(
-            "JobAd Links is Sweden-focused. Select Remote OK, Arbeitnow for Germany/UK/France/Switzerland, "
-            "or a configured international employer board for this country."
+            "JobAd Links is Sweden-focused. Select Remote OK, Arbeitnow where relevant, or configure an employer board for this country."
         )
     if len(city) > 100:
         raise JobDiscoveryError("City must be 100 characters or fewer.")

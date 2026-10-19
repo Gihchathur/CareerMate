@@ -4,18 +4,20 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from app.models.candidate import CandidateProfile
 from app.models.application import (
     ApplicationAnswer, ApplicationCreateRequest, ApplicationRecord, ApplicationUpdateRequest,
     DraftAnswerRequest,
 )
-from app.models.browser_assistance import BrowserFillRequest
+from app.models.browser_assistance import (
+    BrowserFillRequest, BrowserNavigationRequest, BrowserPageSelectRequest, BrowserSuggestionRequest, BrowserSubmitRequest,
+)
 from app.models.ai import AIProviderTestRequest, AISettingsUpdate
 from app.models.data_management import LocalDataResetRequest
 from app.models.job import JobEnrichmentRequest
@@ -30,6 +32,10 @@ from app.services.browser_assistance import (
     get_browser_diagnostics,
     open_application_page,
     scan_current_form,
+    advance_application_step,
+    suggest_browser_answers,
+    submit_reviewed_application,
+    select_browser_page,
 )
 from app.services.cv_analyzer import CVAnalyzerError, analyze_cv
 from app.services.application_drafts import (
@@ -42,7 +48,7 @@ from app.services.cv_parser import CVParserError, extract_cv_text
 from app.services.job_matcher import score_job
 from app.services.job_discovery import JobDiscoveryError, search_multiple_roles
 from app.services.job_sources.base import JobSourceError
-from app.services.job_search import source_status
+from app.services.job_search import load_source_config, save_source_config, source_status
 from app.services.job_detail_enricher import JobDetailFetchError, enrich_job_record
 from app.services.job_storage import load_saved_jobs, save_jobs
 from app.services.data_management import clear_cache_files, get_data_summary, reset_workspace_data
@@ -57,10 +63,16 @@ async def lifespan(_app: FastAPI):
     await close_browser_session()
 
 
+class JobSourceConfigUpdate(BaseModel):
+    greenhouse: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    lever: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    teamtailor: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+
+
 app = FastAPI(
     title="CareerMate API",
     description="Local-first job search and application assistant",
-    version="0.7.0",
+    version="0.8.3",
     lifespan=lifespan,
 )
 
@@ -347,6 +359,28 @@ def search_job_listings(
         raise HTTPException(status_code=500, detail="Could not save job listings locally.") from exc
 
 
+@app.get("/api/jobs/source-config")
+def get_job_source_config() -> dict[str, object]:
+    """Return editable per-employer board identifiers and safe API-key variable names."""
+    try:
+        return {"success": True, "config": load_source_config(), "sources": source_status()}
+    except JobSourceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.put("/api/jobs/source-config")
+def update_job_source_config(request: JobSourceConfigUpdate) -> dict[str, object]:
+    """Save job-source board configuration locally; API key values never belong here."""
+    try:
+        config = save_source_config(request.model_dump())
+        return {"success": True, "config": config, "sources": source_status(), "message": "Job platform configuration saved locally."}
+    except JobSourceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except OSError as exc:
+        logger.exception("Could not save job platform configuration")
+        raise HTTPException(status_code=500, detail="Could not save platform settings to data/sources.json.") from exc
+
+
 @app.get("/api/jobs/sources")
 def get_job_sources() -> dict[str, object]:
     """Report which job sources are configured without exposing credentials."""
@@ -593,10 +627,66 @@ async def fill_application_form(
     application_id: str,
     request: BrowserFillRequest,
 ) -> dict[str, object]:
-    """Fill only the fields the user selected and reviewed in the application workspace."""
+    """Fill only reviewed field values; this endpoint never submits the application."""
     try:
         fields = [item.model_dump() for item in request.fields]
-        return await fill_reviewed_fields(application_id, fields)
+        return await fill_reviewed_fields(application_id, fields, request.expected_url)
+    except BrowserAssistanceError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/applications/{application_id}/browser/advance")
+async def advance_application_browser_step(
+    application_id: str,
+    request: BrowserNavigationRequest,
+) -> dict[str, object]:
+    """Navigate one safe public Apply or Continue step without submitting."""
+    try:
+        return await advance_application_step(application_id, request.intent)
+    except BrowserAssistanceError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/applications/{application_id}/browser/select-page")
+async def select_application_browser_page(
+    application_id: str,
+    request: BrowserPageSelectRequest,
+) -> dict[str, object]:
+    """Select which open Chromium tab CareerMate should inspect and fill."""
+    try:
+        return await select_browser_page(application_id, request.page_index)
+    except BrowserAssistanceError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/applications/{application_id}/browser/suggest")
+async def suggest_application_browser_answers(
+    application_id: str,
+    request: BrowserSuggestionRequest,
+) -> dict[str, object]:
+    """Draft answers for review using the selected AI provider; nothing is filled automatically."""
+    application, profile = _load_draft_inputs(application_id)
+    try:
+        return await suggest_browser_answers(application_id, request.field_ids, application, profile, request.expected_url)
+    except BrowserAssistanceError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/applications/{application_id}/browser/submit")
+async def submit_application_browser_form(
+    application_id: str,
+    request: BrowserSubmitRequest,
+) -> dict[str, object]:
+    """Click a final submit control only after the user explicitly approves submission."""
+    if not request.confirm_submission:
+        raise HTTPException(status_code=409, detail="Final submission was not approved. Review the employer form and confirm explicitly before submitting.")
+    try:
+        result = await submit_reviewed_application(application_id, request.confirm_submission, request.expected_url)
+        if result.get("confirmation_detected"):
+            saved = update_application(application_id, {"status": "applied", "applied_at": utc_now(), **({"submitted_details": [item.model_dump() for item in request.submitted_details]} if request.submitted_details else {})})
+            if saved is not None:
+                result["application"] = saved
+        return result
     except BrowserAssistanceError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

@@ -182,3 +182,49 @@ def test_application_question_answer_is_saved_and_same_question_is_replaced(tmp_
     answers = second.json()["application"]["answers"]
     assert len(answers) == 1
     assert answers[0]["answer"] == "Improved second draft."
+
+
+def test_confirmed_browser_submission_persists_submitted_details_for_offer_follow_up(tmp_path, monkeypatch):
+    app_path = tmp_path / "applications.json"
+    monkeypatch.setattr(application_storage, "APPLICATIONS_PATH", app_path)
+    monkeypatch.setattr(main, "load_saved_jobs", lambda: [JOB])
+
+    async def fake_submit(application_id, confirmation, expected_url=None):
+        assert confirmation is True
+        assert application_id
+        assert expected_url == "https://example.com/jobs/platform-engineer/apply"
+        return {
+            "success": True,
+            "clicked": True,
+            "confirmation_detected": True,
+            "message": "Thanks for applying.",
+            "url": expected_url,
+            "title": "Application received",
+        }
+
+    monkeypatch.setattr(main, "submit_reviewed_application", fake_submit)
+    client = TestClient(main.app)
+    created = client.post("/api/applications", json={"job_id": JOB["id"]}).json()["application"]
+
+    submitted = [{"question": "Application step: Why this role?", "answer": "My reviewed answer.", "updated_at": "2026-10-19T10:00:00Z"}]
+    response = client.post(
+        f"/api/applications/{created['id']}/browser/submit",
+        json={
+            "confirm_submission": True,
+            "expected_url": JOB["apply_url"],
+            "submitted_details": submitted,
+        },
+    )
+
+    assert response.status_code == 200
+    record = json.loads(app_path.read_text(encoding="utf-8"))[0]
+    assert record["status"] == "applied"
+    assert record["applied_at"]
+    assert record["submitted_details"][0]["question"] == submitted[0]["question"]
+    assert record["submitted_details"][0]["answer"] == "My reviewed answer."
+
+    # The saved application can progress to an offer without losing the submission snapshot.
+    updated = client.put(f"/api/applications/{created['id']}", json={"status": "offer"})
+    assert updated.status_code == 200
+    assert updated.json()["application"]["status"] == "offer"
+    assert updated.json()["application"]["submitted_details"][0]["answer"] == "My reviewed answer."

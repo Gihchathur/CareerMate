@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -18,54 +19,81 @@ SOURCE_CONFIG_PATH = BASE_DIR / "data" / "sources.json"
 SUPPORTED_ATS = ("greenhouse", "lever", "teamtailor")
 
 
+def validate_source_config(payload: Any) -> dict[str, Any]:
+    """Validate and normalize the local employer-board configuration."""
+    if not isinstance(payload, dict):
+        raise JobSourceError("Job source configuration must be a JSON object.")
+    rules = {
+        "greenhouse": {"fields": ("board_token", "company", "country"), "required": ("board_token",), "regions": None},
+        "lever": {"fields": ("site", "company", "country", "region"), "required": ("site",), "regions": {"global", "eu"}},
+        "teamtailor": {"fields": ("company", "country", "api_key_env", "region"), "required": ("company", "api_key_env"), "regions": {"eu", "na", "apac"}},
+    }
+    normalized: dict[str, list[dict[str, Any]]] = {source: [] for source in SUPPORTED_ATS}
+    for source, spec in rules.items():
+        entries = payload.get(source, [])
+        if not isinstance(entries, list):
+            raise JobSourceError(f"The '{source}' setting must be a list.")
+        if len(entries) > 100:
+            raise JobSourceError(f"At most 100 {source} employer boards can be configured.")
+        for index, item in enumerate(entries, start=1):
+            if not isinstance(item, dict):
+                raise JobSourceError(f"Entry {index} under '{source}' must be an object.")
+            enabled = item.get("enabled", False) is True
+            clean: dict[str, Any] = {"enabled": enabled}
+            for field_name in spec["fields"]:
+                value = item.get(field_name, "")
+                if not isinstance(value, str):
+                    raise JobSourceError(f"Entry {index} under '{source}' has an invalid '{field_name}' value.")
+                value = value.strip()
+                if len(value) > 200:
+                    raise JobSourceError(f"Entry {index} under '{source}' has an overly long '{field_name}' value.")
+                clean[field_name] = value
+            if source in {"lever", "teamtailor"}:
+                default_region = "global" if source == "lever" else "eu"
+                clean["region"] = clean.get("region") or default_region
+            if enabled:
+                for field_name in spec["required"]:
+                    if not clean.get(field_name):
+                        raise JobSourceError(f"Enabled {source} entry {index} requires a non-empty '{field_name}' value.")
+                region = str(clean.get("region", "global" if source == "lever" else "eu")).casefold()
+                if spec["regions"] is not None and region not in spec["regions"]:
+                    allowed = ", ".join(sorted(spec["regions"]))
+                    raise JobSourceError(f"Enabled {source} entry {index} has an unsupported region '{region}'. Use {allowed}.")
+                if source == "teamtailor" and not re.fullmatch(r"[A-Z][A-Z0-9_]{0,99}", clean["api_key_env"]):
+                    raise JobSourceError("Teamtailor API key must be an environment variable name, never the key value itself.")
+            if source == "lever" and clean.get("region") and clean["region"].casefold() not in {"global", "eu"}:
+                raise JobSourceError("Lever region must be 'global' or 'eu'.")
+            if source == "teamtailor" and clean.get("region") and clean["region"].casefold() not in {"eu", "na", "apac"}:
+                raise JobSourceError("Teamtailor region must be 'eu', 'na', or 'apac'.")
+            normalized[source].append(clean)
+    return normalized
+
+
 def load_source_config() -> dict[str, Any]:
     """Load and validate private per-user source settings from data/sources.json."""
     if not SOURCE_CONFIG_PATH.exists():
-        return {}
+        return {source: [] for source in SUPPORTED_ATS}
     try:
         contents = SOURCE_CONFIG_PATH.read_text(encoding="utf-8-sig").strip()
     except OSError as exc:
         raise JobSourceError("Could not read data/sources.json.") from exc
     if not contents:
-        return {}
+        return {source: [] for source in SUPPORTED_ATS}
     try:
         payload = json.loads(contents)
     except json.JSONDecodeError as exc:
-        raise JobSourceError(
-            f"data/sources.json is invalid JSON at line {exc.lineno}, column {exc.colno}."
-        ) from exc
-    if not isinstance(payload, dict):
-        raise JobSourceError("data/sources.json must contain a JSON object.")
+        raise JobSourceError(f"data/sources.json is invalid JSON at line {exc.lineno}, column {exc.colno}.") from exc
+    return validate_source_config(payload)
 
-    schema = {
-        "greenhouse": {"required": ("board_token",), "regions": None},
-        "lever": {"required": ("site",), "regions": {"global", "eu"}},
-        "teamtailor": {"required": ("company", "api_key_env"), "regions": {"eu", "na", "apac"}},
-    }
-    for source, rules in schema.items():
-        entries = payload.get(source, [])
-        if not isinstance(entries, list):
-            raise JobSourceError(f"The '{source}' setting in data/sources.json must be a list.")
-        for index, item in enumerate(entries, start=1):
-            if not isinstance(item, dict):
-                raise JobSourceError(f"Entry {index} under '{source}' must be an object.")
-            if item.get("enabled") is not True:
-                continue
-            for field in rules["required"]:
-                value = item.get(field)
-                if not isinstance(value, str) or not value.strip():
-                    raise JobSourceError(
-                        f"Enabled {source} entry {index} requires a non-empty '{field}' value."
-                    )
-            allowed_regions = rules["regions"]
-            if allowed_regions is not None:
-                region = str(item.get("region", "global" if source == "lever" else "eu")).strip().casefold()
-                if region not in allowed_regions:
-                    allowed = ", ".join(sorted(allowed_regions))
-                    raise JobSourceError(
-                        f"Enabled {source} entry {index} has an unsupported region '{region}'. Use {allowed}."
-                    )
-    return payload
+
+def save_source_config(payload: Any) -> dict[str, Any]:
+    """Validate and atomically save public board identifiers and environment-variable names."""
+    normalized = validate_source_config(payload)
+    SOURCE_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = SOURCE_CONFIG_PATH.with_suffix(".json.tmp")
+    temporary_path.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary_path.replace(SOURCE_CONFIG_PATH)
+    return normalized
 
 
 def source_status() -> dict[str, object]:

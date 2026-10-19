@@ -275,7 +275,7 @@ def test_browser_routes_require_user_selected_session_and_never_submit(monkeypat
             "message": "Fields scanned. Review each proposed value before filling; CareerMate will not submit the form.",
         }
 
-    async def fake_fill(application_id: str, fields: list[dict[str, str]]) -> dict[str, object]:
+    async def fake_fill(application_id: str, fields: list[dict[str, str]], expected_url: str | None = None) -> dict[str, object]:
         assert application_id == "application:abc"
         assert fields == [{"field_id": "cm-field-0", "value": "candidate@example.org"}]
         return {"success": True, "filled_count": 1, "skipped": [], "message": "Filled but not submitted."}

@@ -47,6 +47,11 @@ models/
 .DS_Store
 Thumbs.db
 
-# Local AI provider preferences (does not contain credentials)
-data/settings/ai_settings.json
+# Local settings (examples only are safe to commit)
+data/settings/*
+!data/settings/.gitkeep
+!data/settings/*.example.json
 
+
+# Local profile copies from older app versions
+/profile.json
