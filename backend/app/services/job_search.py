@@ -7,16 +7,19 @@ import os
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from app.models.job import JobPosting
 from app.services.job_sources.base import JobSourceError
 from app.services.job_sources.greenhouse import fetch_board_jobs
 from app.services.job_sources.lever import fetch_site_jobs
 from app.services.job_sources.teamtailor import fetch_company_jobs
+from app.services.job_sources.public_ats import fetch_public_board
 
 BASE_DIR = Path(__file__).resolve().parents[3]
 SOURCE_CONFIG_PATH = BASE_DIR / "data" / "sources.json"
-SUPPORTED_ATS = ("greenhouse", "lever", "teamtailor")
+SUPPORTED_ATS = ("greenhouse", "lever", "teamtailor", "ashby", "smartrecruiters", "workable", "recruitee", "breezy", "personio", "workday")
+PUBLIC_ATS = ("ashby", "smartrecruiters", "workable", "recruitee", "breezy", "personio", "workday")
 
 
 def validate_source_config(payload: Any) -> dict[str, Any]:
@@ -27,6 +30,7 @@ def validate_source_config(payload: Any) -> dict[str, Any]:
         "greenhouse": {"fields": ("board_token", "company", "country"), "required": ("board_token",), "regions": None},
         "lever": {"fields": ("site", "company", "country", "region"), "required": ("site",), "regions": {"global", "eu"}},
         "teamtailor": {"fields": ("company", "country", "api_key_env", "region"), "required": ("company", "api_key_env"), "regions": {"eu", "na", "apac"}},
+        **{source: {"fields": ("slug", "company", "country"), "required": ("slug",), "regions": None} for source in PUBLIC_ATS},
     }
     normalized: dict[str, list[dict[str, Any]]] = {source: [] for source in SUPPORTED_ATS}
     for source, spec in rules.items():
@@ -51,6 +55,14 @@ def validate_source_config(payload: Any) -> dict[str, Any]:
             if source in {"lever", "teamtailor"}:
                 default_region = "global" if source == "lever" else "eu"
                 clean["region"] = clean.get("region") or default_region
+            if enabled and source in PUBLIC_ATS:
+                slug = clean.get("slug", "")
+                if source == "workday":
+                    parsed = urlparse(slug if "://" in slug else "https://" + slug)
+                    if parsed.scheme != "https" or not re.fullmatch(r"[a-z0-9-]+\.wd\d+\.myworkdayjobs\.com", parsed.netloc, re.I) or not parsed.path.strip("/"):
+                        raise JobSourceError("Workday requires a public HTTPS careers URL on *.wdN.myworkdayjobs.com with a site path.")
+                elif not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", slug):
+                    raise JobSourceError(f"{source.title()} board slug may contain only letters, numbers, underscores and hyphens.")
             if enabled:
                 for field_name in spec["required"]:
                     if not clean.get(field_name):
@@ -119,6 +131,9 @@ def source_status() -> dict[str, object]:
             "credentials_ready": bool(teamtailor) and not missing_teamtailor_keys,
             "missing_credentials": len(missing_teamtailor_keys),
         },
+        **{source: {"configured": any(x.get("enabled") and x.get("slug") for x in config.get(source, [])),
+                    "employers": sum(1 for x in config.get(source, []) if x.get("enabled") and x.get("slug")),
+                    "requires_api_key": False} for source in PUBLIC_ATS},
     }
 
 
@@ -144,13 +159,13 @@ def fetch_configured_jobs(
             and (
                 bool(str(item.get("board_token", "")).strip()) if source == "greenhouse"
                 else bool(str(item.get("site", "")).strip()) if source == "lever"
-                else bool(str(item.get("api_key_env", "")).strip())
+                else bool(str(item.get("api_key_env", "")).strip()) if source == "teamtailor" else bool(str(item.get("slug", "")).strip())
             )
         )
         for source in SUPPORTED_ATS
     }
     for source in sorted(selected.intersection(SUPPORTED_ATS)):
-        if initial_counts[source] == 0:
+        if source not in PUBLIC_ATS and initial_counts[source] == 0:
             warnings.append(f"No enabled {source.title()} employer boards are configured in data/sources.json.")
 
     if "greenhouse" in selected:
@@ -202,4 +217,16 @@ def fetch_configured_jobs(
                 ))
             except JobSourceError as exc:
                 warnings.append(f"Teamtailor ({company or key_env}): {exc}")
+    for source in PUBLIC_ATS:
+        if source not in selected:
+            continue
+        boards = [x for x in config.get(source, []) if x.get("enabled") is True and x.get("slug")]
+        if not boards:
+            warnings.append(f"No enabled {source.title()} employer boards are configured in data/sources.json.")
+        for item in boards:
+            configured_count += 1
+            try:
+                jobs.extend(fetch_public_board(source, item))
+            except JobSourceError as exc:
+                warnings.append(f"{source.title()} ({item.get('company') or item.get('slug')}): {exc}")
     return jobs, warnings, configured_count

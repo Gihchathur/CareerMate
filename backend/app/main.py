@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -7,6 +8,7 @@ from uuid import uuid4
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, ValidationError
 
@@ -38,6 +40,13 @@ from app.services.browser_assistance import (
     select_browser_page,
 )
 from app.services.cv_analyzer import CVAnalyzerError, analyze_cv
+from app.services.resume_builder import create_tailored_cv, OUTPUT_DIR, list_tailored_versions
+from app.services.platform_catalog import list_platforms
+from app.services.resume_builder import export_tailored_pdf
+from app.services.saved_searches import list_searches, save_search, delete_search, scan_alerts
+from app.services.salary_normalizer import extract_salary
+from app.services.alert_scheduler import start_scheduler, stop_scheduler
+from app.services.saved_searches import list_alert_history, mark_alert_read, record_alerts
 from app.services.application_drafts import (
     DraftGenerationError, generate_application_answer, generate_cover_letter,
 )
@@ -59,20 +68,44 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """Release the visible browser session cleanly when the local API stops."""
+    start_scheduler()
     yield
+    stop_scheduler()
     await close_browser_session()
+
+
+class SavedSearchRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    roles: list[str] = Field(min_length=1, max_length=5)
+    country: str = Field(default="Sweden", max_length=80)
+    city: str = Field(default="", max_length=100)
+    work_mode: Literal["any", "remote", "hybrid", "on_site"] = "any"
+    sources: list[str] = Field(default_factory=list, max_length=20)
+    frequency: Literal["manual", "daily", "weekly"] = "manual"
+
+
+class CvTailorRequest(BaseModel):
+    job_description: str = Field(min_length=100, max_length=30000)
+    template: Literal["classic", "modern", "compact"] = "classic"
 
 
 class JobSourceConfigUpdate(BaseModel):
     greenhouse: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
     lever: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
     teamtailor: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    ashby: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    smartrecruiters: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    workable: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    recruitee: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    breezy: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    personio: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    workday: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
 
 
 app = FastAPI(
     title="CareerMate API",
     description="Local-first job search and application assistant",
-    version="0.8.3",
+    version="1.0.0",
     lifespan=lifespan,
 )
 
@@ -107,6 +140,28 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
+
+
+def _parse_published_date(value: str):
+    from datetime import datetime, timezone, timedelta
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed
+    except ValueError:
+        pass
+    lowered = raw.casefold()
+    now = datetime.now(timezone.utc)
+    if lowered in {"today", "posted today"}:
+        return now
+    if lowered in {"yesterday", "posted yesterday"}:
+        return now - timedelta(days=1)
+    match = re.search(r"(?:posted\s+)?(\d+)\s+days?\s+ago", lowered)
+    if match:
+        return now - timedelta(days=int(match.group(1)))
+    return None
 
 
 def _atomic_write(path: Path, content: str) -> None:
@@ -299,6 +354,131 @@ def save_candidate_profile(profile: CandidateProfile) -> dict[str, object]:
     }
 
 
+@app.get("/api/platforms")
+def get_platform_directory() -> dict[str, object]:
+    """Return the curated job-platform directory and integration capability labels."""
+    items = list_platforms()
+    return {
+        "success": True,
+        "total": len(items),
+        "platforms": items,
+        "integration_note": "Only sources labelled live have an automatic connector in this build. External platforms open their own search pages."
+    }
+
+
+@app.post("/api/cv/tailor")
+def tailor_cv_for_job(request: CvTailorRequest) -> dict[str, object]:
+    """Generate an evidence-grounded DOCX CV and transparent ATS heuristic score."""
+    if not PROFILE_PATH.exists():
+        raise HTTPException(status_code=400, detail="Upload and analyse your base CV before tailoring it.")
+    try:
+        profile = CandidateProfile.model_validate_json(PROFILE_PATH.read_text(encoding="utf-8"))
+        result = create_tailored_cv(profile, request.job_description, request.template)
+        result.pop("download_path", None)
+        result["download_url"] = f"/api/cv/tailored/{result['filename']}"
+        return {"success": True, **result}
+    except (ValueError, AIProviderError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("CV tailoring failed")
+        raise HTTPException(status_code=500, detail="Could not generate the tailored CV. Check the AI provider and try again.") from exc
+
+
+@app.get("/api/cv/tailored/{filename}")
+def download_tailored_cv(filename: str):
+    """Download a generated DOCX from the local tailored-CV workspace."""
+    safe_name = Path(filename).name
+    path = OUTPUT_DIR / safe_name
+    if safe_name != filename or not path.is_file() or path.suffix.lower() != ".docx":
+        raise HTTPException(status_code=404, detail="Tailored CV not found.")
+    return FileResponse(path, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", filename=safe_name)
+
+
+@app.get("/api/cv/tailored")
+def get_tailored_cv_versions(limit: int = Query(default=50, ge=1, le=200)):
+    return {"success": True, "versions": list_tailored_versions(limit)}
+
+
+@app.get("/api/cv/tailored/{filename}/preview")
+def preview_tailored_cv_pdf(filename: str):
+    try:
+        path = export_tailored_pdf(filename)
+        return FileResponse(path, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{path.name}"'})
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Tailored CV PDF preview failed for %s", filename)
+        raise HTTPException(status_code=500, detail=f"PDF preview generation failed: {type(exc).__name__}. Check the backend log for details.") from exc
+
+
+@app.get("/api/cv/tailored/{filename}/pdf")
+def download_tailored_cv_pdf(filename: str):
+    try:
+        path = export_tailored_pdf(filename)
+        return FileResponse(path, media_type="application/pdf", filename=path.name)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Tailored CV PDF download failed for %s", filename)
+        raise HTTPException(status_code=500, detail=f"PDF export failed: {type(exc).__name__}. Check the backend log for details.") from exc
+
+
+@app.get("/api/alerts")
+def get_job_alerts(limit: int = Query(default=100, ge=1, le=500)):
+    items = list_alert_history(limit)
+    return {"success": True, "alerts": items, "unread": sum(1 for item in items if not item.get("read"))}
+
+
+@app.post("/api/alerts/{alert_id}/read")
+def mark_job_alert_read(alert_id: str):
+    if not mark_alert_read(alert_id):
+        raise HTTPException(status_code=404, detail="Alert not found.")
+    return {"success": True}
+
+
+@app.get("/api/searches")
+def get_saved_searches():
+    return {"success": True, "searches": list_searches()}
+
+
+@app.post("/api/searches")
+def create_saved_search(request: SavedSearchRequest):
+    item = save_search(request.model_dump())
+    from app.services.alert_scheduler import refresh_schedules
+    refresh_schedules()
+    return {"success": True, "search": item}
+
+
+@app.delete("/api/searches/{search_id}")
+def remove_saved_search(search_id: str):
+    if not delete_search(search_id):
+        raise HTTPException(status_code=404, detail="Saved search not found.")
+    from app.services.alert_scheduler import refresh_schedules
+    refresh_schedules()
+    return {"success": True}
+
+
+@app.post("/api/searches/{search_id}/check-alerts")
+def check_saved_search_alerts(search_id: str):
+    item = next((x for x in list_searches() if x.get("id") == search_id), None)
+    if not item:
+        raise HTTPException(status_code=404, detail="Saved search not found.")
+    try:
+        result = search_multiple_roles(roles=item["roles"], country=item.get("country","Sweden"),
+            city=item.get("city",""), work_mode=item.get("work_mode","any"),
+            sources=item.get("sources") or None, limit=40, offset=0)
+        jobs = [x.model_dump() for x in result.get("jobs", [])]
+        delta = scan_alerts(search_id, jobs)
+        record_alerts(search_id, item.get("name","Saved search"), delta["new_jobs"])
+        return {"success": True, **delta}
+    except (JobDiscoveryError, JobSourceError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
 @app.get("/api/jobs/search")
 def search_job_listings(
     roles: list[str] = Query(default=[]),
@@ -310,6 +490,11 @@ def search_job_listings(
     sources: list[str] | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=40),
     offset: int = Query(default=0, ge=0, le=2000),
+    min_salary: int | None = Query(default=None, ge=0),
+    max_salary: int | None = Query(default=None, ge=0),
+    salary_currency: str = Query(default="", max_length=5),
+    posted_within_days: int | None = Query(default=None, ge=1, le=365),
+    excluded_companies: list[str] = Query(default=[]),
 ) -> dict[str, object]:
     """Search one or more roles, apply transparent local filters, and save results."""
     role_values = roles or ([query] if query else [])
@@ -344,11 +529,33 @@ def search_job_listings(
             else:
                 response_jobs.append(item)
 
+        normalized_jobs = []
+        from datetime import datetime, timezone, timedelta
+        excluded = {x.casefold().strip() for x in excluded_companies if x.strip()}
+        cutoff = datetime.now(timezone.utc) - timedelta(days=posted_within_days) if posted_within_days else None
+        for item in response_jobs:
+            item.update(extract_salary(str(item.get("description", ""))))
+            company = str(item.get("company", "")).casefold()
+            if any(blocked in company for blocked in excluded):
+                continue
+            if salary_currency and item.get("salary_currency") and item["salary_currency"].casefold() != salary_currency.casefold():
+                continue
+            if min_salary is not None and (item.get("salary_min") is None or item["salary_min"] < min_salary):
+                continue
+            if max_salary is not None and (item.get("salary_max") is None or item["salary_max"] > max_salary):
+                continue
+            if cutoff:
+                published = _parse_published_date(str(item.get("published_at","")))
+                if published is None or published < cutoff:
+                    continue
+            normalized_jobs.append(item)
         return {
             "success": True,
             **{key: value for key, value in result.items() if key != "jobs"},
             "saved_total": saved_total,
-            "jobs": response_jobs,
+            "jobs": normalized_jobs,
+            "returned": len(normalized_jobs),
+            "local_filters": {"min_salary": min_salary, "max_salary": max_salary, "salary_currency": salary_currency, "posted_within_days": posted_within_days, "excluded_companies": excluded_companies},
         }
     except JobDiscoveryError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

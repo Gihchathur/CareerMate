@@ -171,3 +171,10 @@ See [Development guide](docs/DEVELOPMENT.md) for architecture, test setup and re
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+
+## CareerMate 0.9 feature expansion
+
+The 0.9 work adds a searchable 58-platform directory, additional public employer ATS adapters (Ashby, Workday, SmartRecruiters, Workable, Recruitee, Breezy HR and Personio), local saved searches and scheduled alerts, salary/freshness/company filters, and AI-assisted CV tailoring with three DOCX layouts, ATS heuristic feedback and PDF export.
+
+See [docs/FEATURE-EXPANSION.md](docs/FEATURE-EXPANSION.md) for setup instructions, capability distinctions and limitations. External job-board shortcuts are not automatic integrations; only configured direct-feed adapters retrieve listings.

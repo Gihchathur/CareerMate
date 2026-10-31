@@ -157,6 +157,8 @@ def suggest_profile_key(label: str, kind: str = "text", autocomplete: str = "") 
     if re.search(r"\b(skills|technical skills|technologies)\b", text): return "skills"
     if re.search(r"\b(language|languages)\b", text): return "languages"
     if re.search(r"\b(certification|certifications)\b", text): return "certifications"
+    if re.search(r"\b(professional experience|work experience|employment history|experience)\b", text): return "experience"
+    if re.search(r"\b(education|academic background|educational background)\b", text): return "education"
     return ""
 
 

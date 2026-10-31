@@ -1,0 +1,466 @@
+[
+  {
+    "id": "linkedin",
+    "name": "LinkedIn Jobs",
+    "category": "professional_network",
+    "integration": "external",
+    "url": "https://www.linkedin.com/jobs/search/?keywords={query}&location={location}",
+    "default_selected": true
+  },
+  {
+    "id": "indeed",
+    "name": "Indeed",
+    "category": "job_board",
+    "integration": "external",
+    "url": "https://www.indeed.com/jobs?q={query}&l={location}",
+    "default_selected": true
+  },
+  {
+    "id": "glassdoor",
+    "name": "Glassdoor",
+    "category": "job_board",
+    "integration": "external",
+    "url": "https://www.glassdoor.com/Job/jobs.htm?sc.keyword={query}&locT=C&locName={location}",
+    "default_selected": true
+  },
+  {
+    "id": "wellfound",
+    "name": "Wellfound",
+    "category": "startup",
+    "integration": "external",
+    "url": "https://wellfound.com/jobs?query={query}",
+    "default_selected": true
+  },
+  {
+    "id": "ziprecruiter",
+    "name": "ZipRecruiter",
+    "category": "job_board",
+    "integration": "external",
+    "url": "https://www.ziprecruiter.com/jobs-search?search={query}&location={location}",
+    "default_selected": false
+  },
+  {
+    "id": "monster",
+    "name": "Monster",
+    "category": "job_board",
+    "integration": "external",
+    "url": "https://www.monster.com/jobs/search?q={query}&where={location}",
+    "default_selected": false
+  },
+  {
+    "id": "careerbuilder",
+    "name": "CareerBuilder",
+    "category": "job_board",
+    "integration": "external",
+    "url": "https://www.careerbuilder.com/jobs?keywords={query}&location={location}",
+    "default_selected": false
+  },
+  {
+    "id": "simplyhired",
+    "name": "SimplyHired",
+    "category": "job_board",
+    "integration": "external",
+    "url": "https://www.simplyhired.com/search?q={query}&l={location}",
+    "default_selected": false
+  },
+  {
+    "id": "dice",
+    "name": "Dice",
+    "category": "technology",
+    "integration": "external",
+    "url": "https://www.dice.com/jobs?q={query}&location={location}",
+    "default_selected": false
+  },
+  {
+    "id": "thelocal",
+    "name": "The Local Jobs",
+    "category": "regional",
+    "integration": "external",
+    "url": "https://www.thelocal.com/jobs/",
+    "default_selected": false
+  },
+  {
+    "id": "eures",
+    "name": "EURES",
+    "category": "government",
+    "integration": "external",
+    "url": "https://eures.europa.eu/index_en",
+    "default_selected": true
+  },
+  {
+    "id": "arbetsformedlingen",
+    "name": "Arbetsf\u00f6rmedlingen",
+    "category": "government",
+    "integration": "live",
+    "url": "https://arbetsformedlingen.se/platsbanken/",
+    "default_selected": false
+  },
+  {
+    "id": "jobtech",
+    "name": "JobTech/Platsbanken",
+    "category": "government",
+    "integration": "live",
+    "url": "https://arbetsformedlingen.se/platsbanken/",
+    "default_selected": true
+  },
+  {
+    "id": "remoteok",
+    "name": "Remote OK",
+    "category": "remote",
+    "integration": "live",
+    "url": "https://remoteok.com/",
+    "default_selected": true
+  },
+  {
+    "id": "arbeitnow",
+    "name": "Arbeitnow",
+    "category": "remote",
+    "integration": "live",
+    "url": "https://arbeitnow.com/",
+    "default_selected": true
+  },
+  {
+    "id": "weworkremotely",
+    "name": "We Work Remotely",
+    "category": "remote",
+    "integration": "external",
+    "url": "https://weworkremotely.com/",
+    "default_selected": false
+  },
+  {
+    "id": "remotive",
+    "name": "Remotive",
+    "category": "remote",
+    "integration": "external",
+    "url": "https://remotive.com/remote-jobs",
+    "default_selected": false
+  },
+  {
+    "id": "eurojobs",
+    "name": "EuroJobs",
+    "category": "regional",
+    "integration": "external",
+    "url": "https://www.eurojobs.com/",
+    "default_selected": false
+  },
+  {
+    "id": "jobsinnetwork",
+    "name": "JobsinNetwork",
+    "category": "regional",
+    "integration": "external",
+    "url": "https://www.jobsinnetwork.com/",
+    "default_selected": false
+  },
+  {
+    "id": "stepstone",
+    "name": "StepStone",
+    "category": "regional",
+    "integration": "external",
+    "url": "https://www.stepstone.com/",
+    "default_selected": false
+  },
+  {
+    "id": "totaljobs",
+    "name": "Totaljobs",
+    "category": "regional",
+    "integration": "external",
+    "url": "https://www.totaljobs.com/",
+    "default_selected": false
+  },
+  {
+    "id": "reed",
+    "name": "Reed",
+    "category": "regional",
+    "integration": "external",
+    "url": "https://www.reed.co.uk/jobs",
+    "default_selected": false
+  },
+  {
+    "id": "cv_library",
+    "name": "CV-Library",
+    "category": "regional",
+    "integration": "external",
+    "url": "https://www.cv-library.co.uk/",
+    "default_selected": false
+  },
+  {
+    "id": "jobsite",
+    "name": "Jobsite",
+    "category": "regional",
+    "integration": "external",
+    "url": "https://www.jobsite.co.uk/",
+    "default_selected": false
+  },
+  {
+    "id": "jobindex",
+    "name": "Jobindex",
+    "category": "regional",
+    "integration": "external",
+    "url": "https://www.jobindex.dk/",
+    "default_selected": false
+  },
+  {
+    "id": "finn",
+    "name": "FINN Jobb",
+    "category": "regional",
+    "integration": "external",
+    "url": "https://www.finn.no/job/",
+    "default_selected": false
+  },
+  {
+    "id": "nav",
+    "name": "NAV Arbeidsplassen",
+    "category": "government",
+    "integration": "external",
+    "url": "https://arbeidsplassen.nav.no/",
+    "default_selected": false
+  },
+  {
+    "id": "jobbsafari",
+    "name": "Jobbsafari",
+    "category": "regional",
+    "integration": "external",
+    "url": "https://www.jobbsafari.se/",
+    "default_selected": false
+  },
+  {
+    "id": "academicwork",
+    "name": "Academic Work",
+    "category": "regional",
+    "integration": "external",
+    "url": "https://www.academicwork.se/",
+    "default_selected": false
+  },
+  {
+    "id": "thehub",
+    "name": "The Hub",
+    "category": "startup",
+    "integration": "external",
+    "url": "https://thehub.io/jobs",
+    "default_selected": false
+  },
+  {
+    "id": "oyster",
+    "name": "Oyster",
+    "category": "remote",
+    "integration": "external",
+    "url": "https://www.oysterhr.com/careers",
+    "default_selected": false
+  },
+  {
+    "id": "otta",
+    "name": "Welcome to the Jungle",
+    "category": "technology",
+    "integration": "external",
+    "url": "https://www.welcometothejungle.com/",
+    "default_selected": false
+  },
+  {
+    "id": "himalayas",
+    "name": "Himalayas",
+    "category": "remote",
+    "integration": "external",
+    "url": "https://himalayas.app/jobs",
+    "default_selected": false
+  },
+  {
+    "id": "workingnomads",
+    "name": "Working Nomads",
+    "category": "remote",
+    "integration": "external",
+    "url": "https://www.workingnomads.com/jobs",
+    "default_selected": false
+  },
+  {
+    "id": "startupjobs",
+    "name": "Startup.jobs",
+    "category": "startup",
+    "integration": "external",
+    "url": "https://startup.jobs/",
+    "default_selected": false
+  },
+  {
+    "id": "ycombinator",
+    "name": "Y Combinator Work at a Startup",
+    "category": "startup",
+    "integration": "external",
+    "url": "https://www.ycombinator.com/jobs",
+    "default_selected": false
+  },
+  {
+    "id": "hackernews",
+    "name": "Hacker News Who is Hiring",
+    "category": "community",
+    "integration": "external",
+    "url": "https://news.ycombinator.com/submitted?id=whoishiring",
+    "default_selected": false
+  },
+  {
+    "id": "otta_jobs",
+    "name": "Otta",
+    "category": "technology",
+    "integration": "external",
+    "url": "https://otta.com/",
+    "default_selected": false
+  },
+  {
+    "id": "greenhouse",
+    "name": "Greenhouse boards",
+    "category": "ats",
+    "integration": "live",
+    "url": "https://www.greenhouse.io/",
+    "default_selected": true
+  },
+  {
+    "id": "lever",
+    "name": "Lever boards",
+    "category": "ats",
+    "integration": "live",
+    "url": "https://www.lever.co/",
+    "default_selected": true
+  },
+  {
+    "id": "teamtailor",
+    "name": "Teamtailor boards",
+    "category": "ats",
+    "integration": "live",
+    "url": "https://www.teamtailor.com/",
+    "default_selected": true
+  },
+  {
+    "id": "ashby",
+    "name": "Ashby",
+    "category": "ats",
+    "integration": "configurable",
+    "url": "https://jobs.ashbyhq.com/",
+    "default_selected": false
+  },
+  {
+    "id": "workday",
+    "name": "Workday",
+    "category": "ats",
+    "integration": "configurable",
+    "url": "https://www.workday.com/",
+    "default_selected": false
+  },
+  {
+    "id": "smartrecruiters",
+    "name": "SmartRecruiters",
+    "category": "ats",
+    "integration": "configurable",
+    "url": "https://www.smartrecruiters.com/",
+    "default_selected": false
+  },
+  {
+    "id": "workable",
+    "name": "Workable",
+    "category": "ats",
+    "integration": "configurable",
+    "url": "https://www.workable.com/",
+    "default_selected": false
+  },
+  {
+    "id": "recruitee",
+    "name": "Recruitee",
+    "category": "ats",
+    "integration": "configurable",
+    "url": "https://recruitee.com/",
+    "default_selected": false
+  },
+  {
+    "id": "personio",
+    "name": "Personio",
+    "category": "ats",
+    "integration": "configurable",
+    "url": "https://www.personio.com/",
+    "default_selected": false
+  },
+  {
+    "id": "breezy",
+    "name": "Breezy HR",
+    "category": "ats",
+    "integration": "configurable",
+    "url": "https://breezy.hr/",
+    "default_selected": false
+  },
+  {
+    "id": "rippling",
+    "name": "Rippling",
+    "category": "ats",
+    "integration": "external",
+    "url": "https://www.rippling.com/",
+    "default_selected": false
+  },
+  {
+    "id": "icims",
+    "name": "iCIMS",
+    "category": "ats",
+    "integration": "external",
+    "url": "https://www.icims.com/",
+    "default_selected": false
+  },
+  {
+    "id": "pinpoint",
+    "name": "Pinpoint",
+    "category": "ats",
+    "integration": "external",
+    "url": "https://www.pinpointhq.com/",
+    "default_selected": false
+  },
+  {
+    "id": "jazzhr",
+    "name": "JazzHR",
+    "category": "ats",
+    "integration": "external",
+    "url": "https://www.jazzhr.com/",
+    "default_selected": false
+  },
+  {
+    "id": "bullhorn",
+    "name": "Bullhorn",
+    "category": "ats",
+    "integration": "external",
+    "url": "https://www.bullhorn.com/",
+    "default_selected": false
+  },
+  {
+    "id": "oracle_taleo",
+    "name": "Oracle Taleo",
+    "category": "ats",
+    "integration": "external",
+    "url": "https://www.oracle.com/human-capital-management/taleo/",
+    "default_selected": false
+  },
+  {
+    "id": "successfactors",
+    "name": "SAP SuccessFactors",
+    "category": "ats",
+    "integration": "external",
+    "url": "https://www.sap.com/products/hcm.html",
+    "default_selected": false
+  },
+  {
+    "id": "jobvite",
+    "name": "Jobvite",
+    "category": "ats",
+    "integration": "external",
+    "url": "https://www.jobvite.com/",
+    "default_selected": false
+  },
+  {
+    "id": "bamboohr",
+    "name": "BambooHR",
+    "category": "ats",
+    "integration": "external",
+    "url": "https://www.bamboohr.com/",
+    "default_selected": false
+  },
+  {
+    "id": "smartrecruiters_portal",
+    "name": "SmartRecruiters Jobs",
+    "category": "ats",
+    "integration": "external",
+    "url": "https://www.smartrecruiters.com/",
+    "default_selected": false
+  }
+]

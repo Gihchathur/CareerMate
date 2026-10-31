@@ -33,6 +33,15 @@ import {
   searchJobs,
   updateApplication,
   uploadCv,
+  tailorCvForJob,
+  createSavedSearch,
+  getSavedSearches,
+  deleteSavedSearch,
+  checkSavedSearchAlerts,
+  getJobAlerts,
+  markJobAlertRead,
+  getTailoredCvVersions,
+  TAILORED_CV_DOWNLOAD_BASE,
 } from "./api";
 import type {
   ApplicationAnswer,
@@ -59,6 +68,7 @@ import type {
   JobBoardConfig,
   JobSourceConfiguration,
   WorkMode,
+  TailoredCvResponse,
 } from "./types";
 
 const EMPTY_STATUS: CvStatus = {
@@ -74,13 +84,481 @@ const SOURCE_OPTIONS: { id: JobSourceId; title: string }[] = [
   { id: "greenhouse", title: "Greenhouse" },
   { id: "lever", title: "Lever" },
   { id: "teamtailor", title: "Teamtailor" },
+  { id: "ashby", title: "Ashby" },
+  { id: "smartrecruiters", title: "SmartRecruiters" },
+  { id: "workable", title: "Workable" },
+  { id: "recruitee", title: "Recruitee" },
+  { id: "breezy", title: "Breezy HR" },
+  { id: "personio", title: "Personio" },
+  { id: "workday", title: "Workday" },
 ];
 
-type PlatformShortcut = { id: string; name: string; url: string; enabled: boolean; description?: string };
+type PlatformShortcut = { id: string; name: string; url: string; enabled: boolean; description?: string; category?: string };
 const DEFAULT_PLATFORM_SHORTCUTS: PlatformShortcut[] = [
-  { id: "linkedin", name: "LinkedIn Jobs", url: "https://www.linkedin.com/jobs/search/?keywords={query}&location={location}", enabled: true, description: "Open a LinkedIn job search in your browser; not scraped automatically." },
-  { id: "wellfound", name: "Wellfound", url: "https://wellfound.com/jobs?query={query}", enabled: true, description: "Startup roles; sign in if the site requires it." },
-  { id: "indeed", name: "Indeed", url: "https://www.indeed.com/jobs?q={query}&l={location}", enabled: false, description: "Open an external search; not scraped automatically." },
+  {
+    "id": "linkedin",
+    "name": "LinkedIn Jobs",
+    "url": "https://www.linkedin.com/jobs/search/?keywords={query}&location={location}",
+    "enabled": true,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "professional_network"
+  },
+  {
+    "id": "indeed",
+    "name": "Indeed",
+    "url": "https://www.indeed.com/jobs?q={query}&l={location}",
+    "enabled": true,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "job_board"
+  },
+  {
+    "id": "glassdoor",
+    "name": "Glassdoor",
+    "url": "https://www.glassdoor.com/Job/jobs.htm?sc.keyword={query}&locT=C&locName={location}",
+    "enabled": true,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "job_board"
+  },
+  {
+    "id": "wellfound",
+    "name": "Wellfound",
+    "url": "https://wellfound.com/jobs?query={query}",
+    "enabled": true,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "startup"
+  },
+  {
+    "id": "ziprecruiter",
+    "name": "ZipRecruiter",
+    "url": "https://www.ziprecruiter.com/jobs-search?search={query}&location={location}",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "job_board"
+  },
+  {
+    "id": "monster",
+    "name": "Monster",
+    "url": "https://www.monster.com/jobs/search?q={query}&where={location}",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "job_board"
+  },
+  {
+    "id": "careerbuilder",
+    "name": "CareerBuilder",
+    "url": "https://www.careerbuilder.com/jobs?keywords={query}&location={location}",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "job_board"
+  },
+  {
+    "id": "simplyhired",
+    "name": "SimplyHired",
+    "url": "https://www.simplyhired.com/search?q={query}&l={location}",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "job_board"
+  },
+  {
+    "id": "dice",
+    "name": "Dice",
+    "url": "https://www.dice.com/jobs?q={query}&location={location}",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "technology"
+  },
+  {
+    "id": "thelocal",
+    "name": "The Local Jobs",
+    "url": "https://www.thelocal.com/jobs/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "regional"
+  },
+  {
+    "id": "eures",
+    "name": "EURES",
+    "url": "https://eures.europa.eu/index_en",
+    "enabled": true,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "government"
+  },
+  {
+    "id": "arbetsformedlingen",
+    "name": "Arbetsförmedlingen",
+    "url": "https://arbetsformedlingen.se/platsbanken/",
+    "enabled": false,
+    "description": "Automatic feed connector available.",
+    "category": "government"
+  },
+  {
+    "id": "jobtech",
+    "name": "JobTech/Platsbanken",
+    "url": "https://arbetsformedlingen.se/platsbanken/",
+    "enabled": true,
+    "description": "Automatic feed connector available.",
+    "category": "government"
+  },
+  {
+    "id": "remoteok",
+    "name": "Remote OK",
+    "url": "https://remoteok.com/",
+    "enabled": true,
+    "description": "Automatic feed connector available.",
+    "category": "remote"
+  },
+  {
+    "id": "arbeitnow",
+    "name": "Arbeitnow",
+    "url": "https://arbeitnow.com/",
+    "enabled": true,
+    "description": "Automatic feed connector available.",
+    "category": "remote"
+  },
+  {
+    "id": "weworkremotely",
+    "name": "We Work Remotely",
+    "url": "https://weworkremotely.com/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "remote"
+  },
+  {
+    "id": "remotive",
+    "name": "Remotive",
+    "url": "https://remotive.com/remote-jobs",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "remote"
+  },
+  {
+    "id": "eurojobs",
+    "name": "EuroJobs",
+    "url": "https://www.eurojobs.com/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "regional"
+  },
+  {
+    "id": "jobsinnetwork",
+    "name": "JobsinNetwork",
+    "url": "https://www.jobsinnetwork.com/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "regional"
+  },
+  {
+    "id": "stepstone",
+    "name": "StepStone",
+    "url": "https://www.stepstone.com/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "regional"
+  },
+  {
+    "id": "totaljobs",
+    "name": "Totaljobs",
+    "url": "https://www.totaljobs.com/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "regional"
+  },
+  {
+    "id": "reed",
+    "name": "Reed",
+    "url": "https://www.reed.co.uk/jobs",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "regional"
+  },
+  {
+    "id": "cv_library",
+    "name": "CV-Library",
+    "url": "https://www.cv-library.co.uk/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "regional"
+  },
+  {
+    "id": "jobsite",
+    "name": "Jobsite",
+    "url": "https://www.jobsite.co.uk/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "regional"
+  },
+  {
+    "id": "jobindex",
+    "name": "Jobindex",
+    "url": "https://www.jobindex.dk/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "regional"
+  },
+  {
+    "id": "finn",
+    "name": "FINN Jobb",
+    "url": "https://www.finn.no/job/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "regional"
+  },
+  {
+    "id": "nav",
+    "name": "NAV Arbeidsplassen",
+    "url": "https://arbeidsplassen.nav.no/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "government"
+  },
+  {
+    "id": "jobbsafari",
+    "name": "Jobbsafari",
+    "url": "https://www.jobbsafari.se/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "regional"
+  },
+  {
+    "id": "academicwork",
+    "name": "Academic Work",
+    "url": "https://www.academicwork.se/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "regional"
+  },
+  {
+    "id": "thehub",
+    "name": "The Hub",
+    "url": "https://thehub.io/jobs",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "startup"
+  },
+  {
+    "id": "oyster",
+    "name": "Oyster",
+    "url": "https://www.oysterhr.com/careers",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "remote"
+  },
+  {
+    "id": "otta",
+    "name": "Welcome to the Jungle",
+    "url": "https://www.welcometothejungle.com/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "technology"
+  },
+  {
+    "id": "himalayas",
+    "name": "Himalayas",
+    "url": "https://himalayas.app/jobs",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "remote"
+  },
+  {
+    "id": "workingnomads",
+    "name": "Working Nomads",
+    "url": "https://www.workingnomads.com/jobs",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "remote"
+  },
+  {
+    "id": "startupjobs",
+    "name": "Startup.jobs",
+    "url": "https://startup.jobs/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "startup"
+  },
+  {
+    "id": "ycombinator",
+    "name": "Y Combinator Work at a Startup",
+    "url": "https://www.ycombinator.com/jobs",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "startup"
+  },
+  {
+    "id": "hackernews",
+    "name": "Hacker News Who is Hiring",
+    "url": "https://news.ycombinator.com/submitted?id=whoishiring",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "community"
+  },
+  {
+    "id": "otta_jobs",
+    "name": "Otta",
+    "url": "https://otta.com/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "technology"
+  },
+  {
+    "id": "greenhouse",
+    "name": "Greenhouse boards",
+    "url": "https://www.greenhouse.io/",
+    "enabled": true,
+    "description": "Automatic feed connector available.",
+    "category": "ats"
+  },
+  {
+    "id": "lever",
+    "name": "Lever boards",
+    "url": "https://www.lever.co/",
+    "enabled": true,
+    "description": "Automatic feed connector available.",
+    "category": "ats"
+  },
+  {
+    "id": "teamtailor",
+    "name": "Teamtailor boards",
+    "url": "https://www.teamtailor.com/",
+    "enabled": true,
+    "description": "Automatic feed connector available.",
+    "category": "ats"
+  },
+  {
+    "id": "ashby",
+    "name": "Ashby",
+    "url": "https://jobs.ashbyhq.com/",
+    "enabled": false,
+    "description": "Employer board can be connected by configuring its company slug.",
+    "category": "ats"
+  },
+  {
+    "id": "workday",
+    "name": "Workday",
+    "url": "https://www.workday.com/",
+    "enabled": false,
+    "description": "Employer board can be connected by configuring its company slug.",
+    "category": "ats"
+  },
+  {
+    "id": "smartrecruiters",
+    "name": "SmartRecruiters",
+    "url": "https://www.smartrecruiters.com/",
+    "enabled": false,
+    "description": "Employer board can be connected by configuring its company slug.",
+    "category": "ats"
+  },
+  {
+    "id": "workable",
+    "name": "Workable",
+    "url": "https://www.workable.com/",
+    "enabled": false,
+    "description": "Employer board can be connected by configuring its company slug.",
+    "category": "ats"
+  },
+  {
+    "id": "recruitee",
+    "name": "Recruitee",
+    "url": "https://recruitee.com/",
+    "enabled": false,
+    "description": "Employer board can be connected by configuring its company slug.",
+    "category": "ats"
+  },
+  {
+    "id": "personio",
+    "name": "Personio",
+    "url": "https://www.personio.com/",
+    "enabled": false,
+    "description": "Employer board can be connected by configuring its company slug.",
+    "category": "ats"
+  },
+  {
+    "id": "breezy",
+    "name": "Breezy HR",
+    "url": "https://breezy.hr/",
+    "enabled": false,
+    "description": "Employer board can be connected by configuring its company slug.",
+    "category": "ats"
+  },
+  {
+    "id": "rippling",
+    "name": "Rippling",
+    "url": "https://www.rippling.com/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "ats"
+  },
+  {
+    "id": "icims",
+    "name": "iCIMS",
+    "url": "https://www.icims.com/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "ats"
+  },
+  {
+    "id": "pinpoint",
+    "name": "Pinpoint",
+    "url": "https://www.pinpointhq.com/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "ats"
+  },
+  {
+    "id": "jazzhr",
+    "name": "JazzHR",
+    "url": "https://www.jazzhr.com/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "ats"
+  },
+  {
+    "id": "bullhorn",
+    "name": "Bullhorn",
+    "url": "https://www.bullhorn.com/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "ats"
+  },
+  {
+    "id": "oracle_taleo",
+    "name": "Oracle Taleo",
+    "url": "https://www.oracle.com/human-capital-management/taleo/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "ats"
+  },
+  {
+    "id": "successfactors",
+    "name": "SAP SuccessFactors",
+    "url": "https://www.sap.com/products/hcm.html",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "ats"
+  },
+  {
+    "id": "jobvite",
+    "name": "Jobvite",
+    "url": "https://www.jobvite.com/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "ats"
+  },
+  {
+    "id": "bamboohr",
+    "name": "BambooHR",
+    "url": "https://www.bamboohr.com/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "ats"
+  },
+  {
+    "id": "smartrecruiters_portal",
+    "name": "SmartRecruiters Jobs",
+    "url": "https://www.smartrecruiters.com/",
+    "enabled": false,
+    "description": "External search shortcut; automatic importing is not enabled.",
+    "category": "ats"
+  }
 ];
 
 const APPLICATION_STATUS_LABELS: Record<ApplicationStatus, string> = {
@@ -93,7 +571,7 @@ const APPLICATION_STATUS_LABELS: Record<ApplicationStatus, string> = {
   withdrawn: "Withdrawn",
 };
 
-const EMPTY_JOB_SOURCE_CONFIG: JobSourceConfiguration = { greenhouse: [], lever: [], teamtailor: [] };
+const EMPTY_JOB_SOURCE_CONFIG: JobSourceConfiguration = { greenhouse: [], lever: [], teamtailor: [], ashby: [], smartrecruiters: [], workable: [], recruitee: [], breezy: [], personio: [], workday: [] };
 
 const EMPTY_SOURCE_STATUS: Record<JobSourceId, JobSourceStatus> = {
   jobtech_links: { configured: true, employers: null, requires_api_key: false },
@@ -102,6 +580,13 @@ const EMPTY_SOURCE_STATUS: Record<JobSourceId, JobSourceStatus> = {
   greenhouse: { configured: false, employers: 0, requires_api_key: false },
   lever: { configured: false, employers: 0, requires_api_key: false },
   teamtailor: { configured: false, employers: 0, requires_api_key: true, credentials_ready: false, missing_credentials: 0 },
+  ashby: { configured: false, employers: 0, requires_api_key: false },
+  smartrecruiters: { configured: false, employers: 0, requires_api_key: false },
+  workable: { configured: false, employers: 0, requires_api_key: false },
+  recruitee: { configured: false, employers: 0, requires_api_key: false },
+  breezy: { configured: false, employers: 0, requires_api_key: false },
+  personio: { configured: false, employers: 0, requires_api_key: false },
+  workday: { configured: false, employers: 0, requires_api_key: false },
 };
 
 function canSelectSource(source: JobSourceId, status: JobSourceStatus): boolean {
@@ -245,7 +730,7 @@ function TextAreaField({
   );
 }
 
-function Icon({ name }: { name: "search" | "file" | "sparkles" | "briefcase" | "check" | "arrow" | "grid" | "user" | "shield" | "target" | "chevron" | "sliders" | "layers" | "plus" | "info" | "graduation" | "pin" | "clock" | "cpu" | "refresh" | "trash" }) {
+function Icon({ name }: { name: "search" | "file" | "sparkles" | "briefcase" | "check" | "arrow" | "grid" | "user" | "shield" | "target" | "chevron" | "sliders" | "layers" | "plus" | "info" | "graduation" | "pin" | "clock" | "cpu" | "refresh" | "trash" | "filter" | "download" | "eye" }) {
   const paths: Record<typeof name, string> = {
     search: "M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm10 2-4.35-4.35",
     file: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Zm0 0v6h6M8 13h8M8 17h8",
@@ -268,12 +753,15 @@ function Icon({ name }: { name: "search" | "file" | "sparkles" | "briefcase" | "
     cpu: "M8 8h8v8H8zM9 2v3m6-3v3M9 19v3m6-3v3M2 9h3m-3 6h3m14-6h3m-3 6h3M8 5H5v14h14V5h-3",
     refresh: "M20 7v5h-5M4 17v-5h5M5.6 9a7 7 0 0 1 11.7-2L20 12M4 12l2.7 5a7 7 0 0 0 11.7-2",
     trash: "M3 6h18M8 6V4h8v2m-10 0 1 14h10l1-14M10 10v6m4-6v6",
+    filter: "M4 5h16M7 12h10m-7 7h4",
+    download: "M12 3v12m-5-5 5 5 5-5M5 21h14",
+    eye: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z",
   };
 
   return <svg aria-hidden="true" className="icon" viewBox="0 0 24 24" fill="none"><path d={paths[name]} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
-type WorkspaceView = "overview" | "discover" | "platforms" | "matches" | "applications" | "profile" | "ai" | "data";
+type WorkspaceView = "overview" | "discover" | "platforms" | "matches" | "applications" | "profile" | "ai" | "data" | "settings";
 
 function App() {
   const [file, setFile] = useState<File | null>(null);
@@ -290,7 +778,7 @@ function App() {
   const [sourceConfig, setSourceConfig] = useState<JobSourceConfiguration>(EMPTY_JOB_SOURCE_CONFIG);
   const [sourceConfigLoading, setSourceConfigLoading] = useState(false);
   const [sourceConfigSaving, setSourceConfigSaving] = useState(false);
-  const [newBoardProvider, setNewBoardProvider] = useState<"greenhouse" | "lever" | "teamtailor">("greenhouse");
+  const [newBoardProvider, setNewBoardProvider] = useState<"greenhouse" | "lever" | "teamtailor" | "ashby" | "smartrecruiters" | "workable" | "recruitee" | "breezy" | "personio" | "workday">("greenhouse");
   const [newBoardIdentifier, setNewBoardIdentifier] = useState("");
   const [newBoardCompany, setNewBoardCompany] = useState("");
   const [newBoardCountry, setNewBoardCountry] = useState("Sweden");
@@ -326,7 +814,55 @@ function App() {
   const [matchSelectionSearch, setMatchSelectionSearch] = useState("");
   const [activeView, setActiveView] = useState<WorkspaceView>("overview");
   const [selectedJob, setSelectedJob] = useState<JobResult | null>(null);
+
+  const [cvTemplate, setCvTemplate] = useState<"classic" | "modern" | "compact">("classic");
+  const [cvStudioJobDescription, setCvStudioJobDescription] = useState("");
+  const [tailoredCv, setTailoredCv] = useState<TailoredCvResponse | null>(null);
+  const [tailoredCvVersions, setTailoredCvVersions] = useState<{filename:string;template:string;created_at:string;ats_score:number|null}[]>([]);
+  useEffect(() => { setTailoredCv(null); setCvTailorError(""); }, [selectedJob?.id]);
+  const [tailoringCv, setTailoringCv] = useState(false);
+  const [cvTailorError, setCvTailorError] = useState("");
+  const [minimumSalary, setMinimumSalary] = useState("");
+  const [maximumSalary, setMaximumSalary] = useState("");
+  const [freshnessDays, setFreshnessDays] = useState("30");
+  const [excludedCompaniesText, setExcludedCompaniesText] = useState("");
+  const [savedSearches, setSavedSearches] = useState<{id:string;name:string;roles:string[];country:string;city:string;work_mode:WorkMode;sources:JobSourceId[];frequency:"manual"|"daily"|"weekly";created_at:string}[]>([]);
+  const [savedSearchName, setSavedSearchName] = useState("My job search");
+  const [checkingAlertId, setCheckingAlertId] = useState<string | null>(null);
+  const [alertFrequency, setAlertFrequency] = useState<"manual"|"daily"|"weekly">("daily");
+  const [jobAlerts, setJobAlerts] = useState<{id:string;search_id:string;search_name:string;job_id:string;title:string;company:string;location:string;url:string;found_at:string;read:boolean}[]>([]);
   const [activeInsightJobId, setActiveInsightJobId] = useState<string | null>(null);
+
+  // Keep modal interactions predictable: Escape closes, focus stays inside, and
+  // closing returns focus to the control that opened the dialog.
+  useEffect(() => {
+    if (!selectedJob && !activeInsightJobId) return;
+    const dialog = document.querySelector<HTMLElement>(selectedJob ? ".job-detail-drawer" : ".match-insight-drawer");
+    if (!dialog) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusable = () => Array.from(dialog.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter((element) => element.offsetParent !== null);
+    const close = () => { setSelectedJob(null); setActiveInsightJobId(null); };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); close(); return; }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      if (!items.length) { event.preventDefault(); dialog.focus(); return; }
+      const first = items[0]; const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    const oldOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    dialog.querySelector<HTMLElement>(".drawer-close, .match-insight-close")?.focus();
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = oldOverflow;
+      previousFocus?.focus();
+    };
+  }, [selectedJob?.id, activeInsightJobId]);
   const [enrichingJobId, setEnrichingJobId] = useState<string | null>(null);
   const [manualAdvertJobId, setManualAdvertJobId] = useState<string | null>(null);
   const [manualAdvertText, setManualAdvertText] = useState("");
@@ -334,6 +870,8 @@ function App() {
   const [enrichingApplicationId, setEnrichingApplicationId] = useState<string | null>(null);
   const [jobFilter, setJobFilter] = useState("");
   const [platformShortcuts, setPlatformShortcuts] = useState<PlatformShortcut[]>(DEFAULT_PLATFORM_SHORTCUTS);
+  const [externalSearchSelected, setExternalSearchSelected] = useState<string[]>(["linkedin"]);
+  const [platformFilter, setPlatformFilter] = useState("");
   const [platformPrefsLoaded, setPlatformPrefsLoaded] = useState(false);
   const [customPlatformName, setCustomPlatformName] = useState("");
   const [customPlatformUrl, setCustomPlatformUrl] = useState("");
@@ -380,7 +918,12 @@ function App() {
             && typeof (item as PlatformShortcut).name === "string"
             && typeof (item as PlatformShortcut).url === "string"
             && typeof (item as PlatformShortcut).enabled === "boolean");
-          if (cleaned.length) setPlatformShortcuts(cleaned.slice(0, 20));
+          if (cleaned.length) {
+            const savedById = new Map(cleaned.map((item) => [item.id, item]));
+            const merged = DEFAULT_PLATFORM_SHORTCUTS.map((item) => savedById.get(item.id) ?? item);
+            const custom = cleaned.filter((item) => item.id.startsWith("custom-") && !merged.some((base) => base.id === item.id));
+            setPlatformShortcuts([...merged, ...custom].slice(0, 100));
+          }
         }
       }
     } catch { /* Keep built-in shortcuts if saved preferences are malformed. */ }
@@ -401,6 +944,8 @@ function App() {
   }, []);
 
   useEffect(() => {
+    void refreshSavedSearches();
+    const alertRefresh = window.setInterval(() => { void refreshSavedSearches(); }, 60_000);
     let cancelled = false;
 
     async function loadInitialData() {
@@ -465,6 +1010,7 @@ function App() {
     void loadInitialData();
     return () => {
       cancelled = true;
+      window.clearInterval(alertRefresh);
     };
   }, []);
 
@@ -713,17 +1259,18 @@ function App() {
       ...(newBoardProvider === "greenhouse" ? { board_token: identifier } : {}),
       ...(newBoardProvider === "lever" ? { site: identifier, region: newBoardRegion === "na" || newBoardRegion === "apac" ? "global" : newBoardRegion } : {}),
       ...(newBoardProvider === "teamtailor" ? { api_key_env: newBoardApiKeyEnv.trim(), region: newBoardRegion } : {}),
+      ...(["ashby","smartrecruiters","workable","recruitee","breezy","personio","workday"].includes(newBoardProvider) ? { slug: identifier } : {}),
     };
     setSourceConfig((current) => ({ ...current, [newBoardProvider]: [...current[newBoardProvider], entry] }));
     setNewBoardIdentifier(""); setNewBoardCompany(""); setError("");
     setNotice("Board added to the pending configuration. Save platform settings to activate it.");
   }
 
-  function updateEmployerBoard(provider: "greenhouse" | "lever" | "teamtailor", index: number, changes: Partial<JobBoardConfig>) {
+  function updateEmployerBoard(provider: "greenhouse" | "lever" | "teamtailor" | "ashby" | "smartrecruiters" | "workable" | "recruitee" | "breezy" | "personio" | "workday", index: number, changes: Partial<JobBoardConfig>) {
     setSourceConfig((current) => ({ ...current, [provider]: current[provider].map((board, itemIndex) => itemIndex === index ? { ...board, ...changes } : board) }));
   }
 
-  function removeEmployerBoard(provider: "greenhouse" | "lever" | "teamtailor", index: number) {
+  function removeEmployerBoard(provider: "greenhouse" | "lever" | "teamtailor" | "ashby" | "smartrecruiters" | "workable" | "recruitee" | "breezy" | "personio" | "workday", index: number) {
     setSourceConfig((current) => ({ ...current, [provider]: current[provider].filter((_, itemIndex) => itemIndex !== index) }));
   }
 
@@ -745,6 +1292,50 @@ function App() {
     const id = `custom-${Date.now()}`;
     setPlatformShortcuts((current) => [...current, { id, name, url, enabled: true, description: "Custom external search link." }]);
     setCustomPlatformName(""); setCustomPlatformUrl(""); setError(""); setNotice(`Added ${name} to your local platform shortcuts.`);
+  }
+
+  async function refreshSavedSearches() {
+    try {
+      const result = await getSavedSearches(); setSavedSearches(result.searches);
+      const alerts = await getJobAlerts(); setJobAlerts(alerts.alerts);
+    } catch { /* Saved searches are optional until the local API is available. */ }
+  }
+
+  async function handleSaveCurrentSearch() {
+    const roles = jobRoles.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+    if (!roles.length) { setError("Enter a job title before saving this search."); return; }
+    try {
+      await createSavedSearch({ name: savedSearchName.trim() || "My job search", roles, country: jobCountry, city: jobCity, work_mode: workMode, sources: selectedSources, frequency: alertFrequency });
+      await refreshSavedSearches();
+      setNotice("Search saved locally. Use Check new jobs to compare it with the latest results.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not save search."); }
+  }
+
+  async function handleCheckSavedSearch(id: string) {
+    setCheckingAlertId(id);
+    try {
+      const result = await checkSavedSearchAlerts(id);
+      setNotice(`${result.new_count} new job${result.new_count === 1 ? "" : "s"} found.`);
+      if (result.new_jobs.length) setJobs((current) => [...result.new_jobs, ...current].filter((job, index, all) => all.findIndex((x) => x.id === job.id) === index));
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not check saved search."); }
+    finally { setCheckingAlertId(null); }
+  }
+
+  async function handleTailorCvForSelectedJob() {
+    if (!selectedJob) return;
+    const description = selectedJob.description?.trim() ?? "";
+    if (description.length < 100) {
+      setCvTailorError("Fetch the full job description first. CareerMate needs the actual requirements to tailor your CV.");
+      return;
+    }
+    setTailoringCv(true); setCvTailorError(""); setTailoredCv(null);
+    try {
+      setTailoredCv(await tailorCvForJob(description, cvTemplate));
+      const versions = await getTailoredCvVersions();
+      setTailoredCvVersions(versions.versions);
+    }
+    catch (e) { setCvTailorError(e instanceof Error ? e.message : "Could not tailor the CV."); }
+    finally { setTailoringCv(false); }
   }
 
   async function handleSearchJobs(event: FormEvent<HTMLFormElement>) {
@@ -769,7 +1360,19 @@ function App() {
     }
 
     if (selectedSources.length === 0) {
-      setError("Select at least one job source.");
+      const externalOnly = platformShortcuts.filter((platform) => platform.enabled && externalSearchSelected.includes(platform.id));
+      const opened = externalOnly.filter((platform) => {
+        const href = platformSearchUrl(platform);
+        if (!href) return false;
+        window.open(href, "_blank", "noopener,noreferrer");
+        return true;
+      });
+      if (opened.length) {
+        setError("");
+        setNotice(`Opened ${opened.map((item) => item.name).join(", ")} in separate tabs. External sites are not imported into CareerMate automatically.`);
+        return;
+      }
+      setError("Select at least one integrated source or one external platform for this search.");
       setNotice("");
       return;
     }
@@ -781,6 +1384,10 @@ function App() {
       work_mode: workMode,
       sources: selectedSources,
       limit: pageSize,
+      ...(minimumSalary.trim() ? { min_salary: Number(minimumSalary) } : {}),
+      ...(maximumSalary.trim() ? { max_salary: Number(maximumSalary) } : {}),
+      ...(freshnessDays !== "any" ? { posted_within_days: Number(freshnessDays) } : {}),
+      ...(excludedCompaniesText.trim() ? { excluded_companies: excludedCompaniesText.split(",").map((x) => x.trim()).filter(Boolean) } : {}),
     };
 
     await executeJobSearch(criteria, 0);
@@ -1575,7 +2182,7 @@ function App() {
     setProfileSaved(false);
   }
 
-  function updateList(field: "skills" | "certifications" | "languages", value: string) {
+  function updateList(field: "skills" | "certifications" | "languages" | "achievements", value: string) {
     const values = value.split("\n").map((item) => item.trim()).filter(Boolean);
     setProfile((current) => current ? { ...current, [field]: values } : current);
     setProfileSaved(false);
@@ -1725,7 +2332,7 @@ function App() {
     discover: {
       title: "Find your next opportunity",
       eyebrow: "JOB DISCOVERY",
-      description: "Search the sources you have configured, compare options, and open a focused view of each role.",
+      description: "Choose your roles, location, and sources. Keep advanced filters out of the way until you need them.",
     },
     platforms: {
       title: "Choose your job platforms",
@@ -1743,9 +2350,9 @@ function App() {
       description: "Keep your shortlist, draft materials, follow-ups, and application progress organized in local files.",
     },
     profile: {
-      title: "Your professional profile",
-      eyebrow: "CV & PROFILE",
-      description: "Keep your career facts accurate. The selected AI provider uses this reviewed profile when assessing opportunities.",
+      title: "CV Studio",
+      eyebrow: "YOUR CV WORKSPACE",
+      description: "Maintain your source CV, tailor it to a role, review the content, and export a clean ATS-friendly document.",
     },
     ai: {
       title: "Choose your AI engine",
@@ -1756,6 +2363,11 @@ function App() {
       title: "Manage your local data",
       eyebrow: "DATA MANAGEMENT",
       description: "Review what CareerMate stores on this computer, clear derived caches, or reset your workspace when you want a fresh start.",
+    },
+    settings: {
+      title: "CareerMate settings",
+      eyebrow: "CONFIGURATION",
+      description: "Set up AI, CV processing, job sources, and local data in one place.",
     },
   };
   const currentMeta = pageMeta[activeView];
@@ -1781,6 +2393,7 @@ function App() {
           <div className="job-row-meta"><span>{job.company || "Company not listed"}</span><i aria-hidden="true">·</i><span>{job.location || "Location not listed"}</span></div>
           <div className="job-badges">
             <span className={`job-mode-badge mode-${job.work_mode ?? "unknown"}`}>{workModeLabel(job.work_mode)}</span>
+            {job.salary_min != null && job.salary_max != null && <span className="job-role-badge">{job.salary_currency || ""} {job.salary_min.toLocaleString()}–{job.salary_max.toLocaleString()}</span>}
             <span className="source-chip">{sourceLabel(job.source)}</span>
             {(job.search_roles ?? []).slice(0, 2).map((role) => <span className="job-role-badge" key={role}>{role}</span>)}
             {match?.match_score !== undefined && match.match_score !== null && <span className="match-chip">{match.match_score}% CV match</span>}
@@ -1813,20 +2426,24 @@ function App() {
 
       <div className="workspace-shell" id="top">
         <aside className="sidebar">
-          <div className="sidebar-label">WORKSPACE</div>
-          <nav className="sidebar-nav" aria-label="Main navigation">
+          <div className="sidebar-label">YOUR WORKSPACE</div>
+          <nav className="sidebar-nav" aria-label="Workspace">
             <button type="button" className={`nav-item${activeView === "overview" ? " active" : ""}`} onClick={() => { setActiveView("overview"); setSelectedJob(null); }}><Icon name="grid" /><span>Overview</span></button>
+          </nav>
+          <div className="sidebar-label sidebar-label-spaced">CAREER TOOLS</div>
+          <nav className="sidebar-nav" aria-label="Career tools">
             <button type="button" className={`nav-item${activeView === "discover" ? " active" : ""}`} onClick={() => { setActiveView("discover"); setSelectedJob(null); }}><Icon name="search" /><span>Find jobs</span><span className="nav-count">{jobs.length}</span></button>
-            <button type="button" className={`nav-item${activeView === "platforms" ? " active" : ""}`} onClick={() => { setActiveView("platforms"); setSelectedJob(null); }}><Icon name="layers" /><span>Job platforms</span><span className="nav-status nav-status-ready" /></button>
+            <button type="button" className={`nav-item${activeView === "platforms" ? " active" : ""}`} onClick={() => { setActiveView("platforms"); setSelectedJob(null); }}><Icon name="layers" /><span>Job sources</span></button>
             <button type="button" className={`nav-item${activeView === "matches" ? " active" : ""}`} onClick={() => { setActiveView("matches"); setSelectedJob(null); }}><Icon name="sparkles" /><span>Match insights</span>{matches.length > 0 && <span className="nav-count">{matches.length}</span>}</button>
             <button type="button" className={`nav-item${activeView === "applications" ? " active" : ""}`} onClick={() => { setActiveView("applications"); setSelectedJob(null); }}><Icon name="briefcase" /><span>Applications</span>{applications.length > 0 && <span className="nav-count">{applications.length}</span>}</button>
-            <button type="button" className={`nav-item${activeView === "profile" ? " active" : ""}`} onClick={() => { setActiveView("profile"); setSelectedJob(null); }}><Icon name="user" /><span>My profile</span><span className={`nav-status ${profile && profileSaved ? "nav-status-ready" : ""}`} /></button>
-            <button type="button" className={`nav-item${activeView === "ai" ? " active" : ""}`} onClick={() => { setActiveView("ai"); setSelectedJob(null); }}><Icon name="cpu" /><span>AI provider</span><span className={`nav-status ${aiSettings?.providers[aiSettings.provider]?.configured ? "nav-status-ready" : ""}`} /></button>
           </nav>
-          <div className="sidebar-divider" />
-          <div className="sidebar-label">DATA & SETTINGS</div>
-          <nav className="sidebar-nav" aria-label="Data management">
-            <button type="button" className={`nav-item${activeView === "data" ? " active" : ""}`} onClick={() => { setActiveView("data"); setSelectedJob(null); void refreshDataSummary(); }}><Icon name="shield" /><span>Data management</span></button>
+          <div className="sidebar-label sidebar-label-spaced">YOUR PROFILE</div>
+          <nav className="sidebar-nav" aria-label="Profile">
+            <button type="button" className={`nav-item${activeView === "profile" ? " active" : ""}`} onClick={() => { setActiveView("profile"); setSelectedJob(null); }}><Icon name="user" /><span>CV Studio</span><span className={`nav-status ${profile && profileSaved ? "nav-status-ready" : ""}`} /></button>
+          </nav>
+          <div className="sidebar-label sidebar-label-spaced">PREFERENCES</div>
+          <nav className="sidebar-nav" aria-label="Preferences">
+            <button type="button" className={`nav-item${activeView === "settings" ? " active" : ""}`} onClick={() => { setActiveView("settings"); setSelectedJob(null); }}><Icon name="sliders" /><span>Settings</span></button>
           </nav>
           <div className="sidebar-divider" />
           <div className="sidebar-label">WORKFLOW</div>
@@ -1921,6 +2538,15 @@ function App() {
                     <Field label="City or location" value={jobCity} onChange={setJobCity} placeholder="e.g. Stockholm" />
                     <label className="field"><span>Work arrangement</span><select value={workMode} onChange={(event) => setWorkMode(event.target.value as WorkMode)}><option value="any">Any / not specified</option><option value="remote">Remote</option><option value="hybrid">Hybrid</option><option value="on_site">On-site</option></select></label>
                     <label className="field"><span>Results per page</span><select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value={10}>10 jobs</option><option value={20}>20 jobs</option><option value={40}>40 jobs</option></select></label>
+                    <details className="source-settings"><summary><span><Icon name="filter" /> Advanced filters</span><span className="source-settings-count">Salary · freshness · exclusions</span></summary>
+                      <div className="platform-form-grid">
+                        <label className="field"><span>Minimum salary</span><input type="number" min="0" value={minimumSalary} onChange={(e)=>setMinimumSalary(e.target.value)} placeholder="e.g. 40000" /></label>
+                        <label className="field"><span>Maximum salary</span><input type="number" min="0" value={maximumSalary} onChange={(e)=>setMaximumSalary(e.target.value)} placeholder="e.g. 65000" /></label>
+                        <label className="field"><span>Posted within</span><select value={freshnessDays} onChange={(e)=>setFreshnessDays(e.target.value)}><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="any">Any date</option></select></label>
+                        <label className="field"><span>Exclude companies</span><input value={excludedCompaniesText} onChange={(e)=>setExcludedCompaniesText(e.target.value)} placeholder="Comma separated company names" /></label>
+                      </div>
+                      <p className="helper-text">Salary filters include only adverts with a recognised salary range. Freshness filters exclude listings without a parseable publication date.</p>
+                    </details>
                     <details className="source-settings"><summary><span><Icon name="layers" /> Job sources</span><span className="source-settings-count">{selectedSources.length} selected</span></summary>
                       <fieldset className="source-picker" disabled={jobLoading}>
                         <div className="source-option-grid">
@@ -1933,23 +2559,14 @@ function App() {
                         </div>
                         <p className="helper-text">Select integrated sources above for automatic search. Company boards such as Greenhouse, Lever and Teamtailor are configured per employer. LinkedIn and custom shortcuts open an external search; CareerMate does not scrape those sites automatically.</p>
                       </fieldset>
-                      <div className="platform-shortcuts-panel">
-                        <div className="platform-shortcuts-heading"><strong>External platform shortcuts</strong><span>Saved on this device</span></div>
-                        <div className="platform-shortcuts-list">
-                          {platformShortcuts.map((platform) => {
-                            const href = platformSearchUrl(platform);
-                            return <div className="platform-shortcut-row" key={platform.id}>
-                              <label className="platform-shortcut-toggle"><input type="checkbox" checked={platform.enabled} onChange={(event) => setPlatformShortcuts((items) => items.map((item) => item.id === platform.id ? { ...item, enabled: event.target.checked } : item))} /><span><strong>{platform.name}</strong><small>{platform.description || platform.url}</small></span></label>
-                              <div className="platform-shortcut-actions">{platform.enabled && href && <a className="text-action" href={href} target="_blank" rel="noopener noreferrer">Open search ↗</a>}{platform.id.startsWith("custom-") && <button className="text-action platform-remove" type="button" onClick={() => setPlatformShortcuts((items) => items.filter((item) => item.id !== platform.id))}>Remove</button>}</div>
-                            </div>;
-                          })}
-                        </div>
-                        <div className="platform-shortcut-add"><input value={customPlatformName} onChange={(event) => setCustomPlatformName(event.target.value)} maxLength={80} placeholder="Platform name" aria-label="Custom platform name" /><input value={customPlatformUrl} onChange={(event) => setCustomPlatformUrl(event.target.value)} maxLength={1000} placeholder="https://example.com/jobs?query={query}" aria-label="Custom platform HTTPS URL" /><button type="button" className="button button-secondary button-small" onClick={addCustomPlatformShortcut}>Add platform</button></div>
-                        <p className="helper-text">Use <code>{"{query}"}</code> and <code>{"{location}"}</code> in custom URLs to pass the current search terms. These are shortcuts only; automatic listing retrieval requires a supported API or adapter.</p>
-                      </div>
+                      <p className="helper-text">External sites such as LinkedIn, Indeed, and Glassdoor are available under Job platforms. They open their own search pages; they are not automatically imported into CareerMate.</p>
                     </details>
                     <button className="button button-primary button-full search-submit" disabled={jobLoading} type="submit">{jobLoading ? <><span className="spinner spinner-light" /> Searching jobs…</> : <><Icon name="search" /> Search opportunities</>}</button>
+                    <div className="external-source-picker"><div className="external-source-heading"><strong>External job sites</strong><span>Choose one or more</span></div><div className="external-source-options">{["linkedin", "indeed", "glassdoor"].map((id) => { const platform = platformShortcuts.find((item) => item.id === id); if (!platform?.enabled) return null; return <label className="external-source-option" key={id}><input type="checkbox" checked={externalSearchSelected.includes(id)} onChange={(event) => setExternalSearchSelected((items) => event.target.checked ? [...items, id] : items.filter((item) => item !== id))} /><span>{platform.name}</span></label>; })}</div><small>External sites open their own results and are not automatically imported. You can run a search using only one of these sites.</small></div>
                   </form>
+                  <div className="saved-search-controls"><select value={alertFrequency} onChange={(e)=>setAlertFrequency(e.target.value as "manual"|"daily"|"weekly")} aria-label="Saved search alert frequency"><option value="manual">Manual checks</option><option value="daily">Daily alerts</option><option value="weekly">Weekly alerts</option></select><input value={savedSearchName} onChange={(e)=>setSavedSearchName(e.target.value)} aria-label="Saved search name" placeholder="Name this search" /><button type="button" className="button button-secondary button-small" onClick={()=>void handleSaveCurrentSearch()}>Save search</button></div>
+                  {savedSearches.length>0 && <section className="saved-search-list"><h3>Saved searches</h3>{savedSearches.map((item)=><div className="saved-search-row" key={item.id}><span><strong>{item.name}</strong><small>{item.roles.join(", ")} · {item.city}, {item.country}</small></span><button type="button" className="text-action" disabled={checkingAlertId===item.id} onClick={()=>void handleCheckSavedSearch(item.id)}>{checkingAlertId===item.id?"Checking…":"Check new jobs"}</button><button type="button" className="text-action" onClick={async()=>{await deleteSavedSearch(item.id); await refreshSavedSearches();}}>Delete</button></div>)}</section>}
+                  {jobAlerts.length>0 && <section className="saved-search-list"><h3>New job alerts</h3>{jobAlerts.slice(0,8).map((alert)=><div className="saved-search-row" key={alert.id}><span><strong>{alert.title}</strong><small>{alert.company} · {alert.location} · {alert.search_name}</small></span>{alert.url && <a className="text-action" href={alert.url} target="_blank" rel="noreferrer">Open job</a>}{!alert.read && <button type="button" className="text-action" onClick={async()=>{await markJobAlertRead(alert.id); await refreshSavedSearches();}}>Mark read</button>}</div>)}</section>}
                   <div className="filter-footnote"><Icon name="shield" /><span>Searches are user-initiated. Results are stored in local JSON files.</span></div>
                 </section>
 
@@ -1980,7 +2597,7 @@ function App() {
 
               <section className="platform-metrics-grid">
                 <article className="platform-metric-card"><span className="platform-metric-icon"><Icon name="search" /></span><strong>{SOURCE_OPTIONS.filter((item) => canSelectSource(item.id, jobSources[item.id])).length}</strong><span>Integrated sources available</span></article>
-                <article className="platform-metric-card"><span className="platform-metric-icon"><Icon name="briefcase" /></span><strong>{sourceConfig.greenhouse.length + sourceConfig.lever.length + sourceConfig.teamtailor.length}</strong><span>Configured employer boards</span></article>
+                <article className="platform-metric-card"><span className="platform-metric-icon"><Icon name="briefcase" /></span><strong>{Object.values(sourceConfig).reduce((total, boards) => total + boards.length, 0)}</strong><span>Configured employer boards</span></article>
                 <article className="platform-metric-card"><span className="platform-metric-icon"><Icon name="shield" /></span><strong>Local</strong><span>Board settings stay on this device</span></article>
               </section>
 
@@ -1999,8 +2616,9 @@ function App() {
 
               <section className="panel platform-shortcuts-manager">
                 <div className="panel-titlebar"><div><p className="eyebrow">EXTERNAL SEARCH SHORTCUTS</p><h2>Choose the platforms you use</h2><p className="panel-description">Enable links such as LinkedIn Jobs, Wellfound, Indeed, or a custom career site. These shortcuts open searches in a new browser tab and do not imply automatic access to the site's listings.</p></div><span className="platform-count-chip">{platformShortcuts.filter((platform) => platform.enabled).length} enabled</span></div>
+                <label className="field"><span>Filter platforms</span><input type="search" value={platformFilter} onChange={(event)=>setPlatformFilter(event.target.value)} placeholder="Search platform names or categories" /></label>
                 <div className="platform-shortcuts-list">
-                  {platformShortcuts.map((platform) => {
+                  {platformShortcuts.filter((platform) => platform.name.toLowerCase().includes(platformFilter.toLowerCase()) || platform.description?.toLowerCase().includes(platformFilter.toLowerCase()) || platform.category?.toLowerCase().includes(platformFilter.toLowerCase())).map((platform) => {
                     const href = platformSearchUrl(platform);
                     return <div className="platform-shortcut-row" key={platform.id}>
                       <label className="platform-shortcut-toggle"><input type="checkbox" checked={platform.enabled} onChange={(event) => setPlatformShortcuts((items) => items.map((item) => item.id === platform.id ? { ...item, enabled: event.target.checked } : item))} /><span><strong>{platform.name}</strong><small>{platform.description || platform.url}</small></span></label>
@@ -2013,10 +2631,10 @@ function App() {
               </section>
 
               <section className="panel platform-board-editor">
-                <div className="panel-titlebar"><div><p className="eyebrow">EMPLOYER CAREER BOARDS</p><h2>Add an ATS board</h2><p className="panel-description">Configure the public identifier used by an employer’s Greenhouse or Lever board, or the Teamtailor company/account and API key environment variable.</p></div><span className="platform-count-chip">{sourceConfig.greenhouse.length + sourceConfig.lever.length + sourceConfig.teamtailor.length} boards</span></div>
+                <div className="panel-titlebar"><div><p className="eyebrow">EMPLOYER CAREER BOARDS</p><h2>Add an ATS board</h2><p className="panel-description">Configure the public identifier used by an employer’s Greenhouse or Lever board, or the Teamtailor company/account and API key environment variable.</p></div><span className="platform-count-chip">{Object.values(sourceConfig).reduce((total, boards) => total + boards.length, 0)} boards</span></div>
                 <div className="platform-form-grid">
-                  <label className="field"><span>Platform</span><select value={newBoardProvider} onChange={(event) => { const provider = event.target.value as "greenhouse" | "lever" | "teamtailor"; setNewBoardProvider(provider); setNewBoardRegion(provider === "teamtailor" ? "eu" : "global"); }}><option value="greenhouse">Greenhouse</option><option value="lever">Lever</option><option value="teamtailor">Teamtailor</option></select></label>
-                  {newBoardProvider !== "teamtailor" && <label className="field"><span>{newBoardProvider === "greenhouse" ? "Board token" : "Site slug"}</span><input value={newBoardIdentifier} onChange={(event) => setNewBoardIdentifier(event.target.value)} placeholder={newBoardProvider === "greenhouse" ? "e.g. acme" : "e.g. acme"} maxLength={200} /></label>}
+                  <label className="field"><span>Platform</span><select value={newBoardProvider} onChange={(event) => { const provider = event.target.value as typeof newBoardProvider; setNewBoardProvider(provider); setNewBoardRegion(provider === "teamtailor" ? "eu" : "global"); }}><option value="greenhouse">Greenhouse</option><option value="lever">Lever</option><option value="teamtailor">Teamtailor</option><option value="ashby">Ashby</option><option value="smartrecruiters">SmartRecruiters</option><option value="workable">Workable</option><option value="recruitee">Recruitee</option><option value="breezy">Breezy HR</option><option value="personio">Personio</option><option value="workday">Workday</option></select></label>
+                  {newBoardProvider !== "teamtailor" && <label className="field"><span>{newBoardProvider === "greenhouse" ? "Board token" : newBoardProvider === "lever" ? "Site slug" : newBoardProvider === "workday" ? "Full Workday careers URL" : "Employer board slug"}</span><input value={newBoardIdentifier} onChange={(event) => setNewBoardIdentifier(event.target.value)} placeholder={newBoardProvider === "workday" ? "https://acme.wd5.myworkdayjobs.com/en-US/External" : "e.g. acme"} maxLength={200} /></label>}
                   <label className="field"><span>Company display name</span><input value={newBoardCompany} onChange={(event) => setNewBoardCompany(event.target.value)} placeholder="e.g. Example AB" maxLength={200} /></label>
                   <label className="field"><span>Country</span><input value={newBoardCountry} onChange={(event) => setNewBoardCountry(event.target.value)} placeholder="e.g. Sweden" maxLength={100} /></label>
                   {(newBoardProvider === "lever" || newBoardProvider === "teamtailor") && <label className="field"><span>API region</span><select value={newBoardRegion} onChange={(event) => setNewBoardRegion(event.target.value)}>{(newBoardProvider === "lever" ? [{value:"global", label:"Global"},{value:"eu", label:"Europe"}] : [{value:"eu",label:"Europe"},{value:"na",label:"North America"},{value:"apac",label:"Asia Pacific"}]).map((region) => <option key={region.value} value={region.value}>{region.label}</option>)}</select></label>}
@@ -2028,11 +2646,11 @@ function App() {
 
               <section className="panel configured-boards-panel">
                 <div className="panel-titlebar"><div><p className="eyebrow">YOUR BOARD DIRECTORY</p><h2>Configured employer boards</h2><p className="panel-description">Enable or disable a board without deleting its settings. Changes become active after saving.</p></div></div>
-                {(["greenhouse", "lever", "teamtailor"] as const).map((provider) => <div className="configured-provider-group" key={provider}>
-                  <div className="configured-provider-heading"><h3>{provider === "greenhouse" ? "Greenhouse" : provider === "lever" ? "Lever" : "Teamtailor"}</h3><span>{sourceConfig[provider].length} configured</span></div>
-                  {sourceConfig[provider].length === 0 ? <p className="platform-empty-note">No {provider === "teamtailor" ? "Teamtailor" : provider === "greenhouse" ? "Greenhouse" : "Lever"} boards configured yet.</p> : sourceConfig[provider].map((board, index) => <article className="configured-board-row" key={`${provider}-${board.company}-${index}`}>
-                    <div className="configured-board-topline"><label className="configured-board-enabled"><input type="checkbox" checked={board.enabled} onChange={(event) => updateEmployerBoard(provider, index, { enabled: event.target.checked })} /><span><strong>{board.company || (provider === "greenhouse" ? board.board_token : provider === "lever" ? board.site : "Teamtailor board")}</strong><small>{provider === "greenhouse" ? `Greenhouse · ${board.board_token}` : provider === "lever" ? `Lever · ${board.site} · ${board.region || "global"}` : `Teamtailor · ${board.region || "eu"} · key variable: ${board.api_key_env}`}</small></span></label><button type="button" className="text-action platform-remove" onClick={() => removeEmployerBoard(provider, index)}><Icon name="trash" /> Remove</button></div>
-                    <div className="configured-board-fields"><label><span>Display name</span><input value={board.company || ""} onChange={(event) => updateEmployerBoard(provider, index, { company: event.target.value })} maxLength={200} /></label><label><span>Country</span><input value={board.country || ""} onChange={(event) => updateEmployerBoard(provider, index, { country: event.target.value })} maxLength={100} /></label>{provider === "teamtailor" && <label><span>API key environment variable</span><input value={board.api_key_env || ""} onChange={(event) => updateEmployerBoard(provider, index, { api_key_env: event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_" )})} maxLength={100} /></label>}</div>
+                {(["greenhouse", "lever", "teamtailor", "ashby", "smartrecruiters", "workable", "recruitee", "breezy", "personio", "workday"] as const).map((provider) => <div className="configured-provider-group" key={provider}>
+                  <div className="configured-provider-heading"><h3>{provider === "greenhouse" ? "Greenhouse" : provider === "lever" ? "Lever" : provider === "teamtailor" ? "Teamtailor" : provider === "smartrecruiters" ? "SmartRecruiters" : provider === "workable" ? "Workable" : provider === "recruitee" ? "Recruitee" : provider === "breezy" ? "Breezy HR" : provider === "personio" ? "Personio" : provider === "workday" ? "Workday" : "Ashby"}</h3><span>{sourceConfig[provider].length} configured</span></div>
+                  {sourceConfig[provider].length === 0 ? <p className="platform-empty-note">No {provider} boards configured yet.</p> : sourceConfig[provider].map((board, index) => <article className="configured-board-row" key={`${provider}-${board.company}-${index}`}>
+                    <div className="configured-board-topline"><label className="configured-board-enabled"><input type="checkbox" checked={board.enabled} onChange={(event) => updateEmployerBoard(provider, index, { enabled: event.target.checked })} /><span><strong>{board.company || (provider === "greenhouse" ? board.board_token : provider === "lever" ? board.site : provider === "teamtailor" ? "Teamtailor board" : board.slug)}</strong><small>{provider === "greenhouse" ? `Greenhouse · ${board.board_token}` : provider === "lever" ? `Lever · ${board.site} · ${board.region || "global"}` : provider === "teamtailor" ? `Teamtailor · ${board.region || "eu"} · key variable: ${board.api_key_env}` : `${provider} · ${board.slug}`}</small></span></label><button type="button" className="text-action platform-remove" onClick={() => removeEmployerBoard(provider, index)}><Icon name="trash" /> Remove</button></div>
+                    <div className="configured-board-fields"><label><span>Display name</span><input value={board.company || ""} onChange={(event) => updateEmployerBoard(provider, index, { company: event.target.value })} maxLength={200} /></label><label><span>Country</span><input value={board.country || ""} onChange={(event) => updateEmployerBoard(provider, index, { country: event.target.value })} maxLength={100} /></label>{!(["greenhouse","lever","teamtailor"] as string[]).includes(provider) && <label><span>Board slug</span><input value={board.slug || ""} onChange={(event) => updateEmployerBoard(provider, index, { slug: event.target.value })} maxLength={200} /></label>}{provider === "teamtailor" && <label><span>API key environment variable</span><input value={board.api_key_env || ""} onChange={(event) => updateEmployerBoard(provider, index, { api_key_env: event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_" )})} maxLength={100} /></label>}</div>
                   </article>)}
                 </div>)}
                 <div className="platform-editor-actions"><button className="button button-primary" type="button" onClick={() => void handleSaveSourceConfig()} disabled={sourceConfigSaving}>{sourceConfigSaving ? "Saving…" : "Save all board changes"}</button></div>
@@ -2214,6 +2832,18 @@ function App() {
             </div>
           )}
 
+          {activeView === "settings" && (
+            <div className="view-stack settings-hub">
+              <div className="settings-hub-grid">
+                <button type="button" className="settings-hub-card" onClick={() => setActiveView("ai")}><span className="settings-hub-icon"><Icon name="cpu" /></span><strong>AI provider</strong><small>Choose Ollama, OpenAI, or a compatible endpoint. Test your model and review data-sharing settings.</small><span className="settings-hub-action">Configure AI <Icon name="arrow" /></span></button>
+                <button type="button" className="settings-hub-card" onClick={() => setActiveView("platforms")}><span className="settings-hub-icon"><Icon name="layers" /></span><strong>Job sources</strong><small>Configure supported feeds, employer ATS boards, and external search shortcuts.</small><span className="settings-hub-action">Configure sources <Icon name="arrow" /></span></button>
+                <button type="button" className="settings-hub-card" onClick={() => setActiveView("profile")}><span className="settings-hub-icon"><Icon name="file" /></span><strong>CV extraction and profile</strong><small>Upload a source CV, extract its content, review every field, and save your profile.</small><span className="settings-hub-action">Open CV Studio <Icon name="arrow" /></span></button>
+                <button type="button" className="settings-hub-card" onClick={() => { setActiveView("data"); void refreshDataSummary(); }}><span className="settings-hub-icon"><Icon name="shield" /></span><strong>Local data and privacy</strong><small>Review stored files, cache controls, and workspace reset options.</small><span className="settings-hub-action">Manage data <Icon name="arrow" /></span></button>
+              </div>
+              <section className="panel settings-process"><p className="eyebrow">HOW CAREERMATE WORKS</p><h2>Four steps from CV to application</h2><ol><li><strong>Upload and extract</strong><span>Your PDF, DOCX, or TXT is parsed locally into text.</span></li><li><strong>Analyze and verify</strong><span>The selected AI provider organizes facts. You review and correct the candidate profile before saving.</span></li><li><strong>Discover and compare</strong><span>Search configured sources and compare job requirements against your evidence.</span></li><li><strong>Tailor and review</strong><span>Generate a role-specific CV, inspect the preview and ATS coverage estimate, then download it for your own review.</span></li></ol></section>
+            </div>
+          )}
+
           {activeView === "ai" && (
             <div className="view-stack ai-settings-view">
               <section className="panel ai-settings-panel">
@@ -2278,12 +2908,20 @@ function App() {
                 <section className="profile-summary-card panel"><div className="profile-summary-avatar">{profile.personal?.name?.trim()?.charAt(0)?.toUpperCase() || "C"}</div><div className="profile-summary-copy"><p className="eyebrow">CANDIDATE PROFILE</p><h2>{profile.personal?.name?.trim() || "Your professional profile"}</h2><p>{[profile.personal?.location, profile.personal?.email].filter(Boolean).join(" · ") || "Add your contact details and professional information below."}</p></div><div className={`save-state ${profileSaved ? "saved" : "unsaved"}`}>{profileSaved ? "✓ Saved locally" : "● Review changes"}</div><div className="profile-completion"><div className="profile-completion-label"><span>Profile completeness</span><strong>{profileCompletion}%</strong></div><div className="completion-track"><span style={{ width: `${profileCompletion}%` }} /></div></div></section>
                 <section className="panel profile-editor-panel"><div className="panel-titlebar"><div><p className="eyebrow">EDIT & VERIFY</p><h2>Career details</h2><p className="panel-description">AI extraction is a starting point. Keep every field truthful and specific.</p></div><span className="subtle-label">Local file · profile.json</span></div>
                   <details className="profile-accordion" open><summary><span className="accordion-icon"><Icon name="user" /></span><span className="accordion-title">Personal details<small>Name, contact details and professional links</small></span><span className="summary-count">7 fields</span></summary><div className="form-grid profile-form-grid"><Field label="Full name" value={profile.personal?.name ?? ""} onChange={(value) => updatePersonal("name", value)} /><Field label="Email" type="email" value={profile.personal?.email ?? ""} onChange={(value) => updatePersonal("email", value)} /><Field label="Phone" value={profile.personal?.phone ?? ""} onChange={(value) => updatePersonal("phone", value)} /><Field label="Location" value={profile.personal?.location ?? ""} onChange={(value) => updatePersonal("location", value)} /><Field label="LinkedIn URL" value={profile.personal?.linkedin ?? ""} onChange={(value) => updatePersonal("linkedin", value)} /><Field label="GitHub URL" value={profile.personal?.github ?? ""} onChange={(value) => updatePersonal("github", value)} /><Field label="Portfolio URL" value={profile.personal?.portfolio ?? ""} onChange={(value) => updatePersonal("portfolio", value)} /></div></details>
-                  <details className="profile-accordion" open><summary><span className="accordion-icon"><Icon name="file" /></span><span className="accordion-title">Summary & skills<small>Your professional story, languages and credentials</small></span><span className="summary-count">{profile.skills.length} skills</span></summary><TextAreaField label="Professional summary" value={profile.summary} onChange={updateSummary} rows={5} /><div className="form-grid profile-form-grid"><TextAreaField label="Skills — one per line" value={profile.skills.join("\n")} onChange={(value) => updateList("skills", value)} /><TextAreaField label="Languages — one per line" value={profile.languages.join("\n")} onChange={(value) => updateList("languages", value)} /><TextAreaField label="Certifications — one per line" value={profile.certifications.join("\n")} onChange={(value) => updateList("certifications", value)} /></div></details>
+                  <details className="profile-accordion" open><summary><span className="accordion-icon"><Icon name="file" /></span><span className="accordion-title">Summary & skills<small>Your professional story, languages and credentials</small></span><span className="summary-count">{profile.skills.length} skills</span></summary><TextAreaField label="Professional summary" value={profile.summary} onChange={updateSummary} rows={5} /><div className="form-grid profile-form-grid"><TextAreaField label="Skills — one per line" value={profile.skills.join("\n")} onChange={(value) => updateList("skills", value)} /><TextAreaField label="Languages — one per line" value={profile.languages.join("\n")} onChange={(value) => updateList("languages", value)} /><TextAreaField label="Certifications — one per line" value={profile.certifications.join("\n")} onChange={(value) => updateList("certifications", value)} /><TextAreaField label="Projects — one project per line (name, year, description, URL)" value={profile.projects.map((project) => [project.name, project.year, project.description.join("; "), project.url].filter(Boolean).join(" | ")).join("\n")} onChange={(value) => { const projects = value.split("\n").map((line) => line.split("|").map((part) => part.trim())).filter((parts) => parts[0]).map((parts) => ({ name: parts[0] || "", year: parts[1] || "", description: parts[2] ? [parts[2]] : [], url: parts[3] || "" })); setProfile((current) => current ? { ...current, projects } : current); setProfileSaved(false); }} /><TextAreaField label="Achievements — one per line" value={profile.achievements.join("\n")} onChange={(value) => updateList("achievements", value)} /></div></details>
                   <details className="profile-accordion"><summary><span className="accordion-icon"><Icon name="briefcase" /></span><span className="accordion-title">Professional experience<small>Roles, responsibilities and achievements</small></span><span className="summary-count">{profile.experience.length}</span></summary><div className="record-list">{profile.experience.map((item, index) => <div className="editable-record" key={`experience-${index}`}><div className="editable-record-title"><strong>{item.job_title || `Experience ${index + 1}`}</strong><button className="button button-quiet-danger" type="button" onClick={() => removeExperience(index)}>Remove</button></div><div className="form-grid profile-form-grid"><Field label="Job title" value={item.job_title} onChange={(value) => updateExperience(index, "job_title", value)} /><Field label="Company" value={item.company} onChange={(value) => updateExperience(index, "company", value)} /><Field label="Location" value={item.location} onChange={(value) => updateExperience(index, "location", value)} /><Field label="Start date" value={item.start_date} onChange={(value) => updateExperience(index, "start_date", value)} /><Field label="End date" value={item.end_date} onChange={(value) => updateExperience(index, "end_date", value)} /></div><TextAreaField label="Responsibilities and achievements — one per line" value={item.description.join("\n")} onChange={(value) => updateExperienceDescription(index, value)} /></div>)}{profile.experience.length === 0 && <p className="helper-text">No experience entries have been extracted.</p>}</div><button className="button button-secondary" type="button" onClick={addExperience}><Icon name="plus" /> Add experience</button></details>
                   <details className="profile-accordion"><summary><span className="accordion-icon"><Icon name="graduation" /></span><span className="accordion-title">Education<small>Degrees, institutions and study dates</small></span><span className="summary-count">{profile.education.length}</span></summary><div className="record-list">{profile.education.map((item, index) => <div className="editable-record" key={`education-${index}`}><div className="editable-record-title"><strong>{item.degree || `Education ${index + 1}`}</strong><button className="button button-quiet-danger" type="button" onClick={() => removeEducation(index)}>Remove</button></div><div className="form-grid profile-form-grid"><Field label="Degree" value={item.degree} onChange={(value) => updateEducation(index, "degree", value)} /><Field label="Institution" value={item.institution} onChange={(value) => updateEducation(index, "institution", value)} /><Field label="Location" value={item.location} onChange={(value) => updateEducation(index, "location", value)} /><Field label="Start date" value={item.start_date} onChange={(value) => updateEducation(index, "start_date", value)} /><Field label="End date" value={item.end_date} onChange={(value) => updateEducation(index, "end_date", value)} /></div></div>)}{profile.education.length === 0 && <p className="helper-text">No education entries have been extracted.</p>}</div><button className="button button-secondary" type="button" onClick={addEducation}><Icon name="plus" /> Add education</button></details>
                   <div className="profile-save-row"><p className="helper-text">Saved to <code>data/cv/profile.json</code> on this computer. Match analysis will use the profile after saving.</p><button className="button button-primary" type="button" onClick={handleSaveProfile} disabled={saving || cvLoading || matchLoading}>{saving ? <><span className="spinner spinner-light" /> Saving…</> : <><Icon name="check" /> Save reviewed profile</>}</button></div>
                 </section>
               </>}
+              {profile && <section className="panel cv-studio-tailor-panel">
+                <div className="panel-titlebar"><div><p className="eyebrow">ROLE SPECIFIC CV</p><h2>Tailor your CV</h2><p className="panel-description">Paste a complete job description or open a role from Find Jobs. Your source profile remains unchanged.</p></div></div>
+                <TextAreaField label="Job description" value={cvStudioJobDescription} onChange={setCvStudioJobDescription} placeholder="Paste the complete job description here…" rows={8} />
+                <div className="cv-studio-controls"><label className="field"><span>CV template</span><select value={cvTemplate} onChange={(event) => setCvTemplate(event.target.value as "classic" | "modern" | "compact")}><option value="classic">Classic ATS</option><option value="modern">Modern professional</option><option value="compact">Compact ATS</option></select></label><button className="button button-primary" type="button" disabled={tailoringCv || cvStudioJobDescription.trim().length < 100} onClick={async () => { setTailoringCv(true); setCvTailorError(""); setTailoredCv(null); try { setTailoredCv(await tailorCvForJob(cvStudioJobDescription, cvTemplate)); const versions = await getTailoredCvVersions(); setTailoredCvVersions(versions.versions); } catch (e) { setCvTailorError(e instanceof Error ? e.message : "Could not tailor the CV."); } finally { setTailoringCv(false); } }}>{tailoringCv ? "Creating tailored CV…" : "Generate tailored CV"}</button></div>
+                {cvTailorError && <p className="form-error">{cvTailorError}</p>}
+                {tailoredCv && <div className="cv-studio-result"><div className="cv-score-line"><strong>Requirement coverage estimate</strong><strong className={tailoredCv.ats.score >= 70 ? "cv-score-good" : "cv-score-low"}>{tailoredCv.ats.score}/100</strong></div><p className="helper-text">{tailoredCv.ats.detected_requirement_count} identifiable technical or role requirements detected. This is not a vendor ATS score.</p><div className="cv-studio-actions"><a className="button button-secondary" href={`${TAILORED_CV_DOWNLOAD_BASE}${tailoredCv.download_url}`} target="_blank" rel="noreferrer">Download DOCX</a><a className="button button-secondary" href={`${TAILORED_CV_DOWNLOAD_BASE}${tailoredCv.download_url}/pdf`} target="_blank" rel="noreferrer">Download PDF</a><a className="button button-primary" href={`${TAILORED_CV_DOWNLOAD_BASE}${tailoredCv.download_url}/preview`} target="_blank" rel="noreferrer">Preview PDF</a></div><details className="cv-studio-preview"><summary>Preview inside CareerMate</summary><iframe title="Tailored CV PDF preview" src={`${TAILORED_CV_DOWNLOAD_BASE}${tailoredCv.download_url}/preview`} /></details><p className="helper-text">Matched: {tailoredCv.ats.matched_keywords.join(", ") || "No known terms detected"}</p>{tailoredCv.ats.missing_keywords.length > 0 && <p className="helper-text">Not evidenced: {tailoredCv.ats.missing_keywords.join(", ")}</p>}<small>{tailoredCv.ats.disclaimer}</small></div>}
+                {tailoredCvVersions.length > 0 && <details className="cv-studio-history"><summary>Saved CV versions ({tailoredCvVersions.length})</summary>{tailoredCvVersions.map((version) => <div className="saved-search-row" key={version.filename}><span><strong>{version.template} · {version.ats_score ?? "—"}/100</strong><small>{new Date(version.created_at).toLocaleString()}</small></span><a className="text-action" href={`${TAILORED_CV_DOWNLOAD_BASE}/api/cv/tailored/${encodeURIComponent(version.filename)}`} target="_blank" rel="noreferrer">DOCX</a></div>)}</details>}
+              </section>}
               {profile && <div className="profile-privacy-footer"><Icon name="shield" /><span>CareerMate stores your profile in local files and excludes contact details from job-match prompts. Hosted providers receive the content needed for each requested task.</span></div>}
             </div>
           )}
@@ -2328,7 +2966,8 @@ function App() {
 
       {selectedJob && <div className="drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedJob(null); }}>
         <aside className="job-detail-drawer" role="dialog" aria-modal="true" aria-labelledby="job-detail-title">
-          <div className="drawer-header"><div><p className="eyebrow">OPPORTUNITY DETAILS</p><span className="source-chip">{sourceLabel(selectedJob.source)}</span></div><button className="drawer-close" type="button" onClick={() => setSelectedJob(null)} aria-label="Close job details">×</button></div>
+          <div className="drawer-header"><div><p className="eyebrow">OPPORTUNITY DETAILS</p><span className="source-chip">{sourceLabel(selectedJob.source)}</span></div><button className="drawer-close" type="button" onClick={() => setSelectedJob(null)} aria-label="Close job details"><span aria-hidden="true">×</span><span className="drawer-close-label">Close</span></button></div>
+          <div className="job-detail-content">
           <div className="drawer-company-mark">{(selectedJob.company || "?").trim().charAt(0).toUpperCase()}</div>
           <h2 id="job-detail-title" className="drawer-job-title">{selectedJob.title}</h2>
           <p className="drawer-company">{selectedJob.company || "Company not listed"}</p>
@@ -2337,8 +2976,31 @@ function App() {
           {hasAppliedToJob(selectedJob.id) && <div className="drawer-application-history"><div><strong>Already applied</strong><span>{APPLICATION_STATUS_LABELS[applicationForJob(selectedJob.id)?.status ?? "applied"]} · application details saved locally</span></div><button type="button" className="text-action" onClick={() => void handleTrackJob(selectedJob.id)}>Open tracker <Icon name="arrow" /></button></div>}
           {matches.find((item) => item.id === selectedJob.id) && <div className="drawer-match-summary"><span className="drawer-match-score">{matches.find((item) => item.id === selectedJob.id)?.match_score ?? "—"}<small>/ 100</small></span><span><strong>CV match estimate</strong><small>Evidence coverage, not a hiring probability</small></span><button type="button" className="text-action" onClick={() => { setSelectedJob(null); setActiveView("matches"); }}>View analysis <Icon name="arrow" /></button></div>}
           <div className="drawer-section"><div className="drawer-section-heading"><h3>About this role</h3><span className={`description-quality-pill ${selectedJob.description_source === "original_listing" ? "description-quality-full" : "description-quality-snippet"}`}>{selectedJob.description_fetch_message?.startsWith("Manually pasted advert text") ? "Pasted advert" : selectedJob.description_source === "original_listing" ? "Full listing" : "Search snippet"}</span></div>{(() => { const description = selectedJob.description?.trim() || "The source did not provide a description in the search response. Fetch the original public listing or open it below."; const longDescription = description.length > 900; return longDescription ? <><div className="drawer-description drawer-description-preview">{description.slice(0, 760).trimEnd()}…</div><details className="drawer-description-more"><summary>Show full job description ({description.length.toLocaleString()} characters)</summary><div className="drawer-description">{description}</div></details></> : <div className="drawer-description">{description}</div>; })()}{selectedJob.description_source !== "original_listing" && <button type="button" className="button button-secondary button-full fetch-description-button" onClick={() => void handleEnrichJobDetails(selectedJob)} disabled={enrichingJobId === selectedJob.id}>{enrichingJobId === selectedJob.id ? <><span className="spinner" /> Fetching full job details…</> : "Fetch full job description"}</button>}{selectedJob.description_fetch_status === "failed" && selectedJob.description_fetch_message && <p className="description-fetch-warning">{selectedJob.description_fetch_message}</p>}</div>
+          <section className="drawer-section cv-tailor-workspace">
+            <div className="drawer-section-heading"><h3>Tailor your CV for this role</h3><span className="source-chip">AI assisted</span></div>
+            <p className="helper-text">Uses your saved candidate profile and this job description. AI can reorganise and rephrase evidence, but must not invent experience or qualifications.</p>
+            <label className="field"><span>CV template</span><select value={cvTemplate} onChange={(event)=>setCvTemplate(event.target.value as "classic"|"modern"|"compact")}><option value="classic">Harvard style · Classic ATS</option><option value="modern">Stanford style · Modern professional</option><option value="compact">Compact ATS</option></select></label>
+            <button type="button" className="button button-primary button-full" onClick={()=>void handleTailorCvForSelectedJob()} disabled={tailoringCv || !profile}>{tailoringCv ? "Creating tailored CV…" : tailoredCv ? "Regenerate tailored CV" : "Generate tailored CV and ATS score"}</button>
+            {!profile && <p className="description-fetch-warning">Upload and analyse your original CV first.</p>}
+            {cvTailorError && <p className="description-fetch-warning">{cvTailorError}</p>}
+            {tailoredCv && <div className="cv-tailor-result">
+              <div className="cv-score-line"><strong>ATS compatibility estimate</strong><strong className={tailoredCv.ats.score>=70?"cv-score-good":"cv-score-low"}>{tailoredCv.ats.score}/100</strong></div>
+              <div className="cv-score-track"><span style={{width:`${tailoredCv.ats.score}%`}} /></div>
+              <p className="helper-text">{tailoredCv.ats.score>=70?"Above the 70-point review threshold. Review before applying.":"Below 70. Review missing keywords, update your candidate profile with truthful evidence, then regenerate."}</p>
+              {tailoredCv.ats.score<70 && <button type="button" className="button button-secondary button-full" onClick={()=>{setSelectedJob(null);setActiveView("profile");}}>Improve my candidate profile</button>}
+              <div className="cv-score-breakdown"><span>Keyword overlap <strong>{tailoredCv.ats.keyword_match_score}%</strong></span><span>Section completeness <strong>{tailoredCv.ats.section_completeness_score}%</strong></span></div>
+              {tailoredCv.ats.missing_keywords.length>0 && <details><summary>Missing job keywords ({tailoredCv.ats.missing_keywords.length})</summary><p>{tailoredCv.ats.missing_keywords.slice(0,30).join(", ")}</p></details>}
+              <details><summary>ATS structure checks</summary>{tailoredCv.ats.checks.map((check)=><p key={check.name}>{check.passed?"✓":"○"} {check.name}</p>)}</details>
+              <a className="button button-secondary button-full" href={`${TAILORED_CV_DOWNLOAD_BASE}${tailoredCv.download_url}`} target="_blank" rel="noreferrer">Download DOCX <Icon name="download" /></a>
+              <a className="button button-secondary button-full" href={`${TAILORED_CV_DOWNLOAD_BASE}${tailoredCv.download_url}/preview`} target="_blank" rel="noreferrer">Preview PDF <Icon name="eye" /></a>
+              <a className="button button-secondary button-full" href={`${TAILORED_CV_DOWNLOAD_BASE}${tailoredCv.download_url}/pdf`} target="_blank" rel="noreferrer">Download PDF <Icon name="download" /></a>
+              {tailoredCvVersions.length>1 && <details><summary>Previous CV versions ({tailoredCvVersions.length-1})</summary>{tailoredCvVersions.slice(1,8).map((version)=><div className="saved-search-row" key={version.filename}><span><strong>{version.template} · {version.ats_score ?? "—"}/100</strong><small>{new Date(version.created_at).toLocaleString()}</small></span><a className="text-action" href={`${TAILORED_CV_DOWNLOAD_BASE}/api/cv/tailored/${encodeURIComponent(version.filename)}`} target="_blank" rel="noreferrer">DOCX</a></div>)}</details>}
+              <small>{tailoredCv.ats.disclaimer}</small>
+            </div>}
+          </section>
           <div className="drawer-facts"><div><span>Work arrangement</span><strong>{workModeLabel(selectedJob.work_mode)}</strong></div><div><span>Source</span><strong>{sourceLabel(selectedJob.source)}</strong></div><div><span>Published</span><strong>{selectedJob.published_at || "Not provided"}</strong></div></div>
-          <div className="drawer-footer"><p>Review the original description and requirements before applying.</p><button type="button" className="button button-secondary button-full" onClick={() => void handleTrackJob(selectedJob.id)}>{hasAppliedToJob(selectedJob.id) ? "Already applied · open tracker" : applications.some((application) => application.job_id === selectedJob.id) ? "Open in application tracker" : "Add to application tracker"} <Icon name="briefcase" /></button>{safeExternalUrl(selectedJob.source_url) ? <a className="button button-primary button-full" href={safeExternalUrl(selectedJob.source_url) ?? undefined} target="_blank" rel="noopener noreferrer">View original listing · {sourceLabel(selectedJob.source)} <Icon name="arrow" /></a> : null}{safeExternalUrl(selectedJob.apply_url) && selectedJob.apply_url !== selectedJob.source_url ? <a className="button button-secondary button-full" href={safeExternalUrl(selectedJob.apply_url) ?? undefined} target="_blank" rel="noopener noreferrer">{hasAppliedToJob(selectedJob.id) ? "Reopen application website (already applied)" : "Open application website"} <Icon name="arrow" /></a> : !safeExternalUrl(selectedJob.source_url) && !safeExternalUrl(selectedJob.apply_url) ? <span className="helper-text">No public listing URL was provided for this job.</span> : null}<button type="button" className="button button-quiet button-full" onClick={() => setSelectedJob(null)}>Back to results</button></div>
+          <div className="drawer-footer"><p>Review the original description and requirements before applying.</p><button type="button" className="button button-secondary button-full" onClick={() => void handleTrackJob(selectedJob.id)}>{hasAppliedToJob(selectedJob.id) ? "Already applied · open tracker" : applications.some((application) => application.job_id === selectedJob.id) ? "Open in application tracker" : "Add to application tracker"} <Icon name="briefcase" /></button>{safeExternalUrl(selectedJob.source_url) ? <a className="button button-primary button-full" href={safeExternalUrl(selectedJob.source_url) ?? undefined} target="_blank" rel="noopener noreferrer">View original listing · {sourceLabel(selectedJob.source)} <Icon name="arrow" /></a> : null}{safeExternalUrl(selectedJob.apply_url) && selectedJob.apply_url !== selectedJob.source_url ? <a className="button button-secondary button-full" href={safeExternalUrl(selectedJob.apply_url) ?? undefined} target="_blank" rel="noopener noreferrer">{hasAppliedToJob(selectedJob.id) ? "Reopen application website (already applied)" : "Open application website"} <Icon name="arrow" /></a> : !safeExternalUrl(selectedJob.source_url) && !safeExternalUrl(selectedJob.apply_url) ? <span className="helper-text">No public listing URL was provided for this job.</span> : null}</div>
+          </div>
         </aside>
       </div>}
     </main>

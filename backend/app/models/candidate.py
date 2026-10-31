@@ -36,6 +36,15 @@ class Education(BaseModel):
     end_date: str = ""
 
 
+class Project(BaseModel):
+    model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
+
+    name: str = ""
+    year: str = ""
+    description: list[str] = Field(default_factory=list)
+    url: str = ""
+
+
 class CandidateProfile(BaseModel):
     """Structured candidate data used by the rest of CareerMate."""
 
@@ -46,5 +55,7 @@ class CandidateProfile(BaseModel):
     skills: list[str] = Field(default_factory=list)
     experience: list[Experience] = Field(default_factory=list)
     education: list[Education] = Field(default_factory=list)
+    projects: list[Project] = Field(default_factory=list)
+    achievements: list[str] = Field(default_factory=list)
     certifications: list[str] = Field(default_factory=list)
     languages: list[str] = Field(default_factory=list)

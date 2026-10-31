@@ -25,12 +25,16 @@ export type Education = {
   end_date: string;
 };
 
+export type Project = { name: string; year: string; description: string[]; url: string };
+
 export type CandidateProfile = {
   personal: CandidatePersonal;
   summary: string;
   skills: string[];
   experience: Experience[];
   education: Education[];
+  projects: Project[];
+  achievements: string[];
   certifications: string[];
   languages: string[];
 };
@@ -43,7 +47,7 @@ export type CvStatus = {
 
 export type WorkMode = "any" | "remote" | "hybrid" | "on_site";
 export type DetectedWorkMode = Exclude<WorkMode, "any"> | "unknown";
-export type JobSourceId = "jobtech_links" | "remoteok" | "arbeitnow" | "greenhouse" | "lever" | "teamtailor";
+export type JobSourceId = "jobtech_links" | "remoteok" | "arbeitnow" | "greenhouse" | "lever" | "teamtailor" | "ashby" | "smartrecruiters" | "workable" | "recruitee" | "breezy" | "personio" | "workday";
 
 export type JobSourceStatus = {
   configured: boolean;
@@ -65,6 +69,7 @@ export type JobBoardConfig = {
   board_token?: string;
   site?: string;
   api_key_env?: string;
+  slug?: string;
   region?: string;
 };
 
@@ -72,6 +77,13 @@ export type JobSourceConfiguration = {
   greenhouse: JobBoardConfig[];
   lever: JobBoardConfig[];
   teamtailor: JobBoardConfig[];
+  ashby: JobBoardConfig[];
+  smartrecruiters: JobBoardConfig[];
+  workable: JobBoardConfig[];
+  recruitee: JobBoardConfig[];
+  breezy: JobBoardConfig[];
+  personio: JobBoardConfig[];
+  workday: JobBoardConfig[];
 };
 
 export type JobSourceConfigurationResponse = {
@@ -100,6 +112,9 @@ export type JobResult = {
   description_fetch_status?: "not_attempted" | "success" | "failed";
   description_fetched_at?: string;
   description_fetch_message?: string;
+  salary_min?: number | null;
+  salary_max?: number | null;
+  salary_currency?: string;
 };
 
 export type JobSearchCriteria = {
@@ -109,6 +124,10 @@ export type JobSearchCriteria = {
   work_mode: WorkMode;
   sources: JobSourceId[];
   limit: number;
+  min_salary?: number;
+  max_salary?: number;
+  posted_within_days?: number;
+  excluded_companies?: string[];
 };
 
 export type JobSearchOptions = JobSearchCriteria & {
@@ -316,5 +335,44 @@ export type BrowserDiagnostics = {
   playwright_installed: boolean;
   chromium_installed: boolean;
   install_command: string;
+  message: string;
+};
+
+
+export type JobPlatform = {
+  id: string;
+  name: string;
+  category: string;
+  integration: "live" | "configurable" | "external";
+  url: string;
+  default_selected: boolean;
+};
+
+export type TailoredCvResponse = {
+  success: boolean;
+  filename: string;
+  template: "classic" | "modern" | "compact";
+  tailored_profile: {
+    summary: string;
+    skills: string[];
+    experience: Experience[];
+    keyword_gaps: string[];
+    projects?: Project[];
+    achievements?: string[];
+  };
+  ats: {
+    score: number;
+    keyword_match_score: number;
+    section_completeness_score: number;
+    matched_keywords: string[];
+    missing_keywords: string[];
+    detected_requirement_count: number;
+    checks: { name: string; passed: boolean }[];
+    threshold: 70;
+    status: "ready_for_review" | "needs_improvement";
+    disclaimer: string;
+  };
+  review_required: boolean;
+  download_url: string;
   message: string;
 };

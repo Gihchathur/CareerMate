@@ -12,7 +12,7 @@ from typing import Any
 
 
 def _is_template(path: Path) -> bool:
-    return path.name == ".gitkeep" or path.name.endswith(".example.json")
+    return path.name in {".gitkeep", "platform_catalog.json"} or path.name.endswith(".example.json")
 
 
 def _read_array_count(path: Path) -> int:

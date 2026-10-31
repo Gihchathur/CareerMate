@@ -53,6 +53,9 @@ Rules:
 - Personal fields are name, email, phone, location, linkedin, github, portfolio.
 - Keep the summary concise and preserve the candidate's actual meaning.
 - Keep each experience description to at most 6 concise bullet points.
+- Extract all projects with their names, years, descriptions and URLs.
+- Extract all awards, competition placements and other achievements into achievements.
+- Preserve all sections and factual details that appear in the source CV; do not omit projects or achievements.
 - Return a complete JSON object conforming to the supplied schema.
 
 JSON schema:

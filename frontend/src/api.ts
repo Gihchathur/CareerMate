@@ -21,6 +21,10 @@ import type {
   JobSourcesResponse,
   JobSourceConfiguration,
   JobSourceConfigurationResponse,
+  JobPlatform,
+  TailoredCvResponse,
+  WorkMode,
+  JobSourceId,
 } from "./types";
 
 const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
@@ -165,6 +169,10 @@ export async function searchJobs(options: JobSearchOptions): Promise<JobSearchRe
   params.set("work_mode", options.work_mode);
   params.set("limit", String(options.limit));
   params.set("offset", String(options.offset));
+  if (options.min_salary !== undefined) params.set("min_salary", String(options.min_salary));
+  if (options.max_salary !== undefined) params.set("max_salary", String(options.max_salary));
+  if (options.posted_within_days !== undefined) params.set("posted_within_days", String(options.posted_within_days));
+  options.excluded_companies?.forEach((company) => params.append("excluded_companies", company));
   return request(`/api/jobs/search?${params.toString()}`);
 }
 
@@ -332,3 +340,35 @@ export async function fillBrowserForm(
 export async function closeBrowserSession(): Promise<void> {
   await request("/api/browser/session", { method: "DELETE" });
 }
+
+
+export async function getPlatformDirectory(): Promise<{ success: boolean; total: number; platforms: JobPlatform[]; integration_note: string }> {
+  return request("/api/platforms");
+}
+
+export async function tailorCvForJob(job_description: string, template: "classic" | "modern" | "compact"): Promise<TailoredCvResponse> {
+  return request("/api/cv/tailor", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ job_description, template }),
+  });
+}
+
+export const TAILORED_CV_DOWNLOAD_BASE = API_BASE;
+
+export type SavedSearch = { id: string; name: string; roles: string[]; country: string; city: string; work_mode: WorkMode; sources: JobSourceId[]; frequency: "manual" | "daily" | "weekly"; created_at: string };
+export async function getSavedSearches(): Promise<{ success: boolean; searches: SavedSearch[] }> { return request("/api/searches"); }
+export async function createSavedSearch(search: Omit<SavedSearch, "id" | "created_at">): Promise<{ success: boolean; search: SavedSearch }> {
+  return request("/api/searches", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(search) });
+}
+export async function deleteSavedSearch(id: string): Promise<void> { await request(`/api/searches/${encodeURIComponent(id)}`, {method:"DELETE"}); }
+export async function checkSavedSearchAlerts(id: string): Promise<{ success:boolean; new_count:number; new_jobs:JobResult[] }> {
+  return request(`/api/searches/${encodeURIComponent(id)}/check-alerts`, {method:"POST"});
+}
+
+export type JobAlert = { id:string; search_id:string; search_name:string; job_id:string; title:string; company:string; location:string; url:string; found_at:string; read:boolean };
+export async function getJobAlerts(): Promise<{success:boolean;alerts:JobAlert[];unread:number}> { return request("/api/alerts"); }
+export async function markJobAlertRead(id:string): Promise<void> { await request(`/api/alerts/${encodeURIComponent(id)}/read`,{method:"POST"}); }
+
+export type TailoredCvVersion = { filename:string; template:string; created_at:string; ats_score:number | null };
+export async function getTailoredCvVersions(): Promise<{success:boolean;versions:TailoredCvVersion[]}> { return request("/api/cv/tailored"); }

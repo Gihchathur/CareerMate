@@ -202,9 +202,9 @@ def search_multiple_roles(
 ) -> dict[str, object]:
     """Search local configured boards plus public feeds and combine normalized listings."""
     cleaned_roles = normalize_roles(roles)
-    allowed_sources = {"jobtech_links", "greenhouse", "lever", "teamtailor", "remoteok", "arbeitnow"}
+    allowed_sources = {"jobtech_links", "greenhouse", "lever", "teamtailor", "remoteok", "arbeitnow", "ashby", "smartrecruiters", "workable", "recruitee", "breezy", "personio", "workday"}
     selected_sources = (
-        ["jobtech_links", "greenhouse", "lever", "teamtailor"]
+        ["jobtech_links", "greenhouse", "lever", "teamtailor", "ashby", "smartrecruiters", "workable", "recruitee", "breezy", "personio"]
         if sources is None
         else list(dict.fromkeys(str(item).strip().casefold() for item in sources if str(item).strip()))
     )
@@ -233,7 +233,7 @@ def search_multiple_roles(
 
     warnings: list[str] = []
     successful_searches = 0
-    selected_ats_sources = [source for source in selected_sources if source in {"greenhouse", "lever", "teamtailor"}]
+    selected_ats_sources = [source for source in selected_sources if source in {"greenhouse", "lever", "teamtailor", "ashby", "smartrecruiters", "workable", "recruitee", "breezy", "personio", "workday"}]
     if selected_ats_sources:
         try:
             employer_jobs, employer_warnings, configured_boards = fetch_configured_jobs(selected_ats_sources)
@@ -398,7 +398,7 @@ def search_multiple_roles(
     if "arbeitnow" in selected_sources:
         filter_notes.append("Arbeitnow results are attributed to their original Arbeitnow job pages; country and work-mode filters are applied locally.")
     if selected_ats_sources:
-        filter_notes.append("Greenhouse, Lever and Teamtailor boards are configured per employer; local filters use the location and work-mode metadata each board provides.")
+        filter_notes.append("Employer ATS boards are configured per employer; local filters use the location and work-mode metadata each board provides.")
     filter_notes.append("Unknown country/work-mode metadata is not always sufficient to reject a listing. A specific work-mode filter excludes listings whose work mode is unknown.")
     if total_is_approximate:
         filter_notes.append("Totals may be approximate because of local filtering, pagination across feeds, and cross-source duplicates.")
