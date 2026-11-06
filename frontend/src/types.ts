@@ -39,6 +39,20 @@ export type CandidateProfile = {
   languages: string[];
 };
 
+export type CandidateEvidence = {
+  id: string;
+  claim: string;
+  category: "skill" | "experience" | "project" | "achievement" | "education" | "certification" | "language" | "metric" | "other";
+  source_type: "cv" | "experience" | "project" | "certification" | "reference" | "manual";
+  source_reference: string;
+  supporting_detail: string;
+  verified: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CandidateEvidenceInput = Pick<CandidateEvidence, "claim" | "category" | "source_type" | "source_reference" | "supporting_detail">;
+
 export type CvStatus = {
   uploaded: boolean;
   extracted_text_characters: number;

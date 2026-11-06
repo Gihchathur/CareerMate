@@ -1,5 +1,53 @@
 # Changelog
 
+## 2.3.0 — Visual clarity and layout hardening
+
+- Added a dedicated final readability layer for consistent page typography and visual hierarchy.
+- Rebuilt integrated job-source tiles as responsive checkbox/brand/copy/status grids to prevent narrow-column word wrapping.
+- Added recognizable source marks to integrated sources, external shortcuts, and the quick external-site selector.
+- Prevented external job-site labels and availability states from breaking into vertical text.
+- Rebalanced the settings hub cards and four-step workflow so text size matches card space.
+- Improved candidate-profile field widths and grouped long-form project information into a full-width editor row.
+- Increased label, helper, summary and status contrast across discovery, profile, settings, applications and analytics surfaces.
+- Preserved the existing hover-first navigation behaviour.
+
+
+## 2.2.0 — Hover-first navigation and workspace UX refinement
+
+- Replaced the desktop click-to-open navigation popover with a true hover/focus-expanding side rail. Moving the pointer into the 76px icon rail expands the navigation horizontally and smoothly reserves the panel width in the workspace grid; leaving the navigation surface collapses it back to icons. No desktop collapse/reopen button is shown.
+- Added keyboard-focus expansion and Escape handling so the hover-first interaction is not pointer-only. Touch devices use the mobile bottom bar and all-sections sheet because touchscreens do not have hover.
+- Refined the navigation with a consistent inline SVG line-icon set, active-page glow, teal edge indicator, count badges, compact tooltips and restrained aurora lighting.
+- Added short-viewport sizing rules so the expanded rail fits without introducing a permanent nested navigation scrollbar.
+- Added low-key aurora/grid background treatment and consistent page hierarchy, spacing, readable secondary text, resilient grids, form focus states and overflow-safe content.
+- Hardened portalled job/match drawers, browser-assistance panels, application records, platform settings and evidence views against clipping, squeezed text and overlapping actions.
+- Preserved source-branded job marks (including the official LinkedIn mark) in opportunity cards and connector rows.
+- Added reduced-motion and keyboard-focus accommodations.
+- Kept job search, matching, application preparation, evidence storage and backend contracts unchanged.
+
+## 2.1.0 — UX hardening and compact navigation
+
+- Replaced the tall, independently scrolling desktop sidebar with a compact icon rail and an anchored grouped navigation popover.
+- Added accessible tooltips, current-page indicators, count badges, Escape-to-close behavior, outside-click dismissal, and a mobile all-sections menu.
+- Reworked the discovery layout for a stable filter/results grid with tablet and mobile breakpoints.
+- Increased contrast and type sizes for job titles, company/location metadata, form labels, helper text, source labels and result counts.
+- Hardened job cards with a grid layout, bounded date labels, non-overlapping actions, and responsive action placement.
+- Added recognizable source marks for LinkedIn, Indeed, Glassdoor, JobTech, Remote OK, Arbeitnow, Greenhouse, Lever and Teamtailor, with a generic fallback. Source marks are derived from the canonical source ID and listing URL.
+- Added reduced-motion handling for the new navigation interactions.
+- Kept the existing search, matching, saved-search and application workflows intact.
+
+
+## 2.0.0 — CareerMate Personal OS
+
+- Rebuilt the workspace shell with grouped navigation, contextual page headers, responsive mobile navigation, profile-readiness progress and a keyboard-driven command palette with arrow-key and Enter support.
+- Added Career Analytics based on actual workspace records, including match-score distribution, application funnel, interview rate and application sources.
+- Added an Automation Centre for connector configuration, saved-search preferences and discovery alerts. The UI distinguishes scheduled preferences from confirmed background execution.
+- Added a local Candidate Evidence Vault with validated CRUD APIs, source references, pending/verified states and explicit user-controlled verification.
+- Restored four Pydantic model modules referenced by the backend API but missing from the supplied ZIP archive.
+- Added storage and API tests for candidate evidence, including corrupted-data handling.
+- Introduced the CareerMate 2.0 visual system, responsive layout, interaction states, animations and reduced-motion support.
+- Updated frontend and API version metadata to 2.0.0.
+- Preserved existing job discovery, matching, CV preparation, application tracking and browser-assistance flows.
+
 ## 5.0.0 — Fresh frontend experience rebuild
 
 - Replaced the previous theme layers with a single, organized frontend style system.

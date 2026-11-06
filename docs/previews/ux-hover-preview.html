@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>CareerMate 2.2 hover-first navigation preview</title>
+<link rel="stylesheet" href="../../frontend/src/styles/tokens.css" />
+<link rel="stylesheet" href="../../frontend/src/styles/layout.css" />
+<link rel="stylesheet" href="../../frontend/src/styles/components.css" />
+<link rel="stylesheet" href="../../frontend/src/styles/pages/discover.css" />
+<link rel="stylesheet" href="../../frontend/src/careermate-v2.css" />
+<link rel="stylesheet" href="../../frontend/src/ux-hardening.css" />
+<link rel="stylesheet" href="../../frontend/src/ux-experience.css" />
+<style>
+  body { margin: 0; }
+  .preview-frame { min-height: 100svh; }
+  .preview-company-icon { display:grid; place-items:center; width:42px;height:42px;flex:0 0 auto;border:1px solid #e3e7f2;border-radius:13px;color:#5360c9;background:linear-gradient(145deg,#f2f3ff,#ecf8f7);font-size:13px;font-weight:800; }
+  .preview-search-fields { display:grid; gap:13px; }
+  .preview-input { display:flex;align-items:center;justify-content:space-between;min-height:44px;padding:0 12px;border:1px solid #e0e5ee;border-radius:11px;color:#26324b;background:#fff;font-size:12px; }
+  .preview-textarea { min-height:82px;padding:12px;border:1px solid #e0e5ee;border-radius:11px;color:#26324b;background:#fff;font-size:12px;line-height:1.55; }
+  .preview-section-label { display:block;margin-bottom:7px;color:#4f5c75;font-size:11px;font-weight:700; }
+  .preview-source-row { display:flex;flex-wrap:wrap;gap:8px; }
+  .preview-source { display:inline-flex;align-items:center;gap:7px;min-height:31px;padding:6px 9px;border:1px solid #e4e8f0;border-radius:9px;color:#46536a;background:#fff;font-size:11px; }
+  .preview-source-mark { display:grid;place-items:center;width:17px;height:17px;border-radius:4px;font-weight:850;font-size:10px; }
+  .linkedin { color:#fff;background:#0a66c2; }
+  .jobtech { color:#fff;background:#237e9d; }
+  .greenhouse { color:#fff;background:#1e8b68; }
+  .preview-filter-summary { display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:6px; }
+  .preview-filter-summary span { padding:6px 9px;border:1px solid #e8ebf3;border-radius:8px;color:#5f6c83;background:#fafbff;font-size:10px; }
+  .preview-job-extra { display:flex;flex-wrap:wrap;gap:7px;margin-top:9px; }
+  .preview-match { color:#287e66 !important;background:#effaf5 !important;border-color:#d9f0e6 !important; }
+  .cm-brand-symbol { display:inline-flex;align-items:center;justify-content:center; }
+  .icon { width:18px;height:18px; }
+  @media(max-width:760px){.preview-source-row{gap:6px}}
+</style>
+</head>
+<body>
+<div class="cm-app-shell preview-frame">
+  <header class="cm-topbar">
+    <button class="cm-brand" type="button"><span class="cm-brand-symbol"><span></span><span></span><span></span></span><span class="cm-brand-name">career<span>mate</span><i>.</i></span><span class="cm-brand-edition">PERSONAL OS</span></button>
+    <div class="cm-topbar-context"><span class="cm-live-dot"></span><span>Your career workspace</span><span class="cm-context-divider">/</span><span>job discovery</span></div>
+    <div class="cm-topbar-actions"><button class="cm-command-trigger"><svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm10 2-4.35-4.35" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>Jump to anything</span><kbd>⌘ K</kbd></button><span class="cm-privacy-indicator"><span class="cm-live-dot"></span><span>Local first</span></span><button class="cm-avatar">G</button></div>
+  </header>
+  <div class="cm-workspace">
+    <aside class="cm-icon-rail" aria-label="Primary navigation, expands on pointer hover or keyboard focus" data-state="compact">
+      <div class="cm-rail-surface">
+        <div class="cm-rail-brand" aria-hidden="true"><span class="cm-brand-symbol cm-rail-brand-symbol"><span></span><span></span><span></span></span><span class="cm-rail-brand-copy"><strong>CareerMate</strong><small>PERSONAL OS</small></span></div>
+        <nav class="cm-rail-navigation" aria-label="Workspace sections">
+          <div class="cm-rail-group"><span class="cm-rail-group-label">WORKSPACE</span><button class="cm-rail-item"><span class="cm-rail-icon-wrap"><svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="cm-rail-item-label">Command centre</span><span class="cm-rail-active-indicator"></span></button></div>
+          <span class="cm-rail-separator"></span>
+          <div class="cm-rail-group"><span class="cm-rail-group-label">DISCOVER & DECIDE</span>
+            <button class="cm-rail-item is-active" data-tooltip="Opportunity explorer"><span class="cm-rail-icon-wrap"><svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm10 2-4.35-4.35" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="cm-rail-item-label">Opportunity explorer</span><span class="cm-rail-item-badge">12</span><span class="cm-rail-active-indicator"></span></button>
+            <button class="cm-rail-item"><span class="cm-rail-icon-wrap"><svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0-5a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0-5h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="cm-rail-item-label">Match intelligence</span></button>
+            <button class="cm-rail-item"><span class="cm-rail-icon-wrap"><svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m12 2 9 5-9 5-9-5 9-5Zm-9 10 9 5 9-5M3 17l9 5 9-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="cm-rail-item-label">Source integrations</span></button>
+          </div>
+          <span class="cm-rail-separator"></span>
+          <div class="cm-rail-group"><span class="cm-rail-group-label">APPLY & PROGRESS</span>
+            <button class="cm-rail-item"><span class="cm-rail-icon-wrap"><svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 7h18v13H3zM8 7V4h8v3M3 12h18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="cm-rail-item-label">Application pipeline</span></button>
+            <button class="cm-rail-item"><span class="cm-rail-icon-wrap"><svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Zm0 0v6h6M8 13h8M8 17h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="cm-rail-item-label">CV & evidence studio</span></button>
+          </div>
+          <span class="cm-rail-separator"></span>
+          <div class="cm-rail-group"><span class="cm-rail-group-label">OPTIMIZE</span>
+            <button class="cm-rail-item"><span class="cm-rail-icon-wrap"><svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m13 2-3 9h7l-6 11 2-9H6l7-11Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="cm-rail-item-label">Automation centre</span></button>
+            <button class="cm-rail-item"><span class="cm-rail-icon-wrap"><svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 3v18h18M8 15l4-4 4 3 5-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="cm-rail-item-label">Career analytics</span></button>
+          </div>
+          <span class="cm-rail-separator"></span>
+          <div class="cm-rail-group"><span class="cm-rail-group-label">PREFERENCES</span><button class="cm-rail-item"><span class="cm-rail-icon-wrap"><svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 21v-7m0-4V3m8 18v-9m0-4V3m8 18v-5m0-4V3M1 14h6m2-6h6m2 8h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="cm-rail-item-label">Settings & privacy</span></button></div>
+        </nav>
+        <div class="cm-rail-bottom"><button class="cm-rail-profile"><span class="cm-rail-profile-ring"><svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="cm-rail-profile-copy"><strong>Profile readiness</strong><small>67% complete</small></span></button><div class="cm-rail-footer"><span class="cm-rail-footer-dot"></span>Local AI · Private workspace</div></div>
+      </div>
+    </aside>
+    <main class="cm-main">
+      <div class="cm-page-header"><div class="cm-page-heading-copy"><span class="cm-kicker">JOB DISCOVERY</span><h1>Find your next opportunity</h1><p>Search once, compare opportunities against your real experience and focus on roles worth pursuing.</p></div><div class="cm-page-header-actions"><span class="cm-status-pill"><i></i>Local workspace ready</span></div></div>
+      <div class="cm-content-frame">
+        <div class="discover-layout">
+          <section class="panel search-filters-panel">
+            <div class="panel-titlebar"><div><p class="eyebrow">SEARCH SETTINGS</p><h2>Shape your search</h2><p class="panel-description">Choose roles, location and sources. Advanced controls stay available when needed.</p></div></div>
+            <div class="preview-search-fields">
+              <label class="field"><span>Job titles or keywords</span><div class="preview-textarea">Software Engineer<br>Backend Engineer</div></label>
+              <label class="field"><span>Country</span><div class="preview-input">Sweden <span>⌄</span></div></label>
+              <label class="field"><span>City or location</span><div class="preview-input">Stockholm <span>⌄</span></div></label>
+              <label class="field"><span>Work arrangement</span><div class="preview-input">Any / not specified <span>⌄</span></div></label>
+              <label class="field"><span>Results per page</span><div class="preview-input">20 jobs <span>⌄</span></div></label>
+            </div>
+            <div class="preview-filter-summary"><span>Advanced filters · Salary · Freshness</span><span>3 sources selected</span></div>
+            <div class="preview-source-row" style="margin-top:12px"><span class="preview-source"><b class="preview-source-mark linkedin">in</b> LinkedIn</span><span class="preview-source"><b class="preview-source-mark jobtech">J</b> JobTech</span><span class="preview-source"><b class="preview-source-mark greenhouse">g</b> Greenhouse</span></div>
+            <button class="button button-primary button-full" style="margin-top:16px">Search opportunities</button>
+            <div class="preview-filter-summary"><span>Daily alerts</span><span>My job search</span><span>Save search</span></div>
+          </section>
+          <section class="panel results-panel">
+            <div class="results-heading"><div><p class="eyebrow">OPPORTUNITIES</p><h2>Job results <span class="count-pill">12</span></h2><p class="panel-description">Each listing shows its source, work mode and match context.</p></div><span class="results-state"><i class="status-live-dot"></i>Saved locally</span></div>
+            <div class="results-toolbar"><label class="result-search">⌕ <input placeholder="Filter by role, company or keyword" /></label><span class="results-summary">12 of 12 shown</span></div>
+            <div class="job-results-list">
+              <article class="job-row"><div class="preview-company-icon">N</div><div class="job-row-main"><button class="job-title-button">Senior Software Engineer — Payments</button><div class="job-row-meta"><span>Northstar Technology</span><i>·</i><span>Stockholm, Sweden</span></div><div class="job-badges"><span class="job-mode-badge">Hybrid</span><span class="source-chip"><span class="source-brand-mark source-brand-linkedin"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M5.2 8.6H2.4V21h2.8V8.6ZM3.8 2.8a1.65 1.65 0 1 0 0 3.3 1.65 1.65 0 0 0 0-3.3ZM21.6 13.9c0-3.7-1.9-5.5-4.5-5.5-2.1 0-3.1 1.1-3.7 1.9V8.6h-2.8V21h2.8v-6.1c0-1.6.3-3.1 2.3-3.1s2 1.8 2 3.2V21h2.9Z" /></svg></span>LinkedIn</span><span class="job-role-badge">Software Engineering</span><span class="match-chip">91% CV match</span></div><p class="job-row-description">Build reliable payment services and cloud-native products. Work with a cross-functional engineering team, modern delivery practices and scalable distributed systems.</p></div><div class="job-row-actions"><span class="job-date">Posted 2 days ago</span><button class="button button-secondary button-small">Details</button><a class="icon-link">↗</a></div></article>
+              <article class="job-row"><div class="preview-company-icon">E</div><div class="job-row-main"><button class="job-title-button">Backend Engineer — Platform Services</button><div class="job-row-meta"><span>Epic Systems Nordic</span><i>·</i><span>Stockholm, Sweden</span></div><div class="job-badges"><span class="job-mode-badge">Remote</span><span class="source-chip"><span class="source-brand-mark source-brand-jobtech"><span class="source-brand-letter">J</span></span>JobTech</span><span class="job-role-badge">Backend Engineering</span><span class="match-chip">86% CV match</span></div><p class="job-row-description">Own backend services, APIs and integration workflows. Strong focus on cloud infrastructure, observability and operational quality.</p></div><div class="job-row-actions"><span class="job-date">Posted 4 days ago</span><button class="button button-secondary button-small">Details</button><a class="icon-link">↗</a></div></article>
+              <article class="job-row"><div class="preview-company-icon">C</div><div class="job-row-main"><button class="job-title-button">Software Engineer, Developer Experience</button><div class="job-row-meta"><span>Cloudscale AB</span><i>·</i><span>Sweden · Hybrid</span></div><div class="job-badges"><span class="job-mode-badge">Hybrid</span><span class="source-chip"><span class="source-brand-mark source-brand-greenhouse"><span class="source-brand-letter">g</span></span>Greenhouse</span><span class="job-role-badge">Platform Engineering</span><span class="match-chip">82% CV match</span></div><p class="job-row-description">Improve developer workflows, build internal tooling and simplify the lifecycle of production software.</p></div><div class="job-row-actions"><span class="job-date">Posted 6 days ago</span><button class="button button-secondary button-small">Details</button><a class="icon-link">↗</a></div></article>
+            </div>
+          </section>
+        </div>
+      </div>
+      <footer class="cm-footer"><span><b>career<span>mate</span>.</b> Your personal career operating system.</span><span><i></i> Local-first · Human-approved applications</span></footer>
+    </main>
+  </div>
+
+  <nav class="cm-mobile-bottom-nav" aria-label="Quick navigation">
+    <button type="button" class="is-active"><svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><span>Home</span></button>
+    <button type="button"><svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm10 2-4.35-4.35" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>Discover</span></button>
+    <button type="button"><svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 7h18v13H3zM8 7V4h8v3M3 12h18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Applied</span></button>
+    <button type="button"><svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 3v18h18M8 15l4-4 4 3 5-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Insights</span></button>
+    <button type="button"><svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m12 2 9 5-9 5-9-5 9-5Zm-9 10 9 5 9-5M3 17l9 5 9-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>More</span></button>
+  </nav>
+</div>
+<script>
+  const rail = document.querySelector('.cm-icon-rail');
+  const workspace = document.querySelector('.cm-workspace');
+  let expansionMode = null;
+  let pointerInside = false;
+  const setExpanded = (expanded) => { rail.classList.toggle('is-expanded', expanded); workspace.classList.toggle('is-nav-expanded', expanded); rail.dataset.state = expanded ? 'expanded' : 'compact'; };
+  rail.addEventListener('pointerenter', (event) => { if (event.pointerType !== 'touch') { pointerInside = true; expansionMode = 'pointer'; setExpanded(true); } });
+  rail.addEventListener('pointerleave', (event) => { if (event.pointerType !== 'touch') { pointerInside = false; if (expansionMode !== 'keyboard') { expansionMode = null; setExpanded(false); } } });
+  rail.addEventListener('focusin', () => { if (expansionMode !== 'pointer') { expansionMode = 'keyboard'; setExpanded(true); } });
+  rail.addEventListener('focusout', (event) => { if (!rail.contains(event.relatedTarget) && !pointerInside) { expansionMode = null; setExpanded(false); } });
+  rail.addEventListener('keydown', (event) => { if (['Tab','ArrowDown','ArrowUp','Home','End','Enter',' '].includes(event.key)) { expansionMode = 'keyboard'; setExpanded(true); } });
+</script>
+</body>
+</html>

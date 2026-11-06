@@ -13,6 +13,8 @@ import type {
   BrowserFieldDraft,
   BrowserFormSession,
   CandidateProfile,
+  CandidateEvidence,
+  CandidateEvidenceInput,
   CvStatus,
   JobMatchResult,
   JobResult,
@@ -104,6 +106,32 @@ export async function testAiProvider(settings: Pick<AIProviderSettingsInput, "pr
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(settings),
   });
+}
+
+export async function getCandidateEvidence(): Promise<{ evidence: CandidateEvidence[]; verified_count: number; pending_count: number }> {
+  return request("/api/candidate/evidence");
+}
+
+export async function createCandidateEvidence(input: CandidateEvidenceInput): Promise<CandidateEvidence> {
+  const result = await request<{ success: boolean; evidence: CandidateEvidence }>("/api/candidate/evidence", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return result.evidence;
+}
+
+export async function updateCandidateEvidence(id: string, updates: Partial<CandidateEvidenceInput> & { verified?: boolean }): Promise<CandidateEvidence> {
+  const result = await request<{ success: boolean; evidence: CandidateEvidence }>(`/api/candidate/evidence/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+  return result.evidence;
+}
+
+export async function deleteCandidateEvidence(id: string): Promise<void> {
+  await request(`/api/candidate/evidence/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 export async function getCvStatus(): Promise<CvStatus> {

@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState, type FormEvent, type HTMLInputTypeAttribute } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "./components/ui/Icon";
+import { SourceMark } from "./components/ui/SourceMark";
 import { WorkspaceShell, type WorkspaceView } from "./components/layout/WorkspaceShell";
+import { AnalyticsStudio } from "./components/analytics/AnalyticsStudio";
+import { AutomationCenter } from "./components/automation/AutomationCenter";
+import { EvidenceVault } from "./components/profile/EvidenceVault";
 import {
   analyzeCv,
   closeBrowserSession,
@@ -2347,6 +2351,16 @@ function App() {
       eyebrow: "DATA MANAGEMENT",
       description: "Review what CareerMate stores on this computer, clear derived caches, or reset your workspace when you want a fresh start.",
     },
+    analytics: {
+      title: "See what is working",
+      eyebrow: "CAREER ANALYTICS",
+      description: "Understand your job-search funnel, matching quality, application progress and source effectiveness.",
+    },
+    automation: {
+      title: "Your search, on autopilot",
+      eyebrow: "AUTOMATION CENTRE",
+      description: "Monitor discovery connectors, saved searches and new opportunity alerts while keeping application decisions in your hands.",
+    },
     settings: {
       title: "CareerMate settings",
       eyebrow: "CONFIGURATION",
@@ -2363,7 +2377,26 @@ function App() {
         : saving
           ? "Saving your profile locally…"
           : "";
-  const sourceLabel = (source: string) => source === "jobtech_links" ? "JobAd Links" : source === "remoteok" ? "Remote OK" : source === "arbeitnow" ? "Arbeitnow" : source === "greenhouse" ? "Greenhouse" : source === "lever" ? "Lever" : source === "teamtailor" ? "Teamtailor" : source;
+  const sourceLabel = (source: string) => {
+    const value = source.toLowerCase();
+    if (value.includes("linkedin")) return "LinkedIn";
+    if (value.includes("indeed")) return "Indeed";
+    if (value.includes("glassdoor")) return "Glassdoor";
+    if (value.includes("jobtech") || value.includes("arbetsformedlingen") || value.includes("platsbanken")) return "JobTech";
+    if (value.includes("remoteok") || value.includes("remote ok")) return "Remote OK";
+    if (value.includes("arbeitnow")) return "Arbeitnow";
+    if (value.includes("greenhouse")) return "Greenhouse";
+    if (value.includes("teamtailor")) return "Teamtailor";
+    if (value.includes("smartrecruiters")) return "SmartRecruiters";
+    if (value.includes("workable")) return "Workable";
+    if (value.includes("recruitee")) return "Recruitee";
+    if (value.includes("breezy")) return "Breezy HR";
+    if (value.includes("personio")) return "Personio";
+    if (value.includes("workday")) return "Workday";
+    if (value.includes("ashby")) return "Ashby";
+    if (value.includes("lever")) return "Lever";
+    return source.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  };
   const workModeLabel = (mode?: string) => mode === "remote" ? "Remote" : mode === "hybrid" ? "Hybrid" : mode === "on_site" ? "On-site" : "Work mode unknown";
   const renderJobRow = (job: JobResult, compact = false) => {
     const sourceUrl = safeExternalUrl(job.source_url || job.apply_url);
@@ -2377,7 +2410,7 @@ function App() {
           <div className="job-badges">
             <span className={`job-mode-badge mode-${job.work_mode ?? "unknown"}`}>{workModeLabel(job.work_mode)}</span>
             {job.salary_min != null && job.salary_max != null && <span className="job-role-badge">{job.salary_currency || ""} {job.salary_min.toLocaleString()}–{job.salary_max.toLocaleString()}</span>}
-            <span className="source-chip">{sourceLabel(job.source)}</span>
+            <span className="source-chip"><SourceMark source={job.source} sourceUrl={job.source_url || job.apply_url} /><span>{sourceLabel(job.source)}</span></span>
             {(job.search_roles ?? []).slice(0, 2).map((role) => <span className="job-role-badge" key={role}>{role}</span>)}
             {match?.match_score !== undefined && match.match_score !== null && <span className="match-chip">{match.match_score}% CV match</span>}
             {hasAppliedToJob(job.id) && <span className="job-history-pill">Already applied{applicationForJob(job.id)?.status === "offer" ? " · Offer" : ""}</span>}
@@ -2425,7 +2458,7 @@ function App() {
             <div className="view-stack overview-view">
               <section className="welcome-banner">
                 <div className="welcome-banner-copy">
-                  <span className="welcome-label"><span className="welcome-sparkle">✦</span> YOUR NEXT CHAPTER STARTS HERE</span>
+                  <span className="welcome-label"><span className="welcome-sparkle"><Icon name="sparkles" /></span> YOUR NEXT CHAPTER STARTS HERE</span>
                   <h2>{profile?.personal?.name?.trim() ? `Welcome back, ${profile.personal.name.trim().split(/\s+/)[0]}.` : "Make your next move with intent."}</h2>
                   <p>Find roles worth your time, see how your experience aligns, and prepare your next step with more clarity.</p>
                   <div className="welcome-actions">
@@ -2459,6 +2492,29 @@ function App() {
                 </aside>
               </div>
             </div>
+          )}
+
+          {activeView === "analytics" && (
+            <AnalyticsStudio
+              jobs={jobs}
+              matches={matches}
+              applications={applications}
+              savedSearchCount={savedSearches.length}
+              alertCount={jobAlerts.length}
+              onNavigate={(view) => setActiveView(view)}
+            />
+          )}
+
+          {activeView === "automation" && (
+            <AutomationCenter
+              sources={jobSources}
+              searches={savedSearches}
+              alerts={jobAlerts}
+              checkingId={checkingAlertId}
+              onCheckSearch={(id) => { void handleCheckSavedSearch(id); }}
+              onOpenSources={() => setActiveView("platforms")}
+              onOpenDiscover={() => setActiveView("discover")}
+            />
           )}
 
           {activeView === "discover" && (
@@ -2498,7 +2554,7 @@ function App() {
                       <p className="helper-text">External sites such as LinkedIn, Indeed, and Glassdoor are available under Job platforms. They open their own search pages; they are not automatically imported into CareerMate.</p>
                     </details>
                     <button className="button button-primary button-full search-submit" disabled={jobLoading} type="submit">{jobLoading ? <><span className="spinner spinner-light" /> Searching jobs…</> : <><Icon name="search" /> Search opportunities</>}</button>
-                    <div className="external-source-picker"><div className="external-source-heading"><strong>External job sites</strong><span>Choose one or more</span></div><div className="external-source-options">{["linkedin", "indeed", "glassdoor"].map((id) => { const platform = platformShortcuts.find((item) => item.id === id); if (!platform?.enabled) return null; return <label className="external-source-option" key={id}><input type="checkbox" checked={externalSearchSelected.includes(id)} onChange={(event) => setExternalSearchSelected((items) => event.target.checked ? [...items, id] : items.filter((item) => item !== id))} /><span>{platform.name}</span></label>; })}</div><small>External sites open their own results and are not automatically imported. You can run a search using only one of these sites.</small></div>
+                    <div className="external-source-picker"><div className="external-source-heading"><strong>External job sites</strong><span>Choose one or more</span></div><div className="external-source-options">{["linkedin", "indeed", "glassdoor"].map((id) => { const platform = platformShortcuts.find((item) => item.id === id); if (!platform?.enabled) return null; return <label className="external-source-option" key={id}><input type="checkbox" checked={externalSearchSelected.includes(id)} onChange={(event) => setExternalSearchSelected((items) => event.target.checked ? [...items, id] : items.filter((item) => item !== id))} /><SourceMark source={id} sourceUrl={platform.url} /><span className="external-source-label">{platform.name}</span></label>; })}</div><small>External sites open their own results and are not automatically imported. You can run a search using only one of these sites.</small></div>
                   </form>
                   <div className="saved-search-controls"><select value={alertFrequency} onChange={(e)=>setAlertFrequency(e.target.value as "manual"|"daily"|"weekly")} aria-label="Saved search alert frequency"><option value="manual">Manual checks</option><option value="daily">Daily alerts</option><option value="weekly">Weekly alerts</option></select><input value={savedSearchName} onChange={(e)=>setSavedSearchName(e.target.value)} aria-label="Saved search name" placeholder="Name this search" /><button type="button" className="button button-secondary button-small" onClick={()=>void handleSaveCurrentSearch()}>Save search</button></div>
                   {savedSearches.length>0 && <section className="saved-search-list"><h3>Saved searches</h3>{savedSearches.map((item)=><div className="saved-search-row" key={item.id}><span><strong>{item.name}</strong><small>{item.roles.join(", ")} · {item.city}, {item.country}</small></span><button type="button" className="text-action" disabled={checkingAlertId===item.id} onClick={()=>void handleCheckSavedSearch(item.id)}>{checkingAlertId===item.id?"Checking…":"Check new jobs"}</button><button type="button" className="text-action" onClick={async()=>{await deleteSavedSearch(item.id); await refreshSavedSearches();}}>Delete</button></div>)}</section>}
@@ -2544,7 +2600,7 @@ function App() {
                     const status = jobSources[source.id];
                     const selectable = canSelectSource(source.id, status);
                     const description = source.id === "jobtech_links" ? "Sweden-focused public job feed" : source.id === "remoteok" ? "Public remote-job feed" : source.id === "arbeitnow" ? "Public job feed with strong European coverage" : source.id === "teamtailor" ? (status.credentials_ready ? `${status.employers ?? 0} employer board(s) · credentials ready` : `${status.employers ?? 0} boards · API key setup required`) : `${status.employers ?? 0} employer board(s) configured`;
-                    return <label className={`source-option platform-source-option${selectable ? "" : " source-option-disabled"}`} key={source.id}><input type="checkbox" checked={selectedSources.includes(source.id)} disabled={!selectable} onChange={(event) => toggleJobSource(source.id, event.target.checked)} /><span className="source-option-copy"><strong>{source.title}</strong><small>{description}</small></span><span className={`platform-source-state${selectable ? " ready" : " setup"}`}>{selectable ? "Available" : "Set up"}</span></label>;
+                    return <label className={`source-option platform-source-option${selectable ? "" : " source-option-disabled"}`} key={source.id}><input type="checkbox" checked={selectedSources.includes(source.id)} disabled={!selectable} onChange={(event) => toggleJobSource(source.id, event.target.checked)} /><SourceMark source={source.id} /><span className="source-option-copy"><strong>{source.title}</strong><small>{description}</small></span><span className={`platform-source-state${selectable ? " ready" : " setup"}`}><Icon name={selectable ? "check" : "sliders"} />{selectable ? "Available" : "Set up"}</span></label>;
                   })}
                 </div>
                 <p className="helper-text">LinkedIn, Indeed and other sites without a supported authorized feed can be saved as external shortcuts in Find jobs. CareerMate does not scrape those pages automatically.</p>
@@ -2557,7 +2613,7 @@ function App() {
                   {platformShortcuts.filter((platform) => platform.name.toLowerCase().includes(platformFilter.toLowerCase()) || platform.description?.toLowerCase().includes(platformFilter.toLowerCase()) || platform.category?.toLowerCase().includes(platformFilter.toLowerCase())).map((platform) => {
                     const href = platformSearchUrl(platform);
                     return <div className="platform-shortcut-row" key={platform.id}>
-                      <label className="platform-shortcut-toggle"><input type="checkbox" checked={platform.enabled} onChange={(event) => setPlatformShortcuts((items) => items.map((item) => item.id === platform.id ? { ...item, enabled: event.target.checked } : item))} /><span><strong>{platform.name}</strong><small>{platform.description || platform.url}</small></span></label>
+                      <label className="platform-shortcut-toggle"><input type="checkbox" checked={platform.enabled} onChange={(event) => setPlatformShortcuts((items) => items.map((item) => item.id === platform.id ? { ...item, enabled: event.target.checked } : item))} /><SourceMark source={platform.id} sourceUrl={platform.url} /><span><strong>{platform.name}</strong><small>{platform.description || platform.url}</small></span></label>
                       <div className="platform-shortcut-actions">{platform.enabled && href && <a className="text-action" href={href} target="_blank" rel="noopener noreferrer">Open search ↗</a>}{platform.id.startsWith("custom-") && <button className="text-action platform-remove" type="button" onClick={() => setPlatformShortcuts((items) => items.filter((item) => item.id !== platform.id))}>Remove</button>}</div>
                     </div>;
                   })}
@@ -2841,6 +2897,7 @@ function App() {
               {!profile && <section className="panel cv-setup-panel"><div className="cv-setup-visual"><div className="cv-illustration"><span className="cv-illustration-fold" /><span /><span /><span /><b><Icon name="check" /></b></div></div><div className="cv-setup-content"><p className="eyebrow">STEP 1 · BUILD YOUR PROFILE</p><h2>Start with your CV</h2><p className="panel-description">Upload a PDF, Word document, or text file. CareerMate extracts the text and uses your selected AI provider to organize it into a profile you can edit and review. Online providers receive the CV text for processing.</p><label className="upload-dropzone"><input type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><span className="upload-icon"><Icon name="file" /></span><strong>{file ? file.name : "Choose your CV file"}</strong><span className="helper-text">PDF, DOCX or TXT · up to 10 MB</span><span className="upload-prompt">Browse files <Icon name="arrow" /></span></label><div className="button-row"><button className="button button-secondary" onClick={handleUploadCv} disabled={cvLoading || !file} type="button">{cvLoading ? <><span className="spinner" /> Uploading…</> : "Upload & extract text"}</button><button className="button button-primary" onClick={handleAnalyzeCv} disabled={cvLoading || !cvStatus.uploaded} type="button">{cvLoading ? <><span className="spinner spinner-light" /> Working…</> : <><Icon name="sparkles" /> Analyze CV</>}</button></div><div className="cv-footnote"><span className={`status-dot ${cvStatus.uploaded ? "good" : "muted-dot"}`} />{cvStatus.uploaded ? `Text extracted · ${cvStatus.extracted_text_characters.toLocaleString()} characters` : "No CV text extracted yet"}</div><div className="local-note profile-local-note"><Icon name="shield" /><span><strong>Privacy-first processing</strong><small>Review extracted fields before use. When a hosted provider is selected, CV text is sent to that provider for analysis.</small></span></div></div></section>}
 
               {profile && <>
+                <EvidenceVault />
                 <section className="profile-summary-card panel"><div className="profile-summary-avatar">{profile.personal?.name?.trim()?.charAt(0)?.toUpperCase() || "C"}</div><div className="profile-summary-copy"><p className="eyebrow">CANDIDATE PROFILE</p><h2>{profile.personal?.name?.trim() || "Your professional profile"}</h2><p>{[profile.personal?.location, profile.personal?.email].filter(Boolean).join(" · ") || "Add your contact details and professional information below."}</p></div><div className={`save-state ${profileSaved ? "saved" : "unsaved"}`}>{profileSaved ? "✓ Saved locally" : "● Review changes"}</div><div className="profile-completion"><div className="profile-completion-label"><span>Profile completeness</span><strong>{profileCompletion}%</strong></div><div className="completion-track"><span style={{ width: `${profileCompletion}%` }} /></div></div></section>
                 <section className="panel profile-editor-panel"><div className="panel-titlebar"><div><p className="eyebrow">EDIT & VERIFY</p><h2>Career details</h2><p className="panel-description">AI extraction is a starting point. Keep every field truthful and specific.</p></div><span className="subtle-label">Local file · profile.json</span></div>
                   <details className="profile-accordion" open><summary><span className="accordion-icon"><Icon name="user" /></span><span className="accordion-title">Personal details<small>Name, contact details and professional links</small></span><span className="summary-count">7 fields</span></summary><div className="form-grid profile-form-grid"><Field label="Full name" value={profile.personal?.name ?? ""} onChange={(value) => updatePersonal("name", value)} /><Field label="Email" type="email" value={profile.personal?.email ?? ""} onChange={(value) => updatePersonal("email", value)} /><Field label="Phone" value={profile.personal?.phone ?? ""} onChange={(value) => updatePersonal("phone", value)} /><Field label="Location" value={profile.personal?.location ?? ""} onChange={(value) => updatePersonal("location", value)} /><Field label="LinkedIn URL" value={profile.personal?.linkedin ?? ""} onChange={(value) => updatePersonal("linkedin", value)} /><Field label="GitHub URL" value={profile.personal?.github ?? ""} onChange={(value) => updatePersonal("github", value)} /><Field label="Portfolio URL" value={profile.personal?.portfolio ?? ""} onChange={(value) => updatePersonal("portfolio", value)} /></div></details>
@@ -2900,7 +2957,7 @@ function App() {
 
       {selectedJob && createPortal(<div className="drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedJob(null); }}>
         <aside className="job-detail-drawer" role="dialog" aria-modal="true" aria-labelledby="job-detail-title">
-          <div className="drawer-header"><div><p className="eyebrow">OPPORTUNITY DETAILS</p><span className="source-chip">{sourceLabel(selectedJob.source)}</span></div><button className="drawer-close" type="button" onClick={() => setSelectedJob(null)} aria-label="Close job details"><span aria-hidden="true">×</span><span className="drawer-close-label">Close</span></button></div>
+          <div className="drawer-header"><div><p className="eyebrow">OPPORTUNITY DETAILS</p><span className="source-chip"><SourceMark source={selectedJob.source} sourceUrl={selectedJob.source_url || selectedJob.apply_url} /><span>{sourceLabel(selectedJob.source)}</span></span></div><button className="drawer-close" type="button" onClick={() => setSelectedJob(null)} aria-label="Close job details"><span aria-hidden="true">×</span><span className="drawer-close-label">Close</span></button></div>
           <div className="job-detail-content">
           <div className="drawer-company-mark">{(selectedJob.company || "?").trim().charAt(0).toUpperCase()}</div>
           <h2 id="job-detail-title" className="drawer-job-title">{selectedJob.title}</h2>

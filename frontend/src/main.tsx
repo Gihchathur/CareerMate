@@ -13,6 +13,10 @@ import "./styles/pages/profile.css";
 import "./styles/pages/settings.css";
 import "./styles/pages/detail-patterns.css";
 import "./styles/pages/responsive.css";
+import "./careermate-v2.css";
+import "./ux-hardening.css";
+import "./ux-experience.css";
+import "./ux-readability.css";
 import App from "./App";
 
 createRoot(document.getElementById("root")!).render(

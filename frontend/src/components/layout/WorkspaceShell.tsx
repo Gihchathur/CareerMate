@@ -1,8 +1,7 @@
-import type { ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Icon, type IconName } from "../ui/Icon";
 
-export type WorkspaceView = "overview" | "discover" | "platforms" | "matches" | "applications" | "profile" | "ai" | "data" | "settings";
-
+export type WorkspaceView = "overview" | "discover" | "platforms" | "matches" | "applications" | "profile" | "ai" | "data" | "settings" | "analytics" | "automation";
 export type PageMeta = { title: string; eyebrow: string; description: string };
 
 type Props = {
@@ -23,7 +22,26 @@ type Props = {
   children: ReactNode;
 };
 
-type NavLink = { id: WorkspaceView; label: string; icon: IconName; badge?: number | string; ready?: boolean };
+type NavLink = { id: WorkspaceView; label: string; icon: IconName; hint: string };
+type NavGroup = { label: string; links: NavLink[] };
+
+const NAV_GROUPS: NavGroup[] = [
+  { label: "WORKSPACE", links: [{ id: "overview", label: "Command centre", icon: "grid", hint: "Your career overview" }] },
+  { label: "DISCOVER & DECIDE", links: [
+    { id: "discover", label: "Opportunity explorer", icon: "search", hint: "Find and filter jobs" },
+    { id: "matches", label: "Match intelligence", icon: "target", hint: "Understand fit and gaps" },
+    { id: "platforms", label: "Source integrations", icon: "layers", hint: "Manage job sources" },
+  ] },
+  { label: "APPLY & PROGRESS", links: [
+    { id: "applications", label: "Application pipeline", icon: "briefcase", hint: "Track every application" },
+    { id: "profile", label: "CV & evidence studio", icon: "file", hint: "Manage your candidate profile" },
+  ] },
+  { label: "OPTIMIZE", links: [
+    { id: "automation", label: "Automation centre", icon: "bolt", hint: "Monitor recurring workflows" },
+    { id: "analytics", label: "Career analytics", icon: "chart", hint: "Measure your funnel" },
+  ] },
+  { label: "PREFERENCES", links: [{ id: "settings", label: "Settings & privacy", icon: "sliders", hint: "Configure your workspace" }] },
+];
 
 export function WorkspaceShell(props: Props) {
   const {
@@ -31,106 +49,238 @@ export function WorkspaceShell(props: Props) {
     cvUploaded, profileSaved, matchCount, jobCount, applicationCount,
     onNavigate, onGoHome, children,
   } = props;
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState("");
+  const [activeCommandIndex, setActiveCommandIndex] = useState(0);
+  const [railExpanded, setRailExpanded] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const railExpansionMode = useRef<"pointer" | "keyboard" | null>(null);
+  const pointerInsideRail = useRef(false);
+  const commandInput = useRef<HTMLInputElement>(null);
+  const progress = Math.round(([cvUploaded, profileSaved, matchCount > 0].filter(Boolean).length / 3) * 100);
+  const badgeFor = (id: WorkspaceView) => id === "discover" ? jobCount : id === "matches" ? matchCount : id === "applications" ? applicationCount : undefined;
+  const commands = useMemo(
+    () => NAV_GROUPS.flatMap((group) => group.links).filter((link) => `${link.label} ${link.hint}`.toLowerCase().includes(commandQuery.trim().toLowerCase())),
+    [commandQuery],
+  );
 
-  const groups: { label: string; links: NavLink[] }[] = [
-    { label: "Workspace", links: [{ id: "overview", label: "Overview", icon: "grid" }] },
-    { label: "Career tools", links: [
-      { id: "discover", label: "Find jobs", icon: "search", badge: jobCount || undefined },
-      { id: "platforms", label: "Job sources", icon: "layers" },
-      { id: "matches", label: "Match insights", icon: "sparkles", badge: matchCount || undefined },
-      { id: "applications", label: "Applications", icon: "briefcase", badge: applicationCount || undefined },
-    ] },
-    { label: "Your profile", links: [{ id: "profile", label: "CV Studio", icon: "user", ready: profileSaved }] },
-    { label: "Preferences", links: [{ id: "settings", label: "Settings", icon: "sliders" }] },
-  ];
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandOpen((value) => !value);
+        setCommandQuery("");
+        setMobileNavOpen(false);
+      }
+      if (event.key === "Escape") {
+        setCommandOpen(false);
+        setMobileNavOpen(false);
+        railExpansionMode.current = null;
+        pointerInsideRail.current = false;
+        setRailExpanded(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (commandOpen) {
+      setActiveCommandIndex(0);
+      commandInput.current?.focus();
+    }
+  }, [commandOpen]);
+
+  useEffect(() => {
+    setActiveCommandIndex((index) => Math.min(index, Math.max(0, commands.length - 1)));
+  }, [commands.length]);
+
+  const navigate = (view: WorkspaceView) => {
+    onNavigate(view);
+    setCommandOpen(false);
+    setMobileNavOpen(false);
+  };
+
+  const renderFullNavigation = (className = "cm-mobile-nav-groups") => (
+    <div className={className}>
+      {NAV_GROUPS.map((group) => (
+        <div className="cm-nav-popover-group" key={group.label}>
+          <span className="cm-nav-popover-label">{group.label}</span>
+          {group.links.map((link) => {
+            const active = activeView === link.id || (link.id === "settings" && ["ai", "data"].includes(activeView));
+            const badge = badgeFor(link.id);
+            return (
+              <button
+                key={link.id}
+                type="button"
+                className={`cm-nav-popover-item ${active ? "is-active" : ""}`}
+                onClick={() => navigate(link.id)}
+                aria-current={active ? "page" : undefined}
+              >
+                <span className="cm-nav-popover-icon"><Icon name={link.icon} /></span>
+                <span className="cm-nav-popover-copy"><strong>{link.label}</strong><small>{link.hint}</small></span>
+                {typeof badge === "number" && badge > 0 && <span className="cm-nav-popover-count">{badge > 99 ? "99+" : badge}</span>}
+                {active && <span className="cm-nav-popover-current"><Icon name="check" /></span>}
+              </button>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+
+  const handleRailPointerEnter = (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.pointerType === "touch") return;
+    pointerInsideRail.current = true;
+    railExpansionMode.current = "pointer";
+    setRailExpanded(true);
+  };
+  const handleRailPointerLeave = (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.pointerType === "touch") return;
+    pointerInsideRail.current = false;
+    if (railExpansionMode.current !== "keyboard") {
+      railExpansionMode.current = null;
+      setRailExpanded(false);
+    }
+  };
+  const handleRailFocus = () => {
+    if (railExpansionMode.current === "pointer") return;
+    railExpansionMode.current = "keyboard";
+    setRailExpanded(true);
+  };
+  const handleRailBlur = (event: ReactFocusEvent<HTMLElement>) => {
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+    if (!pointerInsideRail.current) {
+      railExpansionMode.current = null;
+      setRailExpanded(false);
+    }
+  };
+  const handleRailKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (["Tab", "ArrowDown", "ArrowUp", "Home", "End", "Enter", " "].includes(event.key)) {
+      railExpansionMode.current = "keyboard";
+      setRailExpanded(true);
+    }
+  };
 
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <a className="brand" href="#workspace" aria-label="CareerMate home" onClick={(event) => { event.preventDefault(); onGoHome(); }}>
-          <img className="brand-mark brand-mark-image" src="/careermate-mark.svg" alt="" />
-          <span className="brand-wordmark">CareerMate<span className="brand-period">.</span></span>
-        </a>
-        <div className="topbar-context"><span className="topbar-context-dot" />Your personal career workspace</div>
-        <div className="topbar-right">
-          <span className="privacy-chip"><span className="privacy-dot" />{hostedAi ? "Hosted AI enabled" : "Local AI workspace"}</span>
-          <button className="topbar-avatar" type="button" onClick={() => onNavigate("profile")} aria-label="Open your profile">{avatar}</button>
+    <div className="cm-app-shell">
+      <header className="cm-topbar">
+        <button className="cm-brand" type="button" onClick={onGoHome} aria-label="CareerMate home">
+          <span className="cm-brand-symbol"><span /><span /><span /></span>
+          <span className="cm-brand-name">career<span>mate</span><i>.</i></span>
+          <span className="cm-brand-edition">PERSONAL OS</span>
+        </button>
+        <div className="cm-topbar-context"><span className="cm-live-dot" /> <span>Your career workspace</span><span className="cm-context-divider">/</span><span>{meta.eyebrow.toLowerCase()}</span></div>
+        <div className="cm-topbar-actions">
+          <button className="cm-command-trigger" type="button" onClick={() => { setCommandOpen(true); setCommandQuery(""); }}><Icon name="search" /><span>Jump to anything</span><kbd>⌘ K</kbd></button>
+          <span className="cm-privacy-indicator" title={hostedAi ? "Hosted AI is enabled" : "Local AI workspace"}><Icon name="shield" /><span>{hostedAi ? "Cloud AI" : "Local first"}</span></span>
+          <button className="cm-avatar" type="button" onClick={() => navigate("profile")} aria-label="Open candidate profile">{avatar}</button>
         </div>
       </header>
 
-      <div className="workspace-shell" id="workspace">
-        <aside className="sidebar" aria-label="Main navigation">
-          <div className="sidebar-brand-panel">
-            <span className="sidebar-brand-orb"><Icon name="sparkles" /></span>
-            <span><strong>CareerMate</strong><small>CAREER COMMAND CENTER</small></span>
-          </div>
-          <nav className="sidebar-navigation" aria-label="Primary">
-            {groups.map((group) => (
-              <div className="sidebar-group" key={group.label}>
-                <span className="sidebar-label">{group.label}</span>
-                <div className="sidebar-nav">
-                  {group.links.map((link) => (
-                    <button
-                      key={link.id}
-                      type="button"
-                      className={`nav-item${activeView === link.id || (link.id === "settings" && ["ai", "data"].includes(activeView)) ? " active" : ""}`}
-                      onClick={() => onNavigate(link.id)}
-                      aria-current={activeView === link.id || (link.id === "settings" && ["ai", "data"].includes(activeView)) ? "page" : undefined}
-                      title={link.label}
-                    >
-                      <span className="nav-icon-wrap"><Icon name={link.icon} /></span>
-                      <span className="nav-item-label">{link.label}</span>
-                      {link.badge !== undefined && <span className="nav-count">{link.badge}</span>}
-                      {link.ready && <span className="nav-status nav-status-ready" aria-label="Profile saved" />}
-                      <span className="nav-active-glow" aria-hidden="true" />
-                    </button>
-                  ))}
+      <div className={`cm-workspace ${railExpanded ? "is-nav-expanded" : ""}`}>
+        <aside
+          className={`cm-icon-rail ${railExpanded ? "is-expanded" : ""}`}
+          aria-label="Primary navigation, expands on pointer hover or keyboard focus"
+          data-state={railExpanded ? "expanded" : "compact"}
+          onPointerEnter={handleRailPointerEnter}
+          onPointerLeave={handleRailPointerLeave}
+          onFocusCapture={handleRailFocus}
+          onBlurCapture={handleRailBlur}
+          onKeyDownCapture={handleRailKeyDown}
+        >
+          <div className="cm-rail-surface">
+            <div className="cm-rail-brand" aria-hidden="true">
+              <span className="cm-brand-symbol cm-rail-brand-symbol"><span /><span /><span /></span>
+              <span className="cm-rail-brand-copy"><strong>CareerMate</strong><small>PERSONAL OS</small></span>
+            </div>
+            <nav className="cm-rail-navigation" aria-label="Workspace sections">
+              {NAV_GROUPS.map((group, groupIndex) => (
+                <div className="cm-rail-group" key={group.label}>
+                  <span className="cm-rail-group-label">{group.label}</span>
+                  {group.links.map((link) => {
+                    const active = activeView === link.id || (link.id === "settings" && ["ai", "data"].includes(activeView));
+                    const badge = badgeFor(link.id);
+                    return (
+                      <button
+                        key={link.id}
+                        type="button"
+                        className={`cm-rail-item ${active ? "is-active" : ""}`}
+                        onClick={() => navigate(link.id)}
+                        aria-label={link.label}
+                        aria-current={active ? "page" : undefined}
+                        data-tooltip={link.label}
+                        title={!railExpanded ? link.label : undefined}
+                      >
+                        <span className="cm-rail-icon-wrap"><Icon name={link.icon} /></span>
+                        <span className="cm-rail-item-label">{link.label}</span>
+                        {typeof badge === "number" && badge > 0 && <span className="cm-rail-item-badge">{badge > 99 ? "99+" : badge}</span>}
+                        <span className="cm-rail-active-indicator" />
+                      </button>
+                    );
+                  })}
+                  {groupIndex < NAV_GROUPS.length - 1 && <span className="cm-rail-separator" />}
                 </div>
-              </div>
-            ))}
-          </nav>
-
-          <div className="sidebar-lower">
-            <section className="workflow-card" aria-label="Setup progress">
-              <div className="workflow-card-heading"><span>GETTING STARTED</span><span className="workflow-live-dot" /></div>
-              <div className="workflow-progress-track"><span style={{ width: `${(Number(cvUploaded) + Number(profileSaved) + Number(matchCount > 0)) / 3 * 100}%` }} /></div>
-              <div className="workflow-checks">
-                <div className="workflow-check"><span className={`workflow-check-mark${cvUploaded ? " complete" : ""}`}>{cvUploaded ? "✓" : "1"}</span><span><strong>CV uploaded</strong><small>{cvUploaded ? "Text extracted locally" : "Add your CV to begin"}</small></span></div>
-                <div className="workflow-check"><span className={`workflow-check-mark${profileSaved ? " complete" : ""}`}>{profileSaved ? "✓" : "2"}</span><span><strong>Profile reviewed</strong><small>{profileSaved ? "Ready for matching" : "Review extracted details"}</small></span></div>
-                <div className="workflow-check"><span className={`workflow-check-mark${matchCount > 0 ? " complete" : ""}`}>{matchCount > 0 ? "✓" : "3"}</span><span><strong>Compare opportunities</strong><small>{matchCount ? `${matchCount} reports ready` : "Find roles and compare"}</small></span></div>
-              </div>
-            </section>
-            <section className="privacy-card">
-              <span className="privacy-card-icon"><Icon name="shield" /></span>
-              <strong>Your data stays yours</strong>
-              <p>CVs, profiles and applications stay in your local workspace. Hosted AI receives task content only when selected.</p>
-              <span className="privacy-provider"><span className="privacy-dot" />{providerLabel}</span>
-            </section>
-            <div className="sidebar-footer"><span className="sidebar-footer-mark">C</span><span><strong>Personal edition</strong><small>Private by design</small></span><span className="version-dot" title="Local workspace" /></div>
+              ))}
+            </nav>
+            <div className="cm-rail-bottom">
+              <button className="cm-rail-profile" type="button" onClick={() => navigate("profile")} aria-label={`Candidate profile, ${progress}% ready`} title={`Profile readiness ${progress}%`}>
+                <span className="cm-rail-profile-ring" style={{ "--progress": `${progress}%` } as CSSProperties}><Icon name="user" /></span>
+                <span className="cm-rail-profile-copy"><strong>Profile readiness</strong><small>{progress}% complete</small></span>
+                <span className="cm-rail-profile-arrow"><Icon name="arrow-up-right" /></span>
+              </button>
+              <div className="cm-rail-footer"><span className="cm-rail-footer-dot" />{providerLabel} <span>·</span> {hostedAi ? "Cloud AI" : "Local"}</div>
+            </div>
           </div>
         </aside>
 
-        <main className="workspace-main">
-          <div className="workspace-heading">
-            <div className="workspace-heading-copy">
-              <p className="eyebrow">{meta.eyebrow}</p>
-              <h1>{meta.title}</h1>
-              <p className="workspace-description">{meta.description}</p>
-            </div>
-            <div className="workspace-heading-actions">
-              {activity ? <span className="activity-pill"><span className="activity-spinner" />{activity}</span> : <span className="quiet-status"><span className="quiet-status-dot" />{status}</span>}
-              {activeView !== "discover" && <button className="button button-primary header-cta" type="button" onClick={() => onNavigate("discover")}><Icon name="search" />Find jobs</button>}
-            </div>
+        <main className="cm-main">
+          <div className="cm-page-header">
+            <div className="cm-page-heading-copy"><span className="cm-kicker">{meta.eyebrow}</span><h1>{meta.title}</h1><p>{meta.description}</p></div>
+            <div className="cm-page-header-actions">{activity ? <span className="cm-activity-pill"><i />{activity}</span> : <span className="cm-status-pill"><i />{status}</span>}{activeView !== "discover" && <button type="button" className="cm-button cm-button-primary" onClick={() => navigate("discover")}><Icon name="search" /> Discover jobs <span>↗</span></button>}</div>
           </div>
-
-          <div className="workspace-content">{children}</div>
-
-          <footer className="workspace-footer">
-            <div><img className="brand-mark brand-mark-image footer-mark" src="/careermate-mark.svg" alt="" /><strong>CareerMate</strong><span className="footer-separator">/</span><span>Local-first job search assistant</span></div>
-            <span>Open source · Local files, configurable AI provider</span>
-          </footer>
+          <div className="cm-content-frame" key={activeView}>{children}</div>
+          <footer className="cm-footer"><span><b>career<span>mate</span>.</b> Your personal career operating system.</span><span><i /> Local-first · Human-approved applications</span></footer>
         </main>
       </div>
+
+      <nav className="cm-mobile-bottom-nav" aria-label="Quick navigation">
+        {(["overview", "discover", "applications", "analytics"] as WorkspaceView[]).map((view) => {
+          const labels: Record<string, string> = { overview: "Home", discover: "Discover", applications: "Applied", analytics: "Insights" };
+          const icons: Record<string, IconName> = { overview: "grid", discover: "search", applications: "briefcase", analytics: "chart" };
+          return <button type="button" key={view} className={activeView === view ? "is-active" : ""} onClick={() => navigate(view)}><Icon name={icons[view]} /><span>{labels[view]}</span></button>;
+        })}
+        <button type="button" onClick={() => setMobileNavOpen(true)}><Icon name="layers" /><span>More</span></button>
+      </nav>
+
+      {mobileNavOpen && <div className="cm-mobile-nav-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setMobileNavOpen(false); }}>
+        <section className="cm-mobile-nav-dialog" role="dialog" aria-modal="true" aria-label="CareerMate navigation">
+          <header className="cm-mobile-nav-header"><div><span className="cm-nav-popover-eyebrow">YOUR WORKSPACE</span><strong>All sections</strong></div><button type="button" className="cm-nav-popover-close" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><Icon name="plus" /></button></header>
+          {renderFullNavigation()}
+          <footer className="cm-mobile-nav-footer"><Icon name="shield" /> Your workspace is {hostedAi ? "connected to hosted AI" : "local-first"}.</footer>
+        </section>
+      </div>}
+
+      {commandOpen && <div className="cm-command-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setCommandOpen(false); }}>
+        <section className="cm-command-dialog" role="dialog" aria-modal="true" aria-label="Quick navigation">
+          <div className="cm-command-input-wrap"><Icon name="search" /><input
+            ref={commandInput}
+            value={commandQuery}
+            onChange={(event) => { setCommandQuery(event.target.value); setActiveCommandIndex(0); }}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown") { event.preventDefault(); setActiveCommandIndex((index) => commands.length ? (index + 1) % commands.length : 0); }
+              if (event.key === "ArrowUp") { event.preventDefault(); setActiveCommandIndex((index) => commands.length ? (index - 1 + commands.length) % commands.length : 0); }
+              if (event.key === "Enter" && commands[activeCommandIndex]) { event.preventDefault(); navigate(commands[activeCommandIndex].id); }
+            }}
+            placeholder="Search pages and actions…"
+            aria-label="Search navigation"
+            aria-controls="cm-command-results-list"
+            aria-activedescendant={commands[activeCommandIndex] ? `cm-command-${commands[activeCommandIndex].id}` : undefined}
+          /><kbd>ESC</kbd></div>
+          <div className="cm-command-results" id="cm-command-results-list"><span className="cm-nav-group-label">NAVIGATION</span>{commands.length ? commands.map((command, index) => <button id={`cm-command-${command.id}`} key={command.id} type="button" className={activeCommandIndex === index ? "is-selected" : ""} aria-selected={activeCommandIndex === index} onMouseEnter={() => setActiveCommandIndex(index)} onClick={() => navigate(command.id)}><Icon name={command.icon} /><span><strong>{command.label}</strong><small>{command.hint}</small></span><kbd>↵</kbd></button>) : <p>No pages match “{commandQuery}”.</p>}</div>
+          <div className="cm-command-foot"><span><kbd>↑</kbd><kbd>↓</kbd> Navigate</span><span><kbd>↵</kbd> Open page</span><span><kbd>ESC</kbd> Close</span></div>
+        </section>
+      </div>}
     </div>
   );
 }

@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, ValidationError
 
 from app.models.candidate import CandidateProfile
+from app.models.candidate_evidence import CandidateEvidenceCreateRequest, CandidateEvidenceUpdateRequest
 from app.models.application import (
     ApplicationAnswer, ApplicationCreateRequest, ApplicationRecord, ApplicationUpdateRequest,
     DraftAnswerRequest,
@@ -50,6 +51,7 @@ from app.services.saved_searches import list_alert_history, mark_alert_read, rec
 from app.services.application_drafts import (
     DraftGenerationError, generate_application_answer, generate_cover_letter,
 )
+from app.services.candidate_evidence_storage import create_evidence, delete_evidence, load_evidence, update_evidence
 from app.services.application_storage import (
     create_application, load_applications, update_application, utc_now,
 )
@@ -105,7 +107,7 @@ class JobSourceConfigUpdate(BaseModel):
 app = FastAPI(
     title="CareerMate API",
     description="Local-first job search and application assistant",
-    version="1.0.0",
+    version="2.2.0",
     lifespan=lifespan,
 )
 
@@ -352,6 +354,54 @@ def save_candidate_profile(profile: CandidateProfile) -> dict[str, object]:
         "message": "Candidate profile saved locally.",
         "profile": profile.model_dump(),
     }
+
+
+@app.get("/api/candidate/evidence")
+def get_candidate_evidence() -> dict[str, object]:
+    """Return locally stored professional claims and their verification state."""
+    try:
+        records = load_evidence()
+        return {
+            "success": True,
+            "evidence": records,
+            "verified_count": sum(1 for item in records if item["verified"]),
+            "pending_count": sum(1 for item in records if not item["verified"]),
+        }
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/candidate/evidence", status_code=201)
+def create_candidate_evidence(request: CandidateEvidenceCreateRequest) -> dict[str, object]:
+    """Create an unverified candidate claim. Verification always requires a separate action."""
+    try:
+        record = create_evidence(request.model_dump())
+        return {"success": True, "evidence": record}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.put("/api/candidate/evidence/{evidence_id}")
+def update_candidate_evidence(evidence_id: str, request: CandidateEvidenceUpdateRequest) -> dict[str, object]:
+    try:
+        record = update_evidence(evidence_id, request.model_dump(exclude_unset=True))
+        if record is None:
+            raise HTTPException(status_code=404, detail="Candidate evidence was not found.")
+        return {"success": True, "evidence": record}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.delete("/api/candidate/evidence/{evidence_id}")
+def remove_candidate_evidence(evidence_id: str) -> dict[str, object]:
+    try:
+        if not delete_evidence(evidence_id):
+            raise HTTPException(status_code=404, detail="Candidate evidence was not found.")
+        return {"success": True, "message": "Candidate evidence deleted."}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.get("/api/platforms")

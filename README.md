@@ -1,4 +1,6 @@
-# CareerMate
+# CareerMate 2.2
+
+> A redesigned, local-first career operating system for finding opportunities, evaluating fit, preparing applications and tracking outcomes.
 
 <p align="center">
   <img src="frontend/public/careermate-logo.svg" alt="CareerMate logo" width="420" />
@@ -15,20 +17,28 @@
   <img src="https://img.shields.io/badge/status-community%20project-596579" alt="Community project" />
 </p>
 
-CareerMate runs on your computer. Candidate profiles, job records, application drafts and caches are stored in local JSON files. You can use local Ollama inference or configure an online AI API. Hosted AI sends the task content needed for the operation to that provider, and CareerMate requires explicit consent before using a hosted provider.
+CareerMate runs on your computer. Candidate profiles, candidate evidence, job records, application drafts and caches are stored in local JSON files. You can use local Ollama inference or configure an online AI API. Hosted AI sends the task content needed for the operation to that provider, and CareerMate requires explicit consent before using a hosted provider.
+
+## CareerMate 2.2 workspace
+
+The redesigned workspace adds grouped navigation, a keyboard command palette (`Ctrl/Cmd + K`), responsive mobile navigation, career analytics, an automation centre and a candidate evidence vault. The evidence vault stores professional claims locally and requires explicit user verification. Analytics are calculated from recorded workspace data; historical trends and time-saved metrics are not invented.
 
 ## Frontend experience architecture
 
-The interface is organized around a small set of shared layers rather than accumulated theme overrides:
+The interface uses a shared component system and a dedicated CareerMate 2.2 interaction and visual layer:
 
 - `frontend/src/components/layout/WorkspaceShell.tsx` owns the application frame, navigation, page heading, and responsive tab navigation.
 - `frontend/src/components/ui/Icon.tsx` provides the shared icon language.
+- `frontend/src/components/ui/SourceMark.tsx` provides recognizable source marks for job-board and ATS listings.
+- `frontend/src/ux-hardening.css` contains the earlier responsive job-feed and mobile navigation hardening.
+- `frontend/src/ux-experience.css` contains the hover-first desktop rail, active-state lighting, ambient canvas treatment, readable page rhythm, drawer hardening and cross-page responsive refinements.
 - `frontend/src/styles/tokens.css` defines typography, color, spacing, and motion foundations.
 - `frontend/src/styles/layout.css` defines the document-first scrolling layout and responsive navigation.
 - `frontend/src/styles/components.css` defines shared forms, buttons, cards, job rows, and dialog surfaces.
-- `frontend/src/styles/pages/` contains separate stylesheets for each workflow, shared detail patterns, and responsive refinements.
+- `frontend/src/styles/pages/` contains the existing workflow stylesheets and responsive refinements.
+- `frontend/src/careermate-v2.css` provides the new shell, motion, analytics, automation and evidence-vault presentation while the existing workflow logic is progressively migrated into smaller page components.
 
-The document is the page-level vertical scroll container. Navigation does not create a nested vertical scroll area. On phones, destinations are presented as a wrapping tab grid. Dialogs render through React portals at the document body level; the job and match dialogs use one shared keyboard and scroll-lock lifecycle, including Escape-to-close, focus containment, and focus restoration.
+The document is the page-level vertical scroll container. Navigation does not create a competing page scroll area. On desktop, a compact icon rail automatically expands horizontally when the pointer enters it and collapses back to icons when the pointer leaves the navigation surface. The workspace grid reserves the wider panel space during expansion, so navigation never obscures page content. There is no desktop collapse/reopen button. Keyboard focus also expands the rail; phones use a bottom bar and an all-sections sheet because touch has no hover state. The command palette supports filtered search, arrow-key navigation and Enter to open a destination. Dialogs render through React portals at the document body level; the job and match dialogs use one shared keyboard and scroll-lock lifecycle, including Escape-to-close, focus containment, and focus restoration.
 
 ## Features
 
@@ -39,6 +49,9 @@ The document is the page-level vertical scroll container. Navigation does not cr
 - Draft tailored cover letters and employer-question answers without intentionally inventing qualifications.
 - Track applications, notes, follow-ups and draft materials locally.
 - Prepare supported application forms in Chromium, including multi-tab and embedded-frame flows, review values, and explicitly approve final submission.
+- Store source-backed professional claims in the local evidence vault; claims remain pending until explicitly verified.
+- Review application source health, saved-search preferences and recent alerts in the Automation Centre.
+- Review job-match distribution, application funnel and source effectiveness in Career Analytics.
 - Use Ollama locally or configure OpenAI and OpenAI-compatible APIs.
 
 AI output is a draft, not a factual guarantee. Review generated claims before using them. Browser support varies by employer site; CareerMate does not bypass sign-in, MFA, CAPTCHA, anti-bot protections, rate limits or access controls. Some sites and custom controls are unsupported.
@@ -191,3 +204,13 @@ MIT. See [LICENSE](LICENSE).
 The 0.9 work adds a searchable 58-platform directory, additional public employer ATS adapters (Ashby, Workday, SmartRecruiters, Workable, Recruitee, Breezy HR and Personio), local saved searches and scheduled alerts, salary/freshness/company filters, and AI-assisted CV tailoring with three DOCX layouts, ATS heuristic feedback and PDF export.
 
 See [docs/FEATURE-EXPANSION.md](docs/FEATURE-EXPANSION.md) for setup instructions, capability distinctions and limitations. External job-board shortcuts are not automatic integrations; only configured direct-feed adapters retrieve listings.
+
+## CareerMate 2.2.0 navigation and UX
+
+- Desktop has no sidebar toggle button: move the pointer into the 76px SVG icon rail and it expands horizontally; move into the page canvas and it collapses back to icons.
+- The expanded width responds to the viewport (238–286px) and the canvas shifts to reserve space rather than being covered.
+- Keyboard focus also expands the rail, Escape collapses it, and touch-first phones/tablets use bottom navigation plus an all-sections sheet.
+- Active destinations receive a restrained violet halo and teal edge marker. The canvas uses a subtle aurora/drafting-grid treatment without turning every card into a glass panel.
+- Cross-page spacing, typography, responsive grids, action wrapping and portalled detail drawers have been hardened.
+
+UX audit and verification notes: [`docs/UX-HARDENING.md`](docs/UX-HARDENING.md). Hover-first preview: [`docs/previews/`](docs/previews/).

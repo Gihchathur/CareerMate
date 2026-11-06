@@ -1,0 +1,452 @@
+/* CareerMate 2.3 — readability, spacing and resilient layout layer.
+   Loaded last on purpose: it replaces old miniature type and brittle card grids
+   without changing the hover-first navigation shell. */
+
+:root {
+  --cm-body-size: 14px;
+  --cm-copy-size: 13px;
+  --cm-muted-size: 12px;
+  --cm-card-radius: 18px;
+  --cm-section-gap: 18px;
+}
+
+/* Shared content rules: let columns wrap at sensible boundaries, never letter by letter. */
+.cm-content-frame,
+.cm-content-frame * { min-width: 0; }
+.cm-content-frame :where(p, span, strong, small, label, li, a, button) {
+  word-break: normal;
+  overflow-wrap: break-word;
+  hyphens: manual;
+}
+.cm-content-frame :where(.panel, .panel-titlebar, .panel-titlebar > div, .panel-description,
+  .platforms-hero, .platforms-hero-copy, .platforms-hero-copy > div,
+  .settings-hub-card, .settings-process li, .profile-accordion, .profile-accordion summary) {
+  min-width: 0;
+}
+.cm-content-frame .view-stack { gap: var(--cm-section-gap); }
+.cm-content-frame .panel,
+.cm-content-frame .match-card,
+.cm-content-frame .application-list-panel,
+.cm-content-frame .application-editor-panel,
+.cm-content-frame .settings-hub-card,
+.cm-content-frame .ai-settings-panel,
+.cm-content-frame .profile-editor-panel,
+.cm-content-frame .cv-studio-tailor-panel,
+.cm-content-frame .data-summary-panel,
+.cm-content-frame .platform-integrated-panel {
+  border-radius: var(--cm-card-radius);
+}
+.cm-content-frame .panel-titlebar h2,
+.cm-content-frame .results-heading h2,
+.cm-content-frame .platforms-hero-copy h2,
+.cm-content-frame .settings-process h2 {
+  font-size: clamp(19px, 1.45vw, 23px);
+  line-height: 1.28;
+  letter-spacing: -.035em;
+}
+.cm-content-frame .panel-description,
+.cm-content-frame .panel-titlebar p:not(.eyebrow),
+.cm-content-frame .helper-text,
+.cm-content-frame .subtle-label,
+.cm-content-frame .local-note,
+.cm-content-frame .inline-hint,
+.cm-content-frame .filter-footnote,
+.cm-content-frame .platform-empty-note {
+  color: #5f6d86;
+  font-size: var(--cm-muted-size);
+  line-height: 1.65;
+}
+.cm-content-frame .eyebrow { font-size: 10px; line-height: 1.4; letter-spacing: .15em; }
+.cm-content-frame .field { gap: 7px; color: #44516a; font-size: 12px; line-height: 1.45; }
+.cm-content-frame .field > span { color: #44516a; }
+.cm-content-frame input:not([type="checkbox"]):not([type="radio"]),
+.cm-content-frame textarea,
+.cm-content-frame select {
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  color: #24324b;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.cm-content-frame textarea { min-height: 112px; }
+.cm-content-frame .button { min-height: 42px; font-size: 12px; }
+.cm-content-frame .button-small { min-height: 36px; }
+.cm-content-frame .text-action,
+.cm-content-frame .text-link { min-height: 34px; font-size: 12px; }
+.cm-content-frame .icon { flex: 0 0 auto; vertical-align: middle; }
+.cm-content-frame .button .icon,
+.cm-content-frame .text-action .icon,
+.cm-content-frame .panel-titlebar .icon { align-self: center; }
+
+/* Source directory hero: allow copy and action to wrap without clipping. */
+.cm-content-frame .platforms-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 18px 24px;
+  padding: clamp(20px, 2.4vw, 30px);
+}
+.cm-content-frame .platforms-hero-copy {
+  display: flex;
+  flex: 1 1 560px;
+  align-items: flex-start;
+  gap: 16px;
+}
+.cm-content-frame .platforms-hero-copy > div { flex: 1 1 auto; }
+.cm-content-frame .platforms-hero-copy h2 { margin: 0 0 8px; }
+.cm-content-frame .platforms-hero-copy .panel-description {
+  max-width: 74ch;
+  margin: 0;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.cm-content-frame .platforms-hero > .button { flex: 0 0 auto; white-space: nowrap; }
+
+/* Source tiles: checkbox, brand, copy and status each get their own stable column. */
+.cm-content-frame .source-option-grid-platforms {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 265px), 1fr));
+  align-items: stretch;
+  gap: 12px;
+  margin-top: 16px;
+}
+.cm-content-frame .platform-source-option {
+  display: grid;
+  grid-template-columns: 17px 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 86px;
+  padding: 13px 14px;
+  border: 1px solid #e2e8f2;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #fff, #fbfcff);
+}
+.cm-content-frame .platform-source-option > input { margin: 0; }
+.cm-content-frame .platform-source-option .source-brand-mark {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  border: 1px solid #e4e8f2;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 2px 6px rgb(22 35 62 / 5%);
+}
+.cm-content-frame .platform-source-option .source-brand-mark svg { width: 19px; height: 19px; }
+.cm-content-frame .platform-source-option .source-option-copy { display: flex; min-width: 0; flex-direction: column; gap: 5px; }
+.cm-content-frame .platform-source-option .source-option-copy strong {
+  color: #26344d;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.35;
+  overflow-wrap: normal;
+}
+.cm-content-frame .platform-source-option .source-option-copy small {
+  color: #697790;
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: break-word;
+}
+.cm-content-frame .platform-source-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  justify-self: end;
+  min-height: 25px;
+  padding: 4px 8px;
+  border: 1px solid #d8eee5;
+  border-radius: 999px;
+  color: #1c7b60;
+  background: #f0faf5;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+.cm-content-frame .platform-source-state.setup {
+  border-color: #f0e5cd;
+  color: #8b6428;
+  background: #fff9ed;
+}
+.cm-content-frame .platform-source-state .icon { width: 12px; height: 12px; }
+.cm-content-frame .platform-source-option:hover { border-color: #c9c5ff; box-shadow: 0 8px 22px rgb(70 66 150 / 7%); transform: translateY(-1px); }
+.cm-content-frame .platform-source-option:has(input:checked) { border-color: #bdb6ff; background: linear-gradient(145deg, #fff, #f8f7ff); box-shadow: inset 0 0 0 1px rgb(104 92 246 / 9%); }
+.cm-content-frame .platform-integrated-panel > .helper-text { margin-top: 16px; }
+
+/* External job-site chips in the discovery form must wrap as pills, never as narrow columns. */
+.cm-content-frame .external-source-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.cm-content-frame .external-source-option {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 38px;
+  max-width: 100%;
+  padding: 7px 10px;
+  border: 1px solid #e1e7f0;
+  border-radius: 10px;
+  color: #40506a;
+  background: #fff;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+.cm-content-frame .external-source-option input { width: 15px; height: 15px; margin: 0; }
+.cm-content-frame .external-source-option .source-brand-mark { width: 19px; height: 19px; flex: 0 0 19px; border-radius: 5px; }
+.cm-content-frame .external-source-option .source-brand-mark svg { width: 15px; height: 15px; }
+.cm-content-frame .external-source-label { min-width: max-content; color: #33415a; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.cm-content-frame .external-source-picker > small { display: block; margin-top: 10px; color: #68768f; font-size: 11px; line-height: 1.55; }
+
+/* Metric strip: preserve the label's width and keep values visually dominant. */
+.cm-content-frame .platform-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.cm-content-frame .platform-metric-card {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 13px;
+  row-gap: 3px;
+  min-height: 92px;
+  padding: 17px 18px;
+}
+.cm-content-frame .platform-metric-icon { grid-row: 1 / 3; width: 44px; height: 44px; }
+.cm-content-frame .platform-metric-icon .icon { width: 20px; height: 20px; }
+.cm-content-frame .platform-metric-card strong { align-self: end; color: #1e2d47; font-size: 22px; line-height: 1.15; }
+.cm-content-frame .platform-metric-card > span:last-child { align-self: start; color: #66748c; font-size: 12px; line-height: 1.4; overflow-wrap: normal; }
+
+/* Platform shortcut rows: source icon, explanatory copy and action remain distinct. */
+.cm-content-frame .platform-shortcut-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 16px; padding: 14px 15px; }
+.cm-content-frame .platform-shortcut-toggle { display: grid; grid-template-columns: 16px 34px minmax(0, 1fr); align-items: center; flex: 1 1 420px; gap: 10px; min-width: 0; color: #34425c; font-size: 12px; }
+.cm-content-frame .platform-shortcut-toggle input { margin: 0; }
+.cm-content-frame .platform-shortcut-toggle .source-brand-mark { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 10px; }
+.cm-content-frame .platform-shortcut-toggle .source-brand-mark svg { width: 18px; height: 18px; }
+.cm-content-frame .platform-shortcut-toggle > span:last-child { display: grid; min-width: 0; gap: 4px; }
+.cm-content-frame .platform-shortcut-toggle strong { color: #26344e; font-size: 13px; line-height: 1.35; }
+.cm-content-frame .platform-shortcut-toggle small { color: #6b7890; font-size: 11px; line-height: 1.5; }
+.cm-content-frame .platform-shortcut-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; }
+
+/* Settings: smaller, better-balanced cards with real reading hierarchy. */
+.cm-content-frame .settings-hub-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.cm-content-frame .settings-hub-card {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  align-items: start;
+  column-gap: 15px;
+  row-gap: 6px;
+  min-height: 156px;
+  padding: 21px 22px;
+  text-align: left;
+}
+.cm-content-frame .settings-hub-icon {
+  grid-column: 1;
+  grid-row: 1 / 4;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  border-radius: 13px;
+}
+.cm-content-frame .settings-hub-icon .icon { width: 21px; height: 21px; }
+.cm-content-frame .settings-hub-card > strong {
+  align-self: end;
+  color: #24324b;
+  font-size: 16px;
+  line-height: 1.35;
+}
+.cm-content-frame .settings-hub-card > small {
+  display: block;
+  margin: 1px 0 0;
+  color: #65738b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.cm-content-frame .settings-hub-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 5px;
+  padding: 0;
+  color: #574bd5;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.cm-content-frame .settings-hub-action .icon { width: 15px; height: 15px; }
+.cm-content-frame .settings-process { padding: clamp(20px, 2.5vw, 28px); }
+.cm-content-frame .settings-process h2 { margin: 0; font-size: clamp(20px, 1.5vw, 24px); }
+.cm-content-frame .settings-process ol {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 225px), 1fr));
+  gap: 13px;
+  margin: 17px 0 0;
+  padding: 0;
+  counter-reset: process;
+  list-style: none;
+}
+.cm-content-frame .settings-process li {
+  position: relative;
+  display: flex;
+  min-height: 130px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 18px 17px 18px 56px;
+  border: 1px solid #e5eaf3;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #fff, #f8faff);
+  counter-increment: process;
+}
+.cm-content-frame .settings-process li::before {
+  top: 18px;
+  left: 17px;
+  width: 27px;
+  height: 27px;
+  border: 1px solid #e1ddff;
+  border-radius: 9px;
+  color: #5f53d6;
+  background: #f1efff;
+  font-size: 12px;
+}
+.cm-content-frame .settings-process li strong { color: #293750; font-size: 14px; line-height: 1.4; }
+.cm-content-frame .settings-process li span { color: #65738c; font-size: 12px; line-height: 1.6; }
+
+/* Profile and CV editor: give fields enough width and arrange long lists intentionally. */
+.cm-content-frame .profile-summary-card { gap: 15px; padding: 21px 23px; }
+.cm-content-frame .profile-summary-copy h2 { font-size: 21px; line-height: 1.3; }
+.cm-content-frame .profile-summary-copy p:last-child { color: #66748d; font-size: 12px; line-height: 1.5; }
+.cm-content-frame .save-state { font-size: 11px; }
+.cm-content-frame .profile-completion-label { color: #586780; font-size: 12px; }
+.cm-content-frame .profile-completion-label strong { font-size: 13px; }
+.cm-content-frame .profile-accordion { padding: 0 18px 18px; }
+.cm-content-frame .profile-accordion summary { min-height: 68px; gap: 12px; }
+.cm-content-frame .accordion-icon { width: 36px; height: 36px; border-radius: 11px; }
+.cm-content-frame .accordion-icon .icon { width: 18px; height: 18px; }
+.cm-content-frame .accordion-title { color: #2c3952; font-size: 14px; line-height: 1.35; }
+.cm-content-frame .accordion-title small { color: #6a7890; font-size: 11px; line-height: 1.45; }
+.cm-content-frame .summary-count { flex: 0 0 auto; padding: 6px 9px; color: #58657d; font-size: 11px; white-space: nowrap; }
+.cm-content-frame .profile-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 225px), 1fr));
+  align-items: start;
+  gap: 15px 16px;
+}
+.cm-content-frame .profile-accordion:nth-of-type(2) > .profile-form-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.cm-content-frame .profile-accordion:nth-of-type(2) > .profile-form-grid > :nth-child(4),
+.cm-content-frame .profile-accordion:nth-of-type(2) > .profile-form-grid > :nth-child(5) { grid-column: 1 / -1; }
+.cm-content-frame .profile-accordion:nth-of-type(2) > .field textarea { min-height: 150px; }
+.cm-content-frame .profile-accordion:nth-of-type(2) > .profile-form-grid textarea { min-height: 175px; }
+.cm-content-frame .profile-accordion:nth-of-type(2) > .profile-form-grid > :nth-child(4) textarea { min-height: 210px; }
+.cm-content-frame .profile-accordion .field > span { font-size: 12px; line-height: 1.45; }
+.cm-content-frame .editable-record { padding: 17px; }
+.cm-content-frame .editable-record-title strong { color: #26344e; font-size: 14px; }
+.cm-content-frame .profile-save-row .helper-text,
+.cm-content-frame .profile-privacy-footer { color: #64728b; font-size: 12px; line-height: 1.6; }
+.cm-content-frame .cv-studio-result { padding: 20px; }
+.cm-content-frame .cv-score-line { font-size: 13px; }
+.cm-content-frame .cv-studio-result > p,
+.cm-content-frame .cv-studio-result > small { color: #63718a; font-size: 12px; line-height: 1.6; }
+
+/* Common hierarchy for the command centre and readiness checklist. */
+.cm-content-frame .overview-stat-label { font-size: 12px; }
+.cm-content-frame .overview-stat-card strong { font-size: 19px; }
+.cm-content-frame .overview-stat-card small { color: #65738b; font-size: 11px; line-height: 1.5; }
+.cm-content-frame .readiness-step { min-height: 60px; padding: 12px; gap: 12px; }
+.cm-content-frame .readiness-step strong { color: #2b3952; font-size: 13px; line-height: 1.4; }
+.cm-content-frame .readiness-step small { color: #68768e; font-size: 12px; line-height: 1.5; }
+.cm-content-frame .readiness-check { width: 30px; height: 30px; font-size: 11px; }
+.cm-content-frame .profile-privacy-footer .icon { width: 18px; height: 18px; flex: 0 0 auto; }
+
+/* Application and analytics views: improve dense metadata without losing data density. */
+.cm-content-frame .application-list-copy strong,
+.cm-content-frame .application-section-heading h3 { font-size: 14px; line-height: 1.4; }
+.cm-content-frame .application-list-copy small,
+.cm-content-frame .application-section-heading p,
+.cm-content-frame .configured-board-row small,
+.cm-content-frame .saved-search-row small { color: #68768e; font-size: 12px; line-height: 1.55; }
+.cm-content-frame .application-card,
+.cm-content-frame .match-card { padding: 19px; }
+.cm-content-frame .data-count-card span { color: #516079; font-size: 12px; line-height: 1.4; }
+.cm-content-frame .data-count-card small { color: #6b7890; font-size: 11px; }
+.cm-content-frame .data-action-copy h3 { font-size: 16px; }
+.cm-content-frame .data-action-copy p { color: #64728b; font-size: 13px; line-height: 1.65; }
+.cm-content-frame .ai-info-note p,
+.cm-content-frame .ai-info-note a,
+.cm-content-frame .ai-consent-row strong,
+.cm-content-frame .ai-consent-row small,
+.cm-content-frame .ai-settings-disclaimer { font-size: 12px; line-height: 1.6; }
+
+@media (max-width: 1100px) {
+  .cm-content-frame .source-option-grid-platforms { grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); }
+  .cm-content-frame .platform-metrics-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .cm-content-frame .platform-metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cm-content-frame .platform-metric-card:last-child { grid-column: 1 / -1; }
+  .cm-content-frame .profile-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cm-content-frame .profile-accordion:nth-of-type(2) > .profile-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .cm-content-frame .settings-hub-grid { grid-template-columns: 1fr; }
+  .cm-content-frame .settings-hub-card { min-height: 142px; }
+  .cm-content-frame .platforms-hero { align-items: stretch; }
+  .cm-content-frame .platforms-hero-copy { flex-basis: 100%; }
+  .cm-content-frame .platforms-hero > .button { align-self: flex-start; }
+  .cm-content-frame .source-option-grid-platforms { grid-template-columns: 1fr; }
+  .cm-content-frame .platform-metrics-grid { grid-template-columns: 1fr; }
+  .cm-content-frame .platform-metric-card:last-child { grid-column: auto; }
+  .cm-content-frame .profile-summary-card { grid-template-columns: 46px minmax(0, 1fr); }
+  .cm-content-frame .profile-summary-card .save-state { grid-column: 2; justify-self: start; }
+  .cm-content-frame .profile-form-grid,
+  .cm-content-frame .profile-accordion:nth-of-type(2) > .profile-form-grid { grid-template-columns: 1fr; }
+  .cm-content-frame .profile-accordion:nth-of-type(2) > .profile-form-grid > :nth-child(4),
+  .cm-content-frame .profile-accordion:nth-of-type(2) > .profile-form-grid > :nth-child(5) { grid-column: auto; }
+  .cm-content-frame .profile-accordion summary { gap: 9px; }
+  .cm-content-frame .accordion-title { font-size: 13px; }
+  .cm-content-frame .accordion-title small { font-size: 11px; }
+  .cm-content-frame .settings-process ol { grid-template-columns: 1fr; }
+  .cm-content-frame .settings-process li { min-height: 104px; }
+  .cm-content-frame .platform-shortcut-toggle { flex-basis: 100%; }
+}
+@media (max-width: 480px) {
+  .cm-content-frame .panel { padding: 16px; }
+  .cm-content-frame .platforms-hero-copy { gap: 11px; }
+  .cm-content-frame .platforms-hero-copy .match-toolbar-symbol { width: 38px; height: 38px; }
+  .cm-content-frame .platform-source-option { grid-template-columns: 17px 31px minmax(0, 1fr); }
+  .cm-content-frame .platform-source-option .source-brand-mark { width: 31px; height: 31px; }
+  .cm-content-frame .platform-source-state { grid-column: 3; justify-self: start; margin-top: 2px; }
+  .cm-content-frame .settings-hub-card { grid-template-columns: 42px minmax(0, 1fr); padding: 18px; }
+  .cm-content-frame .settings-hub-icon { width: 40px; height: 40px; }
+  .cm-content-frame .settings-hub-card > strong { font-size: 15px; }
+  .cm-content-frame .settings-hub-card > small { font-size: 12px; }
+  .cm-content-frame .profile-summary-card .save-state { grid-column: 1 / -1; }
+  .cm-content-frame .external-source-option { min-height: 36px; padding: 6px 8px; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cm-content-frame .platform-source-option,
+  .cm-content-frame .settings-hub-card,
+  .cm-content-frame .readiness-step { transition: border-color .18s ease, background .18s ease, box-shadow .18s ease, transform .18s ease; }
+}
