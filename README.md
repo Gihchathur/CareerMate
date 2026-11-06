@@ -17,6 +17,19 @@
 
 CareerMate runs on your computer. Candidate profiles, job records, application drafts and caches are stored in local JSON files. You can use local Ollama inference or configure an online AI API. Hosted AI sends the task content needed for the operation to that provider, and CareerMate requires explicit consent before using a hosted provider.
 
+## Frontend experience architecture
+
+The interface is organized around a small set of shared layers rather than accumulated theme overrides:
+
+- `frontend/src/components/layout/WorkspaceShell.tsx` owns the application frame, navigation, page heading, and responsive tab navigation.
+- `frontend/src/components/ui/Icon.tsx` provides the shared icon language.
+- `frontend/src/styles/tokens.css` defines typography, color, spacing, and motion foundations.
+- `frontend/src/styles/layout.css` defines the document-first scrolling layout and responsive navigation.
+- `frontend/src/styles/components.css` defines shared forms, buttons, cards, job rows, and dialog surfaces.
+- `frontend/src/styles/pages/` contains separate stylesheets for each workflow, shared detail patterns, and responsive refinements.
+
+The document is the page-level vertical scroll container. Navigation does not create a nested vertical scroll area. On phones, destinations are presented as a wrapping tab grid. Dialogs render through React portals at the document body level; the job and match dialogs use one shared keyboard and scroll-lock lifecycle, including Escape-to-close, focus containment, and focus restoration.
+
 ## Features
 
 - Import CV text from PDF, DOCX or TXT and review the extracted candidate profile.

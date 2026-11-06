@@ -1,0 +1,30 @@
+/* Platform directory */
+.platforms-hero { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 25px; background: radial-gradient(circle at 7% 50%, rgb(132 121 255 / 10%), transparent 13rem), linear-gradient(110deg, #fff, #fbfbff); }
+.platforms-hero-copy { display: flex; align-items: flex-start; gap: 15px; min-width: 0; }
+.platforms-hero-copy h2 { margin: 0; font-size: 21px; }
+.platforms-hero-copy p { max-width: 780px; margin: 7px 0 0; }
+.platforms-hero .match-toolbar-symbol { width: 42px; height: 42px; }
+.platform-metrics-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 13px; }
+.platform-metric-card { display: grid; grid-template-columns: 40px minmax(0,1fr); align-items: center; column-gap: 11px; row-gap: 2px; padding: 15px; border: 1px solid var(--line); border-radius: 15px; background: white; box-shadow: var(--shadow-xs); }
+.platform-metric-icon { grid-row: span 2; }
+.platform-metric-icon .icon { width: 17px; height: 17px; }
+.platform-metric-card strong { color: var(--ink-900); font-family: var(--font-display); font-size: 18px; }
+.platform-metric-card > span:last-child { color: var(--ink-500); font-size: 8px; }
+.source-option-grid-platforms { grid-template-columns: repeat(3, minmax(0,1fr)); }
+.platform-source-option { min-height: 60px; align-items: center; padding: 11px; }
+.platform-source-state { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; color: #25856b; font-size: 8px; font-weight: 800; }
+.platform-source-state .icon { width: 12px; height: 12px; }
+.platform-board-editor, .configured-boards-panel, .platform-shortcuts-manager { margin-top: 18px; padding-top: 17px; border-top: 1px solid var(--line); }
+.configured-boards-panel h3, .platform-shortcuts-manager h3 { margin: 0 0 12px; font-size: 15px; }
+.configured-board-row, .platform-shortcut-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #fcfcff; }
+.configured-board-row + .configured-board-row, .platform-shortcut-row + .platform-shortcut-row { margin-top: 8px; }
+.configured-board-topline { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.platform-shortcut-row > div:first-child, .configured-board-row > div:first-child { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 130px; }
+.platform-shortcut-row strong, .configured-board-row strong { color: var(--ink-800); font-size: 10px; }
+.platform-shortcut-row small, .configured-board-row small { font-size: 8px; }
+.platform-form-grid { margin-top: 12px; }
+.platform-editor-actions, .platform-shortcut-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.platform-shortcut-add { display: grid; grid-template-columns: minmax(130px, .7fr) minmax(180px, 1.4fr) auto; gap: 8px; margin-top: 12px; }
+.platform-shortcut-toggle { display: inline-flex; align-items: center; gap: 7px; font-size: 8px; }
+.platform-remove { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid #f0d5d8; border-radius: 8px; color: #b84d59; background: #fff7f8; }
+.platform-empty-note { padding: 14px; border: 1px dashed var(--line-strong); border-radius: 11px; color: var(--ink-500); background: #fafbfe; font-size: 9px; }

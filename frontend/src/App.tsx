@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent, type HTMLInputTypeAttribute } from "react";
+import { createPortal } from "react-dom";
+import { Icon } from "./components/ui/Icon";
+import { WorkspaceShell, type WorkspaceView } from "./components/layout/WorkspaceShell";
 import {
   analyzeCv,
   closeBrowserSession,
@@ -730,38 +733,6 @@ function TextAreaField({
   );
 }
 
-function Icon({ name }: { name: "search" | "file" | "sparkles" | "briefcase" | "check" | "arrow" | "grid" | "user" | "shield" | "target" | "chevron" | "sliders" | "layers" | "plus" | "info" | "graduation" | "pin" | "clock" | "cpu" | "refresh" | "trash" | "filter" | "download" | "eye" }) {
-  const paths: Record<typeof name, string> = {
-    search: "M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm10 2-4.35-4.35",
-    file: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Zm0 0v6h6M8 13h8M8 17h8",
-    sparkles: "m12 3 1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2L12 3Zm7 12 .9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z",
-    briefcase: "M3 7h18v13H3zM8 7V4h8v3M3 12h18M10 12v2h4v-2",
-    check: "m5 12 4 4L19 6",
-    arrow: "M5 12h14m-6-6 6 6-6 6",
-    grid: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z",
-    user: "M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z",
-    shield: "M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Zm-3-11 2 2 4-4",
-    target: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0-5a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0-5h.01",
-    chevron: "m9 18 6-6-6-6",
-    sliders: "M4 21v-7m0-4V3m8 18v-9m0-4V3m8 18v-5m0-4V3M1 14h6m2-6h6m2 8h6",
-    layers: "m12 2 9 5-9 5-9-5 9-5Zm-9 10 9 5 9-5M3 17l9 5 9-5",
-    plus: "M12 5v14M5 12h14",
-    info: "M12 16v-4m0-4h.01M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z",
-    graduation: "m2 10 10-5 10 5-10 5-10-5Zm4 2v5c4 3 8 3 12 0v-5M22 10v6",
-    pin: "M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Zm-5 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z",
-    clock: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0-16v6l4 2",
-    cpu: "M8 8h8v8H8zM9 2v3m6-3v3M9 19v3m6-3v3M2 9h3m-3 6h3m14-6h3m-3 6h3M8 5H5v14h14V5h-3",
-    refresh: "M20 7v5h-5M4 17v-5h5M5.6 9a7 7 0 0 1 11.7-2L20 12M4 12l2.7 5a7 7 0 0 0 11.7-2",
-    trash: "M3 6h18M8 6V4h8v2m-10 0 1 14h10l1-14M10 10v6m4-6v6",
-    filter: "M4 5h16M7 12h10m-7 7h4",
-    download: "M12 3v12m-5-5 5 5 5-5M5 21h14",
-    eye: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z",
-  };
-
-  return <svg aria-hidden="true" className="icon" viewBox="0 0 24 24" fill="none"><path d={paths[name]} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
-
-type WorkspaceView = "overview" | "discover" | "platforms" | "matches" | "applications" | "profile" | "ai" | "data" | "settings";
 
 function App() {
   const [file, setFile] = useState<File | null>(null);
@@ -854,12 +825,16 @@ function App() {
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     };
     const oldOverflow = document.body.style.overflow;
+    const appRoot = document.getElementById("root");
+    const previousInert = appRoot?.inert ?? false;
+    if (appRoot) appRoot.inert = true;
     document.body.style.overflow = "hidden";
     dialog.querySelector<HTMLElement>(".drawer-close, .match-insight-close")?.focus();
     document.addEventListener("keydown", onKeyDown);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = oldOverflow;
+      if (appRoot) appRoot.inert = previousInert;
       previousFocus?.focus();
     };
   }, [selectedJob?.id, activeInsightJobId]);
@@ -904,6 +879,41 @@ function App() {
   const [cacheClearBusy, setCacheClearBusy] = useState(false);
   const [showResetConfirmation, setShowResetConfirmation] = useState(false);
   const [resetConfirmationText, setResetConfirmationText] = useState("");
+  useEffect(() => {
+    if (!showResetConfirmation) return;
+    const dialog = document.querySelector<HTMLElement>(".reset-confirm-dialog");
+    if (!dialog) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusable = () => Array.from(dialog.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter((element) => element.offsetParent !== null);
+    const oldOverflow = document.body.style.overflow;
+    const appRoot = document.getElementById("root");
+    const previousInert = appRoot?.inert ?? false;
+    if (appRoot) appRoot.inert = true;
+    document.body.style.overflow = "hidden";
+    dialog.querySelector<HTMLInputElement>("input")?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !dataResetBusy) {
+        event.preventDefault();
+        setShowResetConfirmation(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      if (!items.length) { event.preventDefault(); dialog.focus(); return; }
+      const first = items[0]; const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = oldOverflow;
+      if (appRoot) appRoot.inert = previousInert;
+      previousFocus?.focus();
+    };
+  }, [showResetConfirmation, dataResetBusy]);
   const [browserDiagnostics, setBrowserDiagnostics] = useState<BrowserDiagnostics | null>(null);
   const [browserDiagnosticsLoading, setBrowserDiagnosticsLoading] = useState(false);
 
@@ -1022,20 +1032,6 @@ function App() {
     }, error ? 9000 : 6500);
     return () => window.clearTimeout(timeout);
   }, [error, notice]);
-
-  useEffect(() => {
-    if (!selectedJob) return;
-    const previousBodyOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") setSelectedJob(null);
-    }
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      window.removeEventListener("keydown", closeOnEscape);
-      document.body.style.overflow = previousBodyOverflow;
-    };
-  }, [selectedJob]);
 
   async function handleUploadCv() {
     if (!file) {
@@ -2274,19 +2270,6 @@ function App() {
   });
   const activeInsight = activeInsightJobId ? matchByJobId.get(activeInsightJobId) ?? null : null;
 
-  useEffect(() => {
-    if (!activeInsightJobId || activeView !== "matches") return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setActiveInsightJobId(null);
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [activeInsightJobId, activeView]);
   const toggleMatchSelection = (jobId: string, checked: boolean) => {
     setSelectedMatchJobIds((current) => checked
       ? (current.includes(jobId) || current.length >= 20 ? current : [...current, jobId])
@@ -2411,70 +2394,23 @@ function App() {
   };
 
   return (
-    <main className="app-shell">
-      <header className="topbar">
-        <a className="brand" href="#top" aria-label="CareerMate home" onClick={(event) => { event.preventDefault(); setActiveView("overview"); setSelectedJob(null); }}>
-          <img className="brand-mark brand-mark-image" src="/careermate-mark.svg" alt="" />
-          <span className="brand-wordmark">CareerMate<span className="brand-period">.</span></span>
-        </a>
-        <div className="topbar-context"><span className="topbar-context-dot" />Personal job search workspace</div>
-        <div className="topbar-right">
-          <span className="privacy-chip"><span className="privacy-dot" /> {aiSettings?.provider && aiSettings.provider !== "ollama" ? "Hosted AI selected" : "Ollama selected"}</span>
-          <span className="topbar-avatar">{profile?.personal?.name?.trim()?.charAt(0)?.toUpperCase() || "C"}</span>
-        </div>
-      </header>
-
-      <div className="workspace-shell" id="top">
-        <aside className="sidebar">
-          <div className="sidebar-label">YOUR WORKSPACE</div>
-          <nav className="sidebar-nav" aria-label="Workspace">
-            <button type="button" className={`nav-item${activeView === "overview" ? " active" : ""}`} onClick={() => { setActiveView("overview"); setSelectedJob(null); }}><Icon name="grid" /><span>Overview</span></button>
-          </nav>
-          <div className="sidebar-label sidebar-label-spaced">CAREER TOOLS</div>
-          <nav className="sidebar-nav" aria-label="Career tools">
-            <button type="button" className={`nav-item${activeView === "discover" ? " active" : ""}`} onClick={() => { setActiveView("discover"); setSelectedJob(null); }}><Icon name="search" /><span>Find jobs</span><span className="nav-count">{jobs.length}</span></button>
-            <button type="button" className={`nav-item${activeView === "platforms" ? " active" : ""}`} onClick={() => { setActiveView("platforms"); setSelectedJob(null); }}><Icon name="layers" /><span>Job sources</span></button>
-            <button type="button" className={`nav-item${activeView === "matches" ? " active" : ""}`} onClick={() => { setActiveView("matches"); setSelectedJob(null); }}><Icon name="sparkles" /><span>Match insights</span>{matches.length > 0 && <span className="nav-count">{matches.length}</span>}</button>
-            <button type="button" className={`nav-item${activeView === "applications" ? " active" : ""}`} onClick={() => { setActiveView("applications"); setSelectedJob(null); }}><Icon name="briefcase" /><span>Applications</span>{applications.length > 0 && <span className="nav-count">{applications.length}</span>}</button>
-          </nav>
-          <div className="sidebar-label sidebar-label-spaced">YOUR PROFILE</div>
-          <nav className="sidebar-nav" aria-label="Profile">
-            <button type="button" className={`nav-item${activeView === "profile" ? " active" : ""}`} onClick={() => { setActiveView("profile"); setSelectedJob(null); }}><Icon name="user" /><span>CV Studio</span><span className={`nav-status ${profile && profileSaved ? "nav-status-ready" : ""}`} /></button>
-          </nav>
-          <div className="sidebar-label sidebar-label-spaced">PREFERENCES</div>
-          <nav className="sidebar-nav" aria-label="Preferences">
-            <button type="button" className={`nav-item${activeView === "settings" ? " active" : ""}`} onClick={() => { setActiveView("settings"); setSelectedJob(null); }}><Icon name="sliders" /><span>Settings</span></button>
-          </nav>
-          <div className="sidebar-divider" />
-          <div className="sidebar-label">WORKFLOW</div>
-          <div className="workflow-checks">
-            <div className="workflow-check"><span className={`workflow-check-mark${cvStatus.uploaded ? " complete" : ""}`}>{cvStatus.uploaded ? "✓" : "1"}</span><span><strong>CV uploaded</strong><small>{cvStatus.uploaded ? "Text extracted locally" : "Add your CV to begin"}</small></span></div>
-            <div className="workflow-check"><span className={`workflow-check-mark${profileSaved ? " complete" : ""}`}>{profileSaved ? "✓" : "2"}</span><span><strong>Profile reviewed</strong><small>{profileSaved ? "Ready for job matching" : "Review facts before matching"}</small></span></div>
-            <div className="workflow-check"><span className={`workflow-check-mark${matches.length ? " complete" : ""}`}>{matches.length ? "✓" : "3"}</span><span><strong>Compare roles</strong><small>{matches.length ? `${matches.length} match insights ready` : "Find jobs, then compare"}</small></span></div>
-          </div>
-          <div className="sidebar-spacer" />
-          <div className="privacy-card">
-            <div className="privacy-card-icon"><Icon name="shield" /></div>
-            <strong>Your data stays yours</strong>
-            <p>Project files stay local. Hosted AI receives prompt content only when you select an online provider.</p>
-            <span><span className="privacy-dot" /> {aiSettings?.providers[aiSettings.provider]?.label ?? "Loading AI provider"}</span>
-          </div>
-          <div className="sidebar-footer"><img className="brand-mark brand-mark-image sidebar-brand-mark" src="/careermate-mark.svg" alt="" /><span><strong>CareerMate</strong><small>Personal edition</small></span><span className="version-dot" title="Local workspace" /></div>
-        </aside>
-
-        <section className="workspace-main">
-          <div className="workspace-heading">
-            <div>
-              <p className="eyebrow">{currentMeta.eyebrow}</p>
-              <h1>{currentMeta.title}</h1>
-              <p className="workspace-description">{currentMeta.description}</p>
-            </div>
-            <div className="workspace-heading-actions">
-              {currentActivity ? <span className="activity-pill"><span className="activity-spinner" />{currentActivity}</span> : <span className="quiet-status"><span className="quiet-status-dot" />{profile && !profileSaved ? "Profile has unsaved edits" : "Local workspace ready"}</span>}
-              {activeView !== "discover" && <button className="button button-primary" type="button" onClick={() => setActiveView("discover")}><Icon name="search" /> Find jobs</button>}
-            </div>
-          </div>
-
+    <>
+    <WorkspaceShell
+      activeView={activeView}
+      meta={currentMeta}
+      activity={currentActivity}
+      status={profile && !profileSaved ? "Profile has unsaved edits" : "Local workspace ready"}
+      avatar={profile?.personal?.name?.trim()?.charAt(0)?.toUpperCase() || "C"}
+      providerLabel={aiSettings?.providers[aiSettings.provider]?.label ?? "Loading AI provider"}
+      hostedAi={Boolean(aiSettings?.provider && aiSettings.provider !== "ollama")}
+      cvUploaded={cvStatus.uploaded}
+      profileSaved={profileSaved}
+      matchCount={matches.length}
+      jobCount={jobs.length}
+      applicationCount={applications.length}
+      onNavigate={(view) => { setActiveView(view); setSelectedJob(null); setActiveInsightJobId(null); }}
+      onGoHome={() => { setActiveView("overview"); setSelectedJob(null); setActiveInsightJobId(null); }}
+    >
           {initialLoading && <div className="loading-line"><span className="spinner" /> Loading your local workspace…</div>}
 
           {(error || notice) && (
@@ -2690,7 +2626,7 @@ function App() {
               {profile && !profileSaved && <div className="inline-hint"><Icon name="info" /><span>Your profile has unsaved edits. CareerMate saves the reviewed version before matching.</span><button className="text-action" type="button" onClick={() => setActiveView("profile")}>Review profile</button></div>}
               {matchLoading && <div className="inline-progress match-progress"><span className="spinner" /><div><strong>Retrieving full job descriptions and comparing requirements</strong><p>CareerMate first tries to read the public original listing when the saved description is only a short snippet, then checks the requirements against your profile. Results are cached for repeat runs.</p></div></div>}
               {matches.length === 0 && !matchLoading && <p className="match-list-empty-hint">Your analysis reports open in a separate panel. Choose <strong>Analyze job</strong> on any row to create the first report.</p>}
-              {activeInsight && <div className="match-insight-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setActiveInsightJobId(null); }}>
+              {activeInsight && createPortal(<div className="match-insight-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setActiveInsightJobId(null); }}>
                 <section className="match-insight-drawer" role="dialog" aria-modal="true" aria-labelledby="active-match-report-title">
                   <header className="match-insight-drawer-header"><div><p className="eyebrow">MATCH INSIGHT</p><h2 id="active-match-report-title">{activeInsight.title}</h2><p>{activeInsight.company || "Company not listed"} · {activeInsight.location || "Location not listed"}</p></div><button type="button" className="match-insight-close" onClick={() => setActiveInsightJobId(null)} aria-label="Close match insight">×</button></header>
                   <div className="match-insight-drawer-body"><article className="match-card">
@@ -2713,7 +2649,7 @@ function App() {
                   </article></div>
                   <footer className="match-insight-drawer-footer"><button className="button button-secondary" type="button" onClick={() => { setActiveInsightJobId(null); setActiveView("discover"); }}>Find more jobs</button><button className="button button-primary" type="button" onClick={() => { setSelectedJob(activeInsight); setActiveInsightJobId(null); }}>Open job details <Icon name="arrow" /></button></footer>
                 </section>
-              </div>}
+              </div>, document.body)}
             </div>
           )}
 
@@ -2956,15 +2892,13 @@ function App() {
 
               <section className="local-note data-management-note"><Icon name="info" /><span><strong>Before you reset</strong><small>This action cannot be undone. Export or back up any information you want to keep. The reset closes CareerMate's visible browser session first and preserves API keys in <code>backend/.env</code>.</small></span></section>
 
-              {showResetConfirmation && <div className="reset-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !dataResetBusy) setShowResetConfirmation(false); }}><section className="reset-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="reset-confirm-title"><span className="reset-confirm-icon"><Icon name="trash" /></span><p className="eyebrow">PERMANENT LOCAL RESET</p><h2 id="reset-confirm-title">Clean all CareerMate data?</h2><p>This removes your CV, profile, saved opportunities, match cache, applications, AI preferences and source configuration from the local <code>data/</code> folder. It does not remove <code>backend/.env</code>, API keys, source code, or the virtual environment.</p><label className="field"><span>Type DELETE ALL LOCAL DATA to confirm</span><input autoComplete="off" value={resetConfirmationText} onChange={(event) => setResetConfirmationText(event.target.value)} placeholder="DELETE ALL LOCAL DATA" /></label><div className="reset-confirm-actions"><button className="button button-secondary" type="button" onClick={() => setShowResetConfirmation(false)} disabled={dataResetBusy}>Cancel</button><button className="button button-danger" type="button" onClick={() => void handleResetEverything()} disabled={dataResetBusy || resetConfirmationText.trim() !== "DELETE ALL LOCAL DATA"}>{dataResetBusy ? <><span className="spinner spinner-light" /> Cleaning…</> : "Yes, clean everything"}</button></div></section></div>}
+              {showResetConfirmation && createPortal(<div className="reset-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !dataResetBusy) setShowResetConfirmation(false); }}><section className="reset-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="reset-confirm-title"><span className="reset-confirm-icon"><Icon name="trash" /></span><p className="eyebrow">PERMANENT LOCAL RESET</p><h2 id="reset-confirm-title">Clean all CareerMate data?</h2><p>This removes your CV, profile, saved opportunities, match cache, applications, AI preferences and source configuration from the local <code>data/</code> folder. It does not remove <code>backend/.env</code>, API keys, source code, or the virtual environment.</p><label className="field"><span>Type DELETE ALL LOCAL DATA to confirm</span><input autoComplete="off" value={resetConfirmationText} onChange={(event) => setResetConfirmationText(event.target.value)} placeholder="DELETE ALL LOCAL DATA" /></label><div className="reset-confirm-actions"><button className="button button-secondary" type="button" onClick={() => setShowResetConfirmation(false)} disabled={dataResetBusy}>Cancel</button><button className="button button-danger" type="button" onClick={() => void handleResetEverything()} disabled={dataResetBusy || resetConfirmationText.trim() !== "DELETE ALL LOCAL DATA"}>{dataResetBusy ? <><span className="spinner spinner-light" /> Cleaning…</> : "Yes, clean everything"}</button></div></section></div>, document.body)}
             </div>
           )}
 
-          <footer className="workspace-footer"><div><img className="brand-mark brand-mark-image footer-mark" src="/careermate-mark.svg" alt="" /><strong>CareerMate</strong><span className="footer-separator">/</span><span>Local-first job search assistant</span></div><span>Open source · Local files, configurable AI provider</span></footer>
-        </section>
-      </div>
+    </WorkspaceShell>
 
-      {selectedJob && <div className="drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedJob(null); }}>
+      {selectedJob && createPortal(<div className="drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedJob(null); }}>
         <aside className="job-detail-drawer" role="dialog" aria-modal="true" aria-labelledby="job-detail-title">
           <div className="drawer-header"><div><p className="eyebrow">OPPORTUNITY DETAILS</p><span className="source-chip">{sourceLabel(selectedJob.source)}</span></div><button className="drawer-close" type="button" onClick={() => setSelectedJob(null)} aria-label="Close job details"><span aria-hidden="true">×</span><span className="drawer-close-label">Close</span></button></div>
           <div className="job-detail-content">
@@ -3002,8 +2936,8 @@ function App() {
           <div className="drawer-footer"><p>Review the original description and requirements before applying.</p><button type="button" className="button button-secondary button-full" onClick={() => void handleTrackJob(selectedJob.id)}>{hasAppliedToJob(selectedJob.id) ? "Already applied · open tracker" : applications.some((application) => application.job_id === selectedJob.id) ? "Open in application tracker" : "Add to application tracker"} <Icon name="briefcase" /></button>{safeExternalUrl(selectedJob.source_url) ? <a className="button button-primary button-full" href={safeExternalUrl(selectedJob.source_url) ?? undefined} target="_blank" rel="noopener noreferrer">View original listing · {sourceLabel(selectedJob.source)} <Icon name="arrow" /></a> : null}{safeExternalUrl(selectedJob.apply_url) && selectedJob.apply_url !== selectedJob.source_url ? <a className="button button-secondary button-full" href={safeExternalUrl(selectedJob.apply_url) ?? undefined} target="_blank" rel="noopener noreferrer">{hasAppliedToJob(selectedJob.id) ? "Reopen application website (already applied)" : "Open application website"} <Icon name="arrow" /></a> : !safeExternalUrl(selectedJob.source_url) && !safeExternalUrl(selectedJob.apply_url) ? <span className="helper-text">No public listing URL was provided for this job.</span> : null}</div>
           </div>
         </aside>
-      </div>}
-    </main>
+      </div>, document.body)}
+    </>
   );
 }
 

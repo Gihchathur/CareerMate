@@ -1,13 +1,22 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import './index.css'
-import './App.css'
-import './redesign.css'
-import './experience.css'
-import App from './App.tsx'
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import "./styles/tokens.css";
+import "./styles/layout.css";
+import "./styles/components.css";
+import "./styles/pages/overview.css";
+import "./styles/pages/discover.css";
+import "./styles/pages/platforms.css";
+import "./styles/pages/matches.css";
+import "./styles/pages/applications.css";
+import "./styles/pages/browser-assistance.css";
+import "./styles/pages/profile.css";
+import "./styles/pages/settings.css";
+import "./styles/pages/detail-patterns.css";
+import "./styles/pages/responsive.css";
+import App from "./App";
 
-createRoot(document.getElementById('root')!).render(
+createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <App />
   </StrictMode>,
-)
+);

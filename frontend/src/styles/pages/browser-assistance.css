@@ -1,0 +1,42 @@
+/* Browser-assisted application */
+.browser-assist-safety { display: flex; align-items: flex-start; gap: 9px; padding: 12px; border: 1px solid #dceee8; border-radius: 12px; color: #3e7868; background: #f3fbf7; font-size: 9px; line-height: 1.6; }
+.browser-assist-safety .icon { color: #25896e; }
+.browser-setup-line { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin-top: 12px; color: var(--ink-500); font-size: 9px; }
+.browser-setup-line > span { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; }
+.browser-setup-line small { flex-basis: 100%; line-height: 1.5; }
+.browser-setup-ok { color: #268568; }
+.browser-setup-error { color: #b84b56; }
+.browser-assist-actions, .browser-review-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.browser-assist-page { margin-top: 13px; padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: #fafbfe; }
+.browser-assist-page > strong { display: block; color: var(--ink-800); font-size: 10px; }
+.browser-assist-page > span { display: block; margin-top: 4px; color: var(--ink-500); font-size: 8px; overflow-wrap: anywhere; }
+.browser-assist-page > small { display: block; margin-top: 7px; font-size: 8px; line-height: 1.55; }
+.browser-page-selector { display: grid; gap: 6px; margin-top: 12px; color: var(--ink-700); font-size: 9px; font-weight: 800; }
+.browser-page-selector small { font-weight: 500; }
+.browser-field-list { display: grid; gap: 9px; margin-top: 12px; }
+.browser-field-card { padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: white; }
+.browser-field-card-header, .browser-field-heading { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 9px; }
+.browser-field-heading strong { color: var(--ink-800); font-size: 10px; }
+.browser-field-heading span { color: var(--ink-500); font-size: 8px; }
+.browser-field-input, .browser-field-select { margin-top: 8px; }
+.browser-field-source, .browser-field-kind, .browser-control-label { color: var(--ink-500); font-size: 8px; }
+.browser-field-include { display: inline-flex; align-items: center; gap: 6px; font-size: 8px; }
+.browser-field-source-warning { color: #ae7330; font-size: 8px; }
+.browser-prepared-summary { margin-top: 14px; padding: 14px; border: 1px solid #d9e7f0; border-radius: 13px; background: #f7fbff; }
+.browser-prepared-step { margin-top: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: white; }
+.browser-prepared-step summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; color: var(--ink-800); cursor: pointer; font-size: 9px; font-weight: 800; }
+.browser-prepared-status { font-style: normal; font-size: 8px; }
+.browser-prepared-url { display: block; margin-top: 7px; overflow-wrap: anywhere; font-size: 8px; }
+.browser-prepared-values { display: grid; gap: 7px; margin-top: 8px; }
+.browser-prepared-values > div { display: grid; grid-template-columns: minmax(90px,.5fr) minmax(0,1.5fr) auto; align-items: start; gap: 8px; padding: 8px; border-radius: 8px; background: #f8f9fc; }
+.browser-prepared-values span, .browser-prepared-values small { font-size: 8px; }
+.browser-prepared-values code { overflow-wrap: anywhere; white-space: pre-wrap; font-size: 8px; }
+.browser-final-submit, .browser-submit-confirm { margin-top: 13px; padding: 13px; border: 1px solid #f0d6d8; border-radius: 12px; background: #fff8f8; }
+.browser-submit-confirm { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.browser-auto-prepare-help { margin: 10px 0 0; color: var(--ink-500); font-size: 8px; line-height: 1.6; }
+.browser-no-fields { padding: 15px; border: 1px dashed var(--line-strong); border-radius: 11px; text-align: center; font-size: 9px; }
+.submitted-details-panel { margin-top: 10px; padding: 11px; border: 1px solid var(--line); border-radius: 11px; background: #fafbfe; }
+.submitted-details-panel summary { color: var(--accent-deep); cursor: pointer; font-size: 9px; font-weight: 800; }
+.submitted-details-list { display: grid; gap: 9px; margin-top: 12px; }
+.submitted-details-list strong { color: var(--ink-800); font-size: 9px; }
+.submitted-details-list p { margin: 4px 0 0; font-size: 9px; line-height: 1.55; }

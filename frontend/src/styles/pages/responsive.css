@@ -1,0 +1,109 @@
+/* Make content resilient to long employer descriptions, URLs and narrow devices. */
+.workspace-main, .workspace-content, .view-stack, .panel, .job-row, .match-card, .application-editor-panel, .job-detail-content, .match-insight-drawer-body { overflow-wrap: anywhere; }
+.source-option-grid > *, .platform-metrics-grid > *, .overview-stat-grid > *, .overview-grid > *, .applications-layout > *, .settings-hub-grid > *, .requirement-grid > * { min-width: 0; }
+.job-row-description, .panel-description, .workspace-description, .drawer-description, .ai-settings-disclaimer { overflow-wrap: anywhere; }
+.profile-view .panel + .panel { margin-top: 0; }
+.settings-hub .settings-process { margin-top: 0; }
+.platforms-view > .panel { min-width: 0; }
+.data-action-card button { flex: 0 0 auto; }
+.form-error { padding: 9px 11px; border: 1px solid #f0c9ce; border-radius: 9px; font-size: 9px; }
+
+@media (max-width: 760px) {
+  .drawer-facts { grid-template-columns: 1fr; }
+  .drawer-footer .button { flex-basis: 100%; }
+  .match-card-header { gap: 10px; }
+  .score-badge { width: 65px; height: 65px; }
+  .score-badge strong { font-size: 19px; }
+  .match-meta .text-action { margin-left: 0; }
+  .application-section-heading { flex-direction: column; }
+  .cv-studio-preview iframe { height: 440px; }
+}
+
+/* Readability pass: remove the miniature-dashboard typography inherited by old views. */
+.workspace-content { font-size: 14px; line-height: 1.55; }
+.workspace-content p:not(.eyebrow) { font-size: 13px; line-height: 1.65; }
+.workspace-content small { font-size: 11px; line-height: 1.5; }
+.workspace-content .eyebrow { font-size: 10px; }
+.workspace-content .panel-titlebar p:not(.eyebrow),
+.workspace-content .panel-description,
+.workspace-content .helper-text,
+.workspace-content .subtle-label,
+.workspace-content .local-note,
+.workspace-content .inline-hint,
+.workspace-content .filter-footnote,
+.workspace-content .platform-empty-note,
+.workspace-content .search-filter-note { font-size: 12px; line-height: 1.6; }
+.workspace-content .field { font-size: 12px; gap: 8px; }
+.workspace-content input:not([type="checkbox"]):not([type="radio"]),
+.workspace-content textarea,
+.workspace-content select { min-height: 46px; font-size: 13px; }
+.workspace-content textarea { min-height: 116px; }
+.workspace-content .button { min-height: 44px; font-size: 12px; }
+.workspace-content .button-small { min-height: 36px; font-size: 11px; }
+.workspace-content .text-action,
+.workspace-content .text-link { min-height: 34px; font-size: 12px; }
+.job-title-button, .match-job-title-button { font-size: 14px; line-height: 1.35; }
+.job-row-description { font-size: 11px; line-height: 1.6; }
+.job-row-meta, .job-row-tags, .source-chip, .job-role-badge { font-size: 10px; }
+.match-job-option-copy small { font-size: 10px; }
+.match-job-option-copy .match-job-title-button { font-size: 13px; }
+.selected-job-count, .results-state, .platform-source-state, .platform-shortcut-toggle { font-size: 10px; }
+.requirement-list h4 { font-size: 13px; }
+.requirement-list li > strong, .critical-gap-item strong { font-size: 12px; line-height: 1.55; }
+.requirement-evidence, .requirement-explanation, .critical-gap-item p { font-size: 11px; line-height: 1.6; }
+.drawer-facts span { font-size: 10px; }
+.drawer-facts strong { font-size: 11px; }
+.drawer-footer p, .score-unavailable-explainer p, .description-source-note { font-size: 11px; line-height: 1.6; }
+.drawer-footer .button { min-height: 43px; }
+.match-insight-drawer-body .match-card { padding: clamp(17px, 2.3vw, 26px); }
+.match-insight-backdrop, .drawer-backdrop, .reset-confirm-backdrop {
+  background: rgb(15 20 39 / 42%);
+  backdrop-filter: blur(24px) saturate(155%);
+  -webkit-backdrop-filter: blur(24px) saturate(155%);
+}
+.job-detail-drawer, .match-insight-drawer, .reset-confirm-dialog {
+  border-color: rgb(255 255 255 / 82%);
+  background: rgb(250 251 255 / 91%);
+  backdrop-filter: blur(28px) saturate(155%);
+  -webkit-backdrop-filter: blur(28px) saturate(155%);
+  box-shadow: 0 36px 110px rgb(8 12 31 / 35%), 0 0 0 1px rgb(255 255 255 / 24%), inset 0 1px rgb(255 255 255 / 95%);
+}
+@keyframes dialog-arrive {
+  from { opacity: 0; transform: translateY(14px) scale(.975); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.drawer-header, .match-insight-drawer-header {
+  background: rgb(255 255 255 / 82%);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+}
+.drawer-footer, .match-insight-drawer-footer { background: rgb(255 255 255 / 86%); }
+@media (max-width: 760px) {
+  .workspace-content p:not(.eyebrow) { font-size: 12px; }
+  .workspace-content .panel-titlebar p:not(.eyebrow),
+  .workspace-content .panel-description,
+  .workspace-content .helper-text,
+  .workspace-content .subtle-label { font-size: 11px; }
+  .job-detail-drawer, .match-insight-drawer { max-height: 96dvh; }
+  .job-detail-content, .match-insight-drawer-body { overscroll-behavior-y: contain; }
+}
+
+/* Dialog content uses the same readable type scale as the workspace. */
+.drawer-job-title { font-size: clamp(25px, 3.2vw, 34px); }
+.drawer-company { font-size: 14px; }
+.drawer-meta span { font-size: 11px; }
+.drawer-description { font-size: 12px; line-height: 1.75; }
+.drawer-section-heading h3 { font-size: 15px; }
+.drawer-facts span { font-size: 11px; }
+.drawer-facts strong { font-size: 12px; }
+.drawer-footer p { font-size: 12px; }
+.match-insight-drawer-header p:last-child { font-size: 12px; }
+.match-card-header p:not(.eyebrow) { font-size: 12px; }
+.match-meta { font-size: 11px; }
+.requirement-priority { font-size: 10px; }
+.score-note, .description-source-note { font-size: 11px; line-height: 1.65; }
+@media (max-width: 760px) {
+  .drawer-job-title { font-size: 25px; }
+  .drawer-description { font-size: 11px; }
+  .match-card-header p:not(.eyebrow) { font-size: 11px; }
+}

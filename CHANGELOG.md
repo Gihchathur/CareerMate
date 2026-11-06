@@ -1,5 +1,29 @@
 # Changelog
 
+## 5.0.0 — Fresh frontend experience rebuild
+
+- Replaced the previous theme layers with a single, organized frontend style system.
+- Rebuilt the application shell and navigation. Desktop uses a light, grouped navigation rail; mobile uses a wrapping tab grid with no nested vertical navigation scroll.
+- Made the document the only page-level vertical scroll container. Removed duplicated modal scroll-lock effects that could leave the page stuck after a dialog closed.
+- Moved job details, match insights, and destructive confirmation dialogs to React portals attached to the document body.
+- Centralized job and match dialog keyboard handling, focus containment, focus restoration, Escape behavior, and body scroll locking. Added matching accessibility behavior to the reset confirmation dialog.
+- Reworked navigation, panels, forms, job rows, requirement evidence, modal surfaces, responsive grids, typography, and motion.
+- Improved content readability by replacing miniature 8–10px body text with more legible sizes across the workspace.
+- Preserved the existing backend, API contracts, local JSON storage, and product workflows.
+
+## 4.0.0 — Frontend architecture and experience rebuild
+
+- Replaced the accumulated frontend stylesheets with a clean design system split into tokens, layout, shared components, and page patterns.
+- Extracted the application shell and primary navigation into a dedicated React layout component.
+- Rebuilt desktop navigation as a grouped sticky rail and mobile navigation as a horizontal tab bar.
+- Removed nested page-level vertical scrolling: the document is the primary scroll container; only dialogs and intentionally scrollable content regions own their scroll.
+- Reworked page surfaces, typography, form controls, job rows, metric cards, empty states, status indicators, and responsive grids.
+- Centered job details, match insights, and destructive confirmation dialogs with glass-style backdrops, entrance transitions, clear close controls, and dedicated scrollable dialog bodies.
+- Added interaction states, accessible focus rings, reduced-motion handling, and responsive layouts.
+- Preserved backend services, API client functions, and existing product workflows.
+
+# Changelog
+
 ## 1.1.0 - 2026-10-31
 
 ### Interaction and visual system

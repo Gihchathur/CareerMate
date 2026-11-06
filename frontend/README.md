@@ -1,75 +1,26 @@
-# React + TypeScript + Vite
+# CareerMate frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19, TypeScript, and Vite frontend for the local-first CareerMate workspace.
 
-Currently, two official plugins are available:
+## Structure
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- `src/App.tsx` coordinates the existing feature workflows and API interactions.
+- `src/components/layout/WorkspaceShell.tsx` owns the responsive app frame and primary navigation.
+- `src/components/ui/Icon.tsx` contains the shared inline icon component.
+- `src/styles/tokens.css` contains design tokens and base styles.
+- `src/styles/layout.css` contains the document-first workspace layout and responsive navigation.
+- `src/styles/components.css` contains shared controls, cards, list patterns, and dialog styling.
+- `src/styles/pages/` contains one stylesheet per workflow, plus responsive and detail-pattern styles.
 
-## React Compiler
+## Scrolling and dialogs
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The document owns vertical page scrolling. The sidebar never becomes a nested vertical scroll container. On narrow screens, navigation becomes a wrapping tab grid. Job details, match insights, and reset confirmation render in portals attached to `document.body` so page transforms and overflow styles cannot reposition or clip them. Dialogs manage Escape handling, focus containment, focus restoration, and document scroll locking. Only the dialog content region is independently scrollable.
 
-## Expanding the ESLint configuration
+## Development
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
+Create a production build with `npm run build`.

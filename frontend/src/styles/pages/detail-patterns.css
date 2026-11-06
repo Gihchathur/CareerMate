@@ -1,0 +1,43 @@
+/* Remaining shared detail structures and edge cases. */
+.requirement-list { padding: 14px; border: 1px solid var(--line); border-radius: 13px; background: #fff; }
+.requirement-list h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; color: var(--ink-800); font-size: 11px; }
+.requirement-count { min-width: 20px; margin-left: auto; }
+.requirement-list ul { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+.requirement-list li { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: #fafbfe; }
+.requirement-list li > strong { color: var(--ink-800); font-size: 9px; line-height: 1.55; }
+.requirement-list > p { margin: 0; font-size: 9px; }
+.requirement-priority.priority-critical { color: #b84b58; border-color: #f2d6da; background: #fff5f6; }
+.requirement-priority.priority-nice_to_have { color: #8a672e; border-color: #f0e2c9; background: #fff9ef; }
+.requirement-priority.priority-important { color: #5c56c5; border-color: #e1dfff; background: #f6f5ff; }
+.requirement-evidence { color: #5e6f8b; font-size: 8px; line-height: 1.5; }
+.requirement-explanation { font-size: 8px; line-height: 1.55; }
+.requirement-supported li { border-color: #dcefe7; background: #f8fcfa; }
+.requirement-partial li { border-color: #eee4d1; background: #fffdf8; }
+.requirement-missing li { border-color: #f0dfe1; background: #fffafb; }
+.drawer-facts { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 9px; margin-top: 17px; }
+.drawer-facts > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 11px; border: 1px solid var(--line); border-radius: 10px; background: #fafbfe; }
+.drawer-facts span { color: var(--ink-400); font-size: 8px; }
+.drawer-facts strong { color: var(--ink-800); font-size: 9px; overflow-wrap: anywhere; }
+.drawer-footer { align-items: flex-start; margin-top: 18px; padding: 15px 0 0; border-top: 1px solid var(--line); background: transparent; }
+.drawer-footer p { flex-basis: 100%; margin: 0 0 2px; font-size: 9px; }
+.drawer-footer .button { flex: 1 1 175px; white-space: normal; text-align: center; }
+.score-unavailable-explainer { margin-top: 13px; padding: 14px; border: 1px solid #e8e6f5; border-radius: 12px; background: #f9f8ff; }
+.score-unavailable-explainer strong { color: var(--ink-800); font-size: 10px; }
+.score-unavailable-explainer p { margin: 5px 0 0; font-size: 9px; line-height: 1.6; }
+.match-explanation { margin-top: 10px; }
+.decision-gap-count { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; color: #b64d58; background: #fff0f2; font-size: 9px; font-weight: 900; }
+.match-incomplete-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.critical-gap-item strong { display: block; color: var(--ink-800); font-size: 9px; }
+.critical-gap-item p { margin: 4px 0 0; font-size: 8px; line-height: 1.5; }
+.manual-advert-label, .provisional-score-label { margin-top: 5px; color: #93632f; border-color: #efdfc6; background: #fff9ef; }
+.manual-advert-label { color: #247a65; border-color: #d6eee4; background: #f1fbf6; }
+.description-quality-full { color: #278268; border-color: #d5eee4; background: #f0faf5; }
+.description-quality-snippet { color: #9b6e35; border-color: #f0e2ca; background: #fff9ef; }
+.description-source-note { margin-top: 7px; color: var(--ink-400); font-size: 8px; line-height: 1.5; }
+.fetch-description-button { margin-top: 11px; }
+.cv-tailor-workspace .field { margin-top: 9px; }
+.cv-score-breakdown { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin: 11px 0; }
+.cv-score-breakdown span { display: flex; flex-direction: column; gap: 4px; padding: 9px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink-500); background: white; font-size: 8px; }
+.cv-score-breakdown strong { color: var(--ink-800); font-size: 11px; }
+.critical-gap-list, .requirement-grid { min-width: 0; }
+.match-score, .match_score { color: var(--accent); }
