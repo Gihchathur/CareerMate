@@ -18,6 +18,8 @@ from app.services.job_sources.public_ats import fetch_public_board
 
 BASE_DIR = Path(__file__).resolve().parents[3]
 SOURCE_CONFIG_PATH = BASE_DIR / "data" / "sources.json"
+STARTER_CONFIG_PATH = BASE_DIR / "data" / "sources.example.json"
+STARTER_SEED_MARKER_PATH = BASE_DIR / "data" / "settings" / "portal-starter-seeded.json"
 SUPPORTED_ATS = ("greenhouse", "lever", "teamtailor", "ashby", "smartrecruiters", "workable", "recruitee", "breezy", "personio", "workday")
 PUBLIC_ATS = ("ashby", "smartrecruiters", "workable", "recruitee", "breezy", "personio", "workday")
 
@@ -52,6 +54,32 @@ def validate_source_config(payload: Any) -> dict[str, Any]:
                 if len(value) > 200:
                     raise JobSourceError(f"Entry {index} under '{source}' has an overly long '{field_name}' value.")
                 clean[field_name] = value
+            # Human-readable portal metadata lives beside the ATS identifier.
+            # It is optional, local-only, and never used as an API credential.
+            for field_name in ("career_url", "jobs_url"):
+                value = item.get(field_name, "")
+                if not isinstance(value, str):
+                    raise JobSourceError(f"Entry {index} under '{source}' has an invalid '{field_name}' value.")
+                value = value.strip()
+                if len(value) > 1000:
+                    raise JobSourceError(f"Entry {index} under '{source}' has an overly long '{field_name}' value.")
+                if value:
+                    parsed = urlparse(value)
+                    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+                        raise JobSourceError(f"Entry {index} under '{source}' requires '{field_name}' to be a public HTTPS URL.")
+                clean[field_name] = value
+            starter_sample = item.get("starter_sample", False)
+            if not isinstance(starter_sample, bool):
+                raise JobSourceError(f"Entry {index} under '{source}' has an invalid 'starter_sample' value.")
+            if starter_sample:
+                clean["starter_sample"] = True
+            notes = item.get("notes", "")
+            if not isinstance(notes, str):
+                raise JobSourceError(f"Entry {index} under '{source}' has an invalid 'notes' value.")
+            notes = notes.strip()
+            if len(notes) > 1000:
+                raise JobSourceError(f"Entry {index} under '{source}' has overly long notes.")
+            clean["notes"] = notes
             if source in {"lever", "teamtailor"}:
                 default_region = "global" if source == "lever" else "eu"
                 clean["region"] = clean.get("region") or default_region
@@ -81,30 +109,127 @@ def validate_source_config(payload: Any) -> dict[str, Any]:
     return normalized
 
 
+def _empty_source_config() -> dict[str, list[dict[str, Any]]]:
+    return {source: [] for source in SUPPORTED_ATS}
+
+
+def _board_identity(provider: str, board: dict[str, Any]) -> str:
+    if provider == "greenhouse":
+        identifier = board.get("board_token", "")
+    elif provider == "lever":
+        identifier = board.get("site", "")
+    elif provider == "teamtailor":
+        identifier = board.get("company", "")
+    else:
+        identifier = board.get("slug", "")
+    return str(identifier).strip().casefold()
+
+
+def _write_source_config(normalized: dict[str, Any]) -> None:
+    SOURCE_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = SOURCE_CONFIG_PATH.with_suffix(".json.tmp")
+    temporary_path.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary_path.replace(SOURCE_CONFIG_PATH)
+
+
+STARTER_PORTALS_VERSION = 3
+
+
+def _starter_portals_seed_version() -> int:
+    """Read the one-time seed marker; missing or malformed markers are version zero."""
+    try:
+        marker = json.loads(STARTER_SEED_MARKER_PATH.read_text(encoding="utf-8-sig"))
+        return int(marker.get("starter_portals_version", 0)) if isinstance(marker, dict) else 0
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return 0
+
+
+def _mark_starter_portals_initialized() -> None:
+    STARTER_SEED_MARKER_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = STARTER_SEED_MARKER_PATH.with_suffix(".json.tmp")
+    temporary_path.write_text(
+        json.dumps({"initialized": True, "starter_portals_version": STARTER_PORTALS_VERSION}, indent=2),
+        encoding="utf-8",
+    )
+    temporary_path.replace(STARTER_SEED_MARKER_PATH)
+
+
+def _merge_starter_portals(current: dict[str, Any]) -> dict[str, Any]:
+    """Add or upgrade the five starter employers once, without overwriting user boards.
+
+    Version 3 is an additive upgrade for installs that already wrote a version 2
+    marker while their portal registry was empty. The five starter portals are
+    added once without replacing any user-defined board or its configuration.
+    """
+    if (
+        (_starter_portals_seed_version() >= STARTER_PORTALS_VERSION and SOURCE_CONFIG_PATH.exists())
+        or not STARTER_CONFIG_PATH.is_file()
+    ):
+        return current
+    try:
+        starter_payload = json.loads(STARTER_CONFIG_PATH.read_text(encoding="utf-8-sig"))
+        starter = validate_source_config(starter_payload)
+    except (OSError, json.JSONDecodeError, JobSourceError):
+        # A broken optional example file must never prevent the app from starting.
+        return current
+
+    merged = {provider: list(current.get(provider, [])) for provider in SUPPORTED_ATS}
+    existing = {
+        (provider, _board_identity(provider, board))
+        for provider in SUPPORTED_ATS
+        for board in merged[provider]
+    }
+    added = 0
+    for provider in SUPPORTED_ATS:
+        for board in starter.get(provider, []):
+            identity = _board_identity(provider, board)
+            if not identity or (provider, identity) in existing:
+                continue
+            merged[provider].append(board)
+            existing.add((provider, identity))
+            added += 1
+
+    # Persist the merged registry only when a starter board was actually added.
+    # Existing user entries are retained exactly as normalized by the validator.
+    if added:
+        normalized = validate_source_config(merged)
+        _write_source_config(normalized)
+        merged = normalized
+    _mark_starter_portals_initialized()
+    return merged
+
+
 def load_source_config() -> dict[str, Any]:
-    """Load and validate private per-user source settings from data/sources.json."""
+    """Load local ATS settings and install starter portals once on first setup.
+
+    The one-time seed is additive: an existing user's boards are never replaced,
+    duplicate identifiers are skipped, and removing the starter portals later
+    does not cause them to reappear.
+    """
     if not SOURCE_CONFIG_PATH.exists():
-        return {source: [] for source in SUPPORTED_ATS}
-    try:
-        contents = SOURCE_CONFIG_PATH.read_text(encoding="utf-8-sig").strip()
-    except OSError as exc:
-        raise JobSourceError("Could not read data/sources.json.") from exc
-    if not contents:
-        return {source: [] for source in SUPPORTED_ATS}
-    try:
-        payload = json.loads(contents)
-    except json.JSONDecodeError as exc:
-        raise JobSourceError(f"data/sources.json is invalid JSON at line {exc.lineno}, column {exc.colno}.") from exc
-    return validate_source_config(payload)
+        config = _empty_source_config()
+    else:
+        try:
+            contents = SOURCE_CONFIG_PATH.read_text(encoding="utf-8-sig").strip()
+        except OSError as exc:
+            raise JobSourceError("Could not read data/sources.json.") from exc
+        if not contents:
+            config = _empty_source_config()
+        else:
+            try:
+                payload = json.loads(contents)
+            except json.JSONDecodeError as exc:
+                raise JobSourceError(f"data/sources.json is invalid JSON at line {exc.lineno}, column {exc.colno}.") from exc
+            config = validate_source_config(payload)
+    return _merge_starter_portals(config)
 
 
 def save_source_config(payload: Any) -> dict[str, Any]:
     """Validate and atomically save public board identifiers and environment-variable names."""
     normalized = validate_source_config(payload)
-    SOURCE_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = SOURCE_CONFIG_PATH.with_suffix(".json.tmp")
-    temporary_path.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8")
-    temporary_path.replace(SOURCE_CONFIG_PATH)
+    _write_source_config(normalized)
+    # An explicit user save should permanently suppress automatic re-seeding.
+    _mark_starter_portals_initialized()
     return normalized
 
 

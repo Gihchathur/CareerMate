@@ -200,11 +200,16 @@ def search_multiple_roles(
     offset: int,
     sources: list[str] | None = None,
 ) -> dict[str, object]:
-    """Search local configured boards plus public feeds and combine normalized listings."""
+    """Search the requested source set and combine normalized listings.
+
+    CareerMate Explore supplies only configured employer ATS providers. Legacy
+    public-feed support remains available for existing API integrations and
+    previously saved searches that explicitly use those sources.
+    """
     cleaned_roles = normalize_roles(roles)
     allowed_sources = {"jobtech_links", "greenhouse", "lever", "teamtailor", "remoteok", "arbeitnow", "ashby", "smartrecruiters", "workable", "recruitee", "breezy", "personio", "workday"}
     selected_sources = (
-        ["jobtech_links", "greenhouse", "lever", "teamtailor", "ashby", "smartrecruiters", "workable", "recruitee", "breezy", "personio"]
+        ["jobtech_links", "greenhouse", "lever", "teamtailor", "remoteok", "arbeitnow", "ashby", "smartrecruiters", "workable", "recruitee", "breezy", "personio", "workday"]
         if sources is None
         else list(dict.fromkeys(str(item).strip().casefold() for item in sources if str(item).strip()))
     )

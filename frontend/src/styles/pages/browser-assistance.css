@@ -40,3 +40,56 @@
 .submitted-details-list { display: grid; gap: 9px; margin-top: 12px; }
 .submitted-details-list strong { color: var(--ink-800); font-size: 9px; }
 .submitted-details-list p { margin: 4px 0 0; font-size: 9px; line-height: 1.55; }
+
+
+/* Application preparation: visible field completion states. */
+.browser-field-card { transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }
+.browser-field-card.state-needs-input { border-color: #e9c27f; background: linear-gradient(145deg, #fffaf1, #fff); box-shadow: inset 3px 0 #e4a33e, 0 3px 12px rgb(164 108 28 / 5%); }
+.browser-field-card.state-suggested { border-color: #cfdafa; background: linear-gradient(145deg, #f7faff, #fff); box-shadow: inset 3px 0 #7595e9; }
+.browser-field-card.state-accepted, .browser-field-card.state-accepted:focus-within { border-color: #a9dfc6; background: linear-gradient(145deg, #f2fbf6, #fff); box-shadow: inset 3px 0 #21a477, 0 3px 12px rgb(36 151 106 / 5%); }
+.browser-field-card.state-optional { border-color: #e6eaf2; background: #fff; }
+.browser-field-state-badge { display: inline-flex !important; align-items: center; gap: 5px; min-height: 22px; padding: 3px 8px; border: 1px solid transparent; border-radius: 999px; font-size: 9px !important; font-style: normal; font-weight: 800; letter-spacing: .01em; text-transform: none; white-space: nowrap; }
+.browser-field-state-badge.needs-input { color: #98611c; border-color: #f1d8ad; background: #fff1d9; }
+.browser-field-state-badge.suggested { color: #4969a9; border-color: #d9e4fb; background: #edf4ff; }
+.browser-field-state-badge.accepted { color: #187653; border-color: #c7ead9; background: #e6f8ef; }
+.browser-field-state-badge.optional { color: #78849a; border-color: #e6eaf1; background: #f5f7fb; }
+.browser-field-state-badge.accepted::before { content: "✓"; font-size: 10px; }
+.browser-field-state-badge.needs-input::before { content: "!"; display: inline-grid; place-items: center; width: 13px; height: 13px; border-radius: 50%; color: #fff; background: #d99a37; font-size: 9px; }
+.browser-field-card .browser-control-label { display: grid; gap: 7px; color: #53617d; font-size: 10px; font-weight: 750; }
+.browser-field-card .browser-field-input { width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid #dfe5f0; border-radius: 11px; color: #293752; background: #fff; font-size: 12px; }
+.browser-field-card .browser-field-input:focus { border-color: #968cf5; outline: 0; box-shadow: 0 0 0 4px rgb(104 92 246 / 11%); }
+.browser-field-card .browser-field-select { margin-top: 0; }
+.browser-page-selector > span { color: #596780; font-size: 11px; font-weight: 800; }
+.browser-page-selector small { color: #8b95a8; font-size: 10px; line-height: 1.5; }
+.browser-field-card .browser-field-include { gap: 9px; }
+.browser-field-card .browser-field-include > span { gap: 7px; }
+.browser-field-card.state-needs-input .browser-field-include > span { color: #75501d; }
+.browser-field-card.state-accepted .browser-field-include > span { color: #216b50; }
+@media (max-width: 620px) { .browser-field-state-badge { white-space: normal; } .browser-field-card-header { align-items: flex-start; } }
+
+/* Clearer completion guidance for auto-prepared application fields. */
+.browser-field-list { gap: 11px; }
+.browser-field-card { padding: 14px; border-radius: 14px; }
+.browser-field-card-header { align-items: center; gap: 10px 14px; }
+.browser-field-include { min-width: 0; font-size: 11px; line-height: 1.45; }
+.browser-field-include > span { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; min-width: 0; color: #34435d; font-size: 11px; font-weight: 700; }
+.browser-field-include > span > em:not(.browser-field-state-badge) { color: #a65f25; font-size: 9px; font-style: normal; }
+.browser-field-kind { padding: 4px 7px; border-radius: 7px; color: #8994a8; background: #f5f7fb; font-size: 9px; white-space: nowrap; }
+.browser-field-status-note { margin: 7px 0 8px 25px; color: #7c879b; font-size: 10px; line-height: 1.45; }
+.browser-field-status-note.needs-input { color: #93601f; }
+.browser-field-status-note.accepted { color: #237252; }
+.browser-field-status-note.suggested { color: #536eaa; }
+.browser-field-card .browser-control-label { gap: 7px; color: #4b5974; font-size: 10px; }
+.browser-field-card .browser-field-input { min-height: 46px; font-size: 12px; }
+.browser-field-state-badge { min-height: 23px; padding: 4px 9px; font-size: 9px !important; }
+.browser-field-card.state-needs-input { border-color: #e3b568; background: linear-gradient(145deg, #fff8e9 0%, #fff 84%); box-shadow: inset 3px 0 #d8952f, 0 4px 14px rgb(164 108 28 / 7%); }
+.browser-field-card.state-accepted { border-color: #9fd8bd; background: linear-gradient(145deg, #effaf4 0%, #fff 84%); box-shadow: inset 3px 0 #19996b, 0 4px 14px rgb(36 151 106 / 6%); }
+.browser-field-card.state-accepted .browser-field-state-badge { box-shadow: 0 2px 6px rgb(30 137 94 / 9%); }
+.browser-field-card.state-needs-input .browser-field-input,
+.browser-field-card.state-needs-input .cm-floating-select { border-color: #e6c17e; }
+.browser-field-card.state-accepted .browser-field-input,
+.browser-field-card.state-accepted .cm-floating-select { border-color: #b6dfca; }
+@media (max-width: 620px) {
+  .browser-field-card { padding: 11px; }
+  .browser-field-status-note { margin-left: 0; }
+}

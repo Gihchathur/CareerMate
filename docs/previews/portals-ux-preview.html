@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CareerMate · Portals preview</title>
+<link rel="stylesheet" href="../../frontend/src/styles/tokens.css">
+<link rel="stylesheet" href="../../frontend/src/styles/layout.css">
+<link rel="stylesheet" href="../../frontend/src/styles/components.css">
+<link rel="stylesheet" href="../../frontend/src/styles/pages/overview.css">
+<link rel="stylesheet" href="../../frontend/src/styles/pages/discover.css">
+<link rel="stylesheet" href="../../frontend/src/styles/pages/platforms.css">
+<link rel="stylesheet" href="../../frontend/src/styles/pages/matches.css">
+<link rel="stylesheet" href="../../frontend/src/styles/pages/applications.css">
+<link rel="stylesheet" href="../../frontend/src/styles/pages/browser-assistance.css">
+<link rel="stylesheet" href="../../frontend/src/styles/pages/profile.css">
+<link rel="stylesheet" href="../../frontend/src/styles/pages/settings.css">
+<link rel="stylesheet" href="../../frontend/src/styles/pages/detail-patterns.css">
+<link rel="stylesheet" href="../../frontend/src/styles/pages/responsive.css">
+<link rel="stylesheet" href="../../frontend/src/careermate-v2.css">
+<link rel="stylesheet" href="../../frontend/src/ux-hardening.css">
+<link rel="stylesheet" href="../../frontend/src/ux-experience.css">
+<link rel="stylesheet" href="../../frontend/src/ux-readability.css">
+<link rel="stylesheet" href="../../frontend/src/portals-workspace.css">
+<style>
+.preview-rail{position:sticky;top:76px;height:calc(100svh - 76px);width:76px;padding:16px 9px;border-radius:0 18px 18px 0;background:linear-gradient(165deg,#11192c,#1b2c40);color:#edf0ff;display:flex;flex-direction:column;gap:16px}
+.preview-rail-brand{display:flex;align-items:center;justify-content:center;height:42px;border-bottom:1px solid #ffffff20;padding-bottom:12px}.preview-rail-brand span{display:grid;place-items:center;width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,#7b6bff,#44bbc4);font-weight:900}
+.preview-rail-nav{display:grid;gap:10px}.preview-rail-nav div{display:grid;place-items:center;width:48px;height:44px;border-radius:12px;color:#aebbd2}.preview-rail-nav div.active{color:#fff;background:#786cff30;box-shadow:inset 0 0 0 1px #8d82ff70,0 0 23px #7568ff25}.preview-rail-nav svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8}
+.preview-top{height:76px}.preview-top .cm-brand{pointer-events:none}
+@media(max-width:760px){.preview-rail{display:none}.cm-workspace{display:block}.cm-main{padding:18px 12px 90px}.cm-topbar{height:64px}.preview-top{height:64px}}
+</style>
+</head>
+<body>
+<div id="root" class="cm-app-shell">
+  <header class="cm-topbar preview-top"><div class="cm-brand"><span class="cm-brand-symbol"><span></span><span></span><span></span></span><span class="cm-brand-name">career<span>mate</span><i>.</i></span><span class="cm-brand-edition">PERSONAL OS</span></div><div class="cm-topbar-context"><span class="cm-live-dot"></span><span>Your career workspace</span><span class="cm-context-divider">/</span><span>portals</span></div><div class="cm-topbar-actions"><span class="cm-privacy-indicator">◈ <span>Local first</span></span><span class="cm-avatar">G</span></div></header>
+  <div class="cm-workspace" style="grid-template-columns:76px minmax(0,1fr)">
+    <aside class="preview-rail"><div class="preview-rail-brand"><span>CM</span></div><nav class="preview-rail-nav"><div>⌂</div><div>◉</div><div>▤</div><div>⌖</div><div class="active">◎</div><div>▥</div><div>▧</div><div>⚙</div></nav></aside>
+    <main class="cm-main" data-view="platforms">
+      <div class="cm-page-header"><div class="cm-page-heading-copy"><span class="cm-kicker">EMPLOYER SOURCES</span><h1>Portals</h1><p>Monitor the employer career pages you follow and keep supported job boards healthy.</p></div><div class="cm-page-header-actions"><span class="cm-status-pill"><i></i>Local workspace ready</span></div></div>
+      <div class="cm-content-frame">
+        <div class="view-stack portals-view">
+          <section class="portal-intro"><div class="portal-intro-copy"><span class="portal-intro-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="m12 12 6-6"/></svg></span><div><p class="eyebrow">EMPLOYER MONITORING</p><h2>Employer boards you follow</h2><p>Keep your target companies in one place. Health checks show which public ATS boards are responding and which need attention.</p></div></div><div class="portal-intro-actions"><button class="button button-secondary">＋ Add portal</button><button class="button button-primary">◎ Check portal health</button></div></section>
+          <section class="portal-health-strip"><div class="portal-health-summary-copy"><strong>13 employer portals configured</strong><span>6 enabled <i></i> 7 paused <i></i> Last check Nov 6, 2026 · 18:42</span></div><div class="portal-health-summary-stats"><span class="portal-health-stat is-live"><b>5</b> live</span><span class="portal-health-stat is-empty"><b>1</b> empty</span><span class="portal-health-stat is-warning"><b>2</b> attention</span></div></section>
+          <section class="panel portal-directory-panel"><div class="portal-section-heading"><div><p class="eyebrow">MONITORED EMPLOYERS</p><h2>Monitored employers</h2><p class="panel-description">Live status, job availability and connection details for each company career page.</p></div><span class="portal-total-chip">13 portals</span></div>
+          <div class="portal-directory-tools"><label class="portal-search"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg><input placeholder="Find a company or portal…"></label><div class="portal-filter-tabs"><button class="is-active">All <span>13</span></button><button>Active <span>6</span></button><button>Paused <span>7</span></button><button>Attention <span>2</span></button></div></div>
+          <div class="portal-list">
+            <article class="portal-row"><span class="portal-brand-mark"><span class="portal-company-monogram">SP</span><span class="portal-provider-mini"><span class="source-brand-mark"><span class="source-brand-letter">L</span></span></span></span><div class="portal-row-main"><div class="portal-row-titleline"><strong>Spotify</strong><span class="portal-status-badge status-live"><i></i>Live</span></div><span class="portal-domain-line">jobs.lever.co/spotify <span>·</span> Lever <span>·</span> Sweden</span><small class="portal-row-message">Public jobs endpoint responded successfully · 312 ms</small></div><span class="portal-job-count"><strong>42</strong><small>jobs</small></span><label class="portal-enable-toggle"><input type="checkbox" checked><span>Enabled</span></label><details class="portal-row-manage"><summary>Manage</summary></details></article>
+            <article class="portal-row"><span class="portal-brand-mark"><span class="portal-company-monogram">KL</span><span class="portal-provider-mini"><span class="source-brand-mark"><span class="source-brand-letter">G</span></span></span></span><div class="portal-row-main"><div class="portal-row-titleline"><strong>Klarna</strong><span class="portal-status-badge status-live"><i></i>Live</span></div><span class="portal-domain-line">job-boards.greenhouse.io/klarna <span>·</span> Greenhouse <span>·</span> Sweden</span><small class="portal-row-message">Public jobs endpoint responded successfully · 284 ms</small></div><span class="portal-job-count"><strong>18</strong><small>jobs</small></span><label class="portal-enable-toggle"><input type="checkbox" checked><span>Enabled</span></label><details class="portal-row-manage"><summary>Manage</summary></details></article>
+            <article class="portal-row"><span class="portal-brand-mark"><span class="portal-company-monogram">VR</span><span class="portal-provider-mini"><span class="source-brand-mark"><span class="source-brand-letter">G</span></span></span></span><div class="portal-row-main"><div class="portal-row-titleline"><strong>Vercel</strong><span class="portal-status-badge status-empty"><i></i>Live · no jobs</span></div><span class="portal-domain-line">job-boards.greenhouse.io/vercel <span>·</span> Greenhouse <span>·</span> Global</span><small class="portal-row-message">The board is responding but currently has no published jobs matching its feed.</small></div><span class="portal-job-count"><strong>0</strong><small>jobs</small></span><label class="portal-enable-toggle"><input type="checkbox" checked><span>Enabled</span></label><details class="portal-row-manage"><summary>Manage</summary></details></article>
+            <article class="portal-row"><span class="portal-brand-mark"><span class="portal-company-monogram">AI</span><span class="portal-provider-mini"><span class="source-brand-mark"><span class="source-brand-letter">A</span></span></span></span><div class="portal-row-main"><div class="portal-row-titleline"><strong>Aiven</strong><span class="portal-status-badge status-not_checked"><i></i>Not checked</span></div><span class="portal-domain-line">jobs.ashbyhq.com/aiven <span>·</span> Ashby <span>·</span> Europe</span><small class="portal-row-message">Not checked yet. Run a health check to verify this board.</small></div><label class="portal-enable-toggle"><input type="checkbox" checked><span>Enabled</span></label><details class="portal-row-manage"><summary>Manage</summary></details></article>
+            <article class="portal-row"><span class="portal-brand-mark"><span class="portal-company-monogram">LG</span><span class="portal-provider-mini"><span class="source-brand-mark"><span class="source-brand-letter">A</span></span></span></span><div class="portal-row-main"><div class="portal-row-titleline"><strong>Legora</strong><span class="portal-status-badge status-paused"><i></i>Paused</span></div><span class="portal-domain-line">jobs.ashbyhq.com/legora <span>·</span> Ashby <span>·</span> Sweden</span><small class="portal-row-message">Paused. This portal is excluded from searches.</small></div><label class="portal-enable-toggle"><input type="checkbox"><span>Paused</span></label><details class="portal-row-manage"><summary>Manage</summary></details></article>
+          </div><div class="portal-directory-footer"><span>◈ Health checks contact supported public ATS endpoints. Credentials are never shown in this directory.</span><button class="button button-secondary button-small">✓ Save portal changes</button></div></section>
+          <details class="panel portal-add-panel"><summary><span class="portal-add-symbol">＋</span><span class="portal-add-copy"><strong>Add an employer portal</strong><small>Connect a public Greenhouse, Lever, Teamtailor or supported ATS board.</small></span><span class="portal-add-chevron">⌄</span></summary></details>
+          <details class="panel portal-discovery-panel"><summary class="portal-secondary-summary"><span><span class="icon">⌘</span><span><strong>Discovery sources</strong><small>Choose public feeds and ATS providers used when you search for jobs.</small></span></span><span>⌄</span></summary></details>
+        </div>
+      </div>
+      <footer class="cm-footer"><span><b>career<span>mate</span>.</b> Your personal career operating system.</span><span>Local-first · Human-approved applications</span></footer>
+    </main>
+  </div>
+</div>
+</body></html>

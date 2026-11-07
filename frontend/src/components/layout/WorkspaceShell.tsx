@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Icon, type IconName } from "../ui/Icon";
 
-export type WorkspaceView = "overview" | "discover" | "platforms" | "matches" | "applications" | "profile" | "ai" | "data" | "settings" | "analytics" | "automation";
+export type WorkspaceView = "overview" | "discover" | "inbox" | "platforms" | "matches" | "applications" | "followups" | "profile" | "documents" | "ai" | "data" | "settings" | "analytics" | "automation";
 export type PageMeta = { title: string; eyebrow: string; description: string };
 
 type Props = {
@@ -17,6 +17,8 @@ type Props = {
   matchCount: number;
   jobCount: number;
   applicationCount: number;
+  inboxCount?: number;
+  followupCount?: number;
   onNavigate: (view: WorkspaceView) => void;
   onGoHome: () => void;
   children: ReactNode;
@@ -26,27 +28,31 @@ type NavLink = { id: WorkspaceView; label: string; icon: IconName; hint: string 
 type NavGroup = { label: string; links: NavLink[] };
 
 const NAV_GROUPS: NavGroup[] = [
-  { label: "WORKSPACE", links: [{ id: "overview", label: "Command centre", icon: "grid", hint: "Your career overview" }] },
-  { label: "DISCOVER & DECIDE", links: [
-    { id: "discover", label: "Opportunity explorer", icon: "search", hint: "Find and filter jobs" },
-    { id: "matches", label: "Match intelligence", icon: "target", hint: "Understand fit and gaps" },
-    { id: "platforms", label: "Source integrations", icon: "layers", hint: "Manage job sources" },
+  { label: "WORKSPACE", links: [{ id: "overview", label: "Today", icon: "grid", hint: "Overview of your priorities, next actions and recent activity" }] },
+  { label: "DISCOVER", links: [
+    { id: "discover", label: "Explore", icon: "compass", hint: "Find opportunities across connected sources" },
+    { id: "inbox", label: "Inbox", icon: "inbox", hint: "Triage newly discovered jobs" },
+    { id: "matches", label: "Match intelligence", icon: "target", hint: "Understand fit and evidence gaps" },
+    { id: "automation", label: "Scheduled scans", icon: "calendar-clock", hint: "Manage recurring job searches" },
   ] },
-  { label: "APPLY & PROGRESS", links: [
-    { id: "applications", label: "Application pipeline", icon: "briefcase", hint: "Track every application" },
-    { id: "profile", label: "CV & evidence studio", icon: "file", hint: "Manage your candidate profile" },
+  { label: "MANAGE", links: [
+    { id: "applications", label: "Pipeline", icon: "kanban", hint: "Move applications through each stage" },
+    { id: "followups", label: "Follow-ups", icon: "mail", hint: "Keep recruiter conversations moving" },
+    { id: "platforms", label: "Portals", icon: "radar", hint: "Monitor employer career pages" },
   ] },
-  { label: "OPTIMIZE", links: [
-    { id: "automation", label: "Automation centre", icon: "bolt", hint: "Monitor recurring workflows" },
-    { id: "analytics", label: "Career analytics", icon: "chart", hint: "Measure your funnel" },
+  { label: "INSIGHTS", links: [{ id: "analytics", label: "Analytics", icon: "chart", hint: "Measure your search and conversion" }] },
+  { label: "YOUR CAREER", links: [
+    { id: "profile", label: "CV", icon: "file", hint: "Manage your candidate profile and evidence" },
+    { id: "documents", label: "Documents", icon: "files", hint: "Find tailored CVs and application drafts" },
   ] },
-  { label: "PREFERENCES", links: [{ id: "settings", label: "Settings & privacy", icon: "sliders", hint: "Configure your workspace" }] },
+  { label: "PREFERENCES", links: [{ id: "settings", label: "Config", icon: "sliders", hint: "Configure AI, privacy and workspace data" }] },
 ];
 
 export function WorkspaceShell(props: Props) {
   const {
     activeView, meta, activity, status, avatar, providerLabel, hostedAi,
     cvUploaded, profileSaved, matchCount, jobCount, applicationCount,
+    inboxCount = 0, followupCount = 0,
     onNavigate, onGoHome, children,
   } = props;
   const [commandOpen, setCommandOpen] = useState(false);
@@ -58,7 +64,7 @@ export function WorkspaceShell(props: Props) {
   const pointerInsideRail = useRef(false);
   const commandInput = useRef<HTMLInputElement>(null);
   const progress = Math.round(([cvUploaded, profileSaved, matchCount > 0].filter(Boolean).length / 3) * 100);
-  const badgeFor = (id: WorkspaceView) => id === "discover" ? jobCount : id === "matches" ? matchCount : id === "applications" ? applicationCount : undefined;
+  const badgeFor = (id: WorkspaceView) => id === "discover" ? jobCount : id === "inbox" ? inboxCount : id === "matches" ? matchCount : id === "applications" ? applicationCount : id === "followups" ? followupCount : undefined;
   const commands = useMemo(
     () => NAV_GROUPS.flatMap((group) => group.links).filter((link) => `${link.label} ${link.hint}`.toLowerCase().includes(commandQuery.trim().toLowerCase())),
     [commandQuery],
@@ -166,7 +172,7 @@ export function WorkspaceShell(props: Props) {
     <div className="cm-app-shell">
       <header className="cm-topbar">
         <button className="cm-brand" type="button" onClick={onGoHome} aria-label="CareerMate home">
-          <span className="cm-brand-symbol"><span /><span /><span /></span>
+          <img className="cm-brand-symbol-image" src="/careermate-symbol.svg" alt="" />
           <span className="cm-brand-name">career<span>mate</span><i>.</i></span>
           <span className="cm-brand-edition">PERSONAL OS</span>
         </button>
@@ -191,7 +197,7 @@ export function WorkspaceShell(props: Props) {
         >
           <div className="cm-rail-surface">
             <div className="cm-rail-brand" aria-hidden="true">
-              <span className="cm-brand-symbol cm-rail-brand-symbol"><span /><span /><span /></span>
+              <img className="cm-brand-symbol-image cm-rail-brand-symbol" src="/careermate-symbol.svg" alt="" />
               <span className="cm-rail-brand-copy"><strong>CareerMate</strong><small>PERSONAL OS</small></span>
             </div>
             <nav className="cm-rail-navigation" aria-label="Workspace sections">
@@ -234,7 +240,7 @@ export function WorkspaceShell(props: Props) {
           </div>
         </aside>
 
-        <main className="cm-main">
+        <main className="cm-main" data-view={activeView}>
           <div className="cm-page-header">
             <div className="cm-page-heading-copy"><span className="cm-kicker">{meta.eyebrow}</span><h1>{meta.title}</h1><p>{meta.description}</p></div>
             <div className="cm-page-header-actions">{activity ? <span className="cm-activity-pill"><i />{activity}</span> : <span className="cm-status-pill"><i />{status}</span>}{activeView !== "discover" && <button type="button" className="cm-button cm-button-primary" onClick={() => navigate("discover")}><Icon name="search" /> Discover jobs <span>↗</span></button>}</div>
@@ -245,9 +251,9 @@ export function WorkspaceShell(props: Props) {
       </div>
 
       <nav className="cm-mobile-bottom-nav" aria-label="Quick navigation">
-        {(["overview", "discover", "applications", "analytics"] as WorkspaceView[]).map((view) => {
-          const labels: Record<string, string> = { overview: "Home", discover: "Discover", applications: "Applied", analytics: "Insights" };
-          const icons: Record<string, IconName> = { overview: "grid", discover: "search", applications: "briefcase", analytics: "chart" };
+        {(["overview", "discover", "inbox", "applications"] as WorkspaceView[]).map((view) => {
+          const labels: Record<string, string> = { overview: "Today", discover: "Explore", inbox: "Inbox", applications: "Pipeline" };
+          const icons: Record<string, IconName> = { overview: "grid", discover: "compass", inbox: "inbox", applications: "kanban" };
           return <button type="button" key={view} className={activeView === view ? "is-active" : ""} onClick={() => navigate(view)}><Icon name={icons[view]} /><span>{labels[view]}</span></button>;
         })}
         <button type="button" onClick={() => setMobileNavOpen(true)}><Icon name="layers" /><span>More</span></button>

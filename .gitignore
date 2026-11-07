@@ -55,3 +55,10 @@ data/settings/*
 
 # Local profile copies from older app versions
 /profile.json
+
+# Workflow history is private local application data
+data/workflow/*
+!data/workflow/.gitkeep
+
+# Portal health cache is local operational data
+data/portal_health.json

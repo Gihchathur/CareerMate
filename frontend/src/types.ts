@@ -1,5 +1,6 @@
 export type CandidatePersonal = {
   name: string;
+  headline?: string;
   email: string;
   phone: string;
   location: string;
@@ -80,6 +81,10 @@ export type JobBoardConfig = {
   enabled: boolean;
   company?: string;
   country?: string;
+  career_url?: string;
+  jobs_url?: string;
+  notes?: string;
+  starter_sample?: boolean;
   board_token?: string;
   site?: string;
   api_key_env?: string;
@@ -105,6 +110,46 @@ export type JobSourceConfigurationResponse = {
   config: JobSourceConfiguration;
   sources: Record<JobSourceId, JobSourceStatus>;
   message?: string;
+};
+
+export type PortalHealthStatus = "live" | "empty" | "paused" | "needs_setup" | "broken" | "not_checked";
+
+export type PortalHealthItem = {
+  id: string;
+  provider: keyof JobSourceConfiguration;
+  provider_label: string;
+  company: string;
+  identifier: string;
+  domain: string;
+  country: string;
+  career_url?: string;
+  jobs_url?: string;
+  notes?: string;
+  enabled: boolean;
+  status: PortalHealthStatus;
+  job_count: number | null;
+  checked_at: string | null;
+  duration_ms: number | null;
+  message: string;
+};
+
+export type PortalHealthSummary = {
+  total: number;
+  enabled: number;
+  paused: number;
+  live: number;
+  empty: number;
+  broken: number;
+  needs_setup: number;
+  not_checked: number;
+};
+
+export type PortalHealthResponse = {
+  success: boolean;
+  checked_at: string | null;
+  summary: PortalHealthSummary;
+  items: PortalHealthItem[];
+  check_limit?: number;
 };
 
 export type JobResult = {
@@ -221,6 +266,35 @@ export type ApplicationStatus =
   | "rejected"
   | "withdrawn";
 
+export type JobTriageStage = "new" | "reviewing" | "shortlisted" | "skipped";
+
+export type JobTriageRecord = {
+  job_id: string;
+  stage: JobTriageStage;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type JobInboxItem = { job: JobResult; triage: JobTriageRecord };
+export type WorkflowInboxResponse = {
+  success: boolean;
+  total: number;
+  counts: Record<JobTriageStage, number>;
+  items: JobInboxItem[];
+};
+
+export type WorkflowEvent = {
+  id: string;
+  event_type: string;
+  title: string;
+  detail: string;
+  entity_type: string;
+  entity_id: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
 export type ApplicationAnswer = {
   question: string;
   answer: string;
@@ -295,7 +369,7 @@ export type BrowserFormSession = {
   message: string;
 };
 
-export type BrowserFieldDraft = BrowserFormField & { include: boolean; value: string; suggestion_source?: string };
+export type BrowserFieldDraft = BrowserFormField & { include: boolean; value: string; suggestion_source?: string; reviewed?: boolean; value_source?: "profile" | "existing" | "ai" | "manual" | "empty"; filled?: boolean };
 export type BrowserAnswerSuggestion = { field_id: string; value: string; source: string };
 
 
@@ -365,7 +439,10 @@ export type JobPlatform = {
 export type TailoredCvResponse = {
   success: boolean;
   filename: string;
-  template: "classic" | "modern" | "compact";
+  pdf_filename?: string;
+  job_title?: string;
+  company?: string;
+  template: "classic" | "modern" | "compact" | "sectioned";
   tailored_profile: {
     summary: string;
     skills: string[];
@@ -389,4 +466,16 @@ export type TailoredCvResponse = {
   review_required: boolean;
   download_url: string;
   message: string;
+};
+
+
+export type TailoredCvVersion = {
+  filename: string;
+  pdf_filename: string;
+  template: string;
+  created_at: string;
+  ats_score: number | null;
+  job_title?: string;
+  company?: string;
+  job_id?: string;
 };

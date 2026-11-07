@@ -50,7 +50,7 @@ Rules:
 - Never invent employers, skills, dates, qualifications, certifications,
   language levels, achievements, or years of experience.
 - If data is missing, use an empty string or empty list.
-- Personal fields are name, email, phone, location, linkedin, github, portfolio.
+- Personal fields are name, headline, email, phone, location, linkedin, github, portfolio. Use headline only when the CV explicitly states a professional title beneath or beside the candidate name; otherwise leave it empty.
 - Keep the summary concise and preserve the candidate's actual meaning.
 - Keep each experience description to at most 6 concise bullet points.
 - Extract all projects with their names, years, descriptions and URLs.

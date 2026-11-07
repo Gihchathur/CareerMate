@@ -1,0 +1,124 @@
+{
+  "_document": {
+    "title": "CareerMate employer portal registry",
+    "version": 1,
+    "description": "Copy this file to data/sources.json to use it as the active employer ATS configuration. Replace every example identifier and URL with the company's real public career-page and ATS-board details. All example portals are disabled.",
+    "url_fields": {
+      "career_url": "The employer's main career page, for example https://careers.example.com/jobs",
+      "jobs_url": "The public ATS job-board URL. CareerMate uses the ATS identifier for API discovery; this URL is a human-readable shortcut."
+    },
+    "security": "Never place API keys, passwords, cookies, or session tokens in this file. Store Teamtailor API keys in backend/.env and reference only the environment variable name."
+  },
+  "greenhouse": [
+    {
+      "enabled": false,
+      "board_token": "example-nordic",
+      "company": "Example Nordic AB",
+      "country": "Sweden",
+      "career_url": "https://careers.example.com",
+      "jobs_url": "https://boards.greenhouse.io/example-nordic",
+      "notes": "Replace board_token with the Greenhouse board token shown in the public job-board URL."
+    }
+  ],
+  "lever": [
+    {
+      "enabled": false,
+      "site": "example-nordic",
+      "company": "Example Nordic AB",
+      "region": "eu",
+      "country": "Sweden",
+      "career_url": "https://careers.example.com",
+      "jobs_url": "https://jobs.lever.co/example-nordic",
+      "notes": "The site value is the Lever site slug, not the full URL."
+    }
+  ],
+  "teamtailor": [
+    {
+      "enabled": false,
+      "company": "Example Nordic AB",
+      "api_key_env": "CAREERMATE_TEAMTAILOR_EXAMPLE_API_KEY",
+      "region": "eu",
+      "country": "Sweden",
+      "career_url": "https://careers.example.com",
+      "jobs_url": "https://careers.example.com/jobs",
+      "notes": "Create a Teamtailor API key with the required public-read permission. Put its value in backend/.env under the variable named by api_key_env."
+    }
+  ],
+  "ashby": [
+    {
+      "enabled": false,
+      "slug": "example-nordic",
+      "company": "Example Nordic AB",
+      "country": "Sweden",
+      "career_url": "https://careers.example.com",
+      "jobs_url": "https://jobs.ashbyhq.com/example-nordic",
+      "notes": "The slug is the final path segment in the public Ashby job-board URL."
+    }
+  ],
+  "smartrecruiters": [
+    {
+      "enabled": false,
+      "slug": "example-nordic",
+      "company": "Example Nordic AB",
+      "country": "Sweden",
+      "career_url": "https://careers.example.com",
+      "jobs_url": "https://jobs.smartrecruiters.com/example-nordic",
+      "notes": "Use the SmartRecruiters company identifier as slug."
+    }
+  ],
+  "workable": [
+    {
+      "enabled": false,
+      "slug": "example-nordic",
+      "company": "Example Nordic AB",
+      "country": "Sweden",
+      "career_url": "https://careers.example.com",
+      "jobs_url": "https://apply.workable.com/example-nordic",
+      "notes": "Use the Workable account slug."
+    }
+  ],
+  "recruitee": [
+    {
+      "enabled": false,
+      "slug": "example-nordic",
+      "company": "Example Nordic AB",
+      "country": "Sweden",
+      "career_url": "https://careers.example.com",
+      "jobs_url": "https://example-nordic.recruitee.com",
+      "notes": "Use the subdomain before .recruitee.com."
+    }
+  ],
+  "breezy": [
+    {
+      "enabled": false,
+      "slug": "example-nordic",
+      "company": "Example Nordic AB",
+      "country": "Sweden",
+      "career_url": "https://careers.example.com",
+      "jobs_url": "https://example-nordic.breezy.hr",
+      "notes": "Use the subdomain before .breezy.hr."
+    }
+  ],
+  "personio": [
+    {
+      "enabled": false,
+      "slug": "example-nordic",
+      "company": "Example Nordic AB",
+      "country": "Sweden",
+      "career_url": "https://careers.example.com",
+      "jobs_url": "https://example-nordic.jobs.personio.de",
+      "notes": "Use the Personio company subdomain."
+    }
+  ],
+  "workday": [
+    {
+      "enabled": false,
+      "slug": "https://example.wd5.myworkdayjobs.com/en-US/External",
+      "company": "Example Nordic AB",
+      "country": "Sweden",
+      "career_url": "https://careers.example.com",
+      "jobs_url": "https://example.wd5.myworkdayjobs.com/en-US/External",
+      "notes": "Workday requires the full public HTTPS careers URL including its site path."
+    }
+  ]
+}

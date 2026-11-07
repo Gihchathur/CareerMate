@@ -1,0 +1,23 @@
+import { Icon } from "../ui/Icon";
+import { FloatingSelect } from "../ui/FloatingSelect";
+import type { ApplicationRecord, ApplicationStatus } from "../../types";
+
+const LANES: { id: string; title: string; statuses: ApplicationStatus[]; tone: string }[] = [
+  { id: "saved", title: "To prepare", statuses: ["saved", "preparing"], tone: "violet" },
+  { id: "applied", title: "Applied", statuses: ["applied"], tone: "blue" },
+  { id: "interview", title: "Interview", statuses: ["interview"], tone: "amber" },
+  { id: "offer", title: "Offer", statuses: ["offer"], tone: "green" },
+  { id: "closed", title: "Closed", statuses: ["rejected", "withdrawn"], tone: "slate" },
+];
+const STATUS_LABELS: Record<ApplicationStatus, string> = { saved: "Saved", preparing: "Preparing", applied: "Applied", interview: "Interview", offer: "Offer", rejected: "Rejected", withdrawn: "Withdrawn" };
+
+type Props = { applications: ApplicationRecord[]; selectedId?: string | null; onSelect: (application: ApplicationRecord) => void; onStatusChange: (id: string, status: ApplicationStatus) => Promise<void>; onExplore: () => void };
+
+export function PipelineBoard({ applications, selectedId, onSelect, onStatusChange, onExplore }: Props) {
+  return <div className="workflow-page pipeline-page">
+    <section className="workflow-page-intro"><div><p className="workflow-eyebrow">APPLICATION MANAGEMENT</p><h2>Your application pipeline</h2><p>Move each opportunity forward, keep the next action visible and maintain a complete record of your applications.</p></div><button className="workflow-primary-action" type="button" onClick={onExplore}><Icon name="plus"/> Add an opportunity</button></section>
+    <section className="workflow-inbox-summary pipeline-summary"><div><strong>{applications.length}</strong><span>Total tracked</span></div><div><strong>{applications.filter((item) => ["saved", "preparing"].includes(item.status)).length}</strong><span>To prepare</span></div><div><strong>{applications.filter((item) => item.status === "applied").length}</strong><span>Submitted</span></div><div><strong>{applications.filter((item) => item.status === "interview").length}</strong><span>Interviews</span></div><div><strong>{applications.filter((item) => item.status === "offer").length}</strong><span>Offers</span></div></section>
+    {applications.length ? <div className="workflow-pipeline-board">{LANES.map((lane) => { const records = applications.filter((application) => lane.statuses.includes(application.status)); return <section className={`workflow-pipeline-lane lane-${lane.tone}`} key={lane.id}><header><span className="workflow-lane-indicator"/><h3>{lane.title}</h3><span className="workflow-lane-count">{records.length}</span></header><div className="workflow-lane-cards">{records.map((application) => <article className={`workflow-pipeline-card${selectedId === application.id ? " is-selected" : ""}`} key={application.id}><button className="workflow-pipeline-card-open" type="button" onClick={() => onSelect(application)}><strong>{application.title}</strong><span>{application.company || "Company not listed"}</span><small>{application.location || "Location not listed"}</small></button><div className="workflow-pipeline-card-bottom"><span>{application.follow_up_date ? `Follow-up · ${application.follow_up_date}` : application.applied_at ? `Applied · ${new Date(application.applied_at).toLocaleDateString()}` : `Added · ${new Date(application.created_at).toLocaleDateString()}`}</span><label className="workflow-stage-select"><span className="sr-only">Change status for {application.title}</span><FloatingSelect className="workflow-stage-floating-select" value={application.status} onChange={(value) => void onStatusChange(application.id, value as ApplicationStatus)} ariaLabel={`Change ${application.title} status`} options={Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))} /></label></div></article>)}</div>{records.length === 0 && <div className="workflow-lane-empty">No applications here yet.</div>}</section>; })}</div> : <div className="workflow-empty-state"><span><Icon name="kanban"/></span><h3>Your pipeline is ready</h3><p>Add an opportunity from your inbox to start tracking preparation, submissions, interviews and offers in one place.</p><button className="workflow-primary-action" type="button" onClick={onExplore}>Explore opportunities <Icon name="arrow"/></button></div>}
+    <section className="workflow-panel workflow-pipeline-note"><Icon name="shield"/><div><strong>You stay in control</strong><p>CareerMate can prepare documents and assist with supported application forms. Applications are only marked as submitted when you update the stage after reviewing the employer's website.</p></div></section>
+  </div>;
+}

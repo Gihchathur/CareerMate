@@ -7,7 +7,7 @@ from pathlib import Path
 from uuid import uuid4
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException, Query, UploadFile
+from fastapi import FastAPI, HTTPException, Query, Response, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, ValidationError
@@ -24,6 +24,7 @@ from app.models.browser_assistance import (
 from app.models.ai import AIProviderTestRequest, AISettingsUpdate
 from app.models.data_management import LocalDataResetRequest
 from app.models.job import JobEnrichmentRequest
+from app.models.workflow import JobTriageUpdateRequest
 from app.services.ai_provider import (
     AIProviderError, get_active_provider_identity, get_ai_settings, save_ai_settings, test_provider_connection,
 )
@@ -60,8 +61,10 @@ from app.services.job_matcher import score_job
 from app.services.job_discovery import JobDiscoveryError, search_multiple_roles
 from app.services.job_sources.base import JobSourceError
 from app.services.job_search import load_source_config, save_source_config, source_status
+from app.services.portal_health import get_portal_health, check_portal_health
 from app.services.job_detail_enricher import JobDetailFetchError, enrich_job_record
 from app.services.job_storage import load_saved_jobs, save_jobs
+from app.services.workflow_storage import load_job_triage, update_job_triage, record_event, load_events
 from app.services.data_management import clear_cache_files, get_data_summary, reset_workspace_data
 
 logger = logging.getLogger(__name__)
@@ -88,7 +91,10 @@ class SavedSearchRequest(BaseModel):
 
 class CvTailorRequest(BaseModel):
     job_description: str = Field(min_length=100, max_length=30000)
-    template: Literal["classic", "modern", "compact"] = "classic"
+    template: Literal["classic", "modern", "compact", "sectioned"] = "sectioned"
+    job_title: str = Field(default="", max_length=240)
+    company: str = Field(default="", max_length=240)
+    job_id: str = Field(default="", max_length=500)
 
 
 class JobSourceConfigUpdate(BaseModel):
@@ -107,7 +113,7 @@ class JobSourceConfigUpdate(BaseModel):
 app = FastAPI(
     title="CareerMate API",
     description="Local-first job search and application assistant",
-    version="2.2.0",
+    version="3.7.0",
     lifespan=lifespan,
 )
 
@@ -171,6 +177,14 @@ def _atomic_write(path: Path, content: str) -> None:
     temporary_path = path.with_suffix(path.suffix + ".tmp")
     temporary_path.write_text(content, encoding="utf-8")
     temporary_path.replace(path)
+
+
+def _record_workflow_event(*args: Any, **kwargs: Any) -> None:
+    """Keep workflow telemetry from breaking the core job/application action."""
+    try:
+        record_event(*args, **kwargs)
+    except (RuntimeError, OSError, ValueError):
+        logger.exception("Could not persist a workflow activity event")
 
 
 @app.get("/api/ai/settings")
@@ -423,7 +437,14 @@ def tailor_cv_for_job(request: CvTailorRequest) -> dict[str, object]:
         raise HTTPException(status_code=400, detail="Upload and analyse your base CV before tailoring it.")
     try:
         profile = CandidateProfile.model_validate_json(PROFILE_PATH.read_text(encoding="utf-8"))
-        result = create_tailored_cv(profile, request.job_description, request.template)
+        result = create_tailored_cv(
+            profile,
+            request.job_description,
+            request.template,
+            job_title=request.job_title,
+            company=request.company,
+            job_id=request.job_id,
+        )
         result.pop("download_path", None)
         result["download_url"] = f"/api/cv/tailored/{result['filename']}"
         return {"success": True, **result}
@@ -599,6 +620,20 @@ def search_job_listings(
                 if published is None or published < cutoff:
                     continue
             normalized_jobs.append(item)
+        _record_workflow_event(
+            "discovery_scan",
+            "Job discovery completed",
+            f"Received {len(job_payload)} listings; {len(normalized_jobs)} remained after local filters.",
+            entity_type="search",
+            metadata={
+                "roles": role_values,
+                "country": country,
+                "city": effective_city,
+                "sources": sources or [],
+                "returned": len(normalized_jobs),
+                "saved_total": saved_total,
+            },
+        )
         return {
             "success": True,
             **{key: value for key, value in result.items() if key != "jobs"},
@@ -638,6 +673,29 @@ def update_job_source_config(request: JobSourceConfigUpdate) -> dict[str, object
         raise HTTPException(status_code=500, detail="Could not save platform settings to data/sources.json.") from exc
 
 
+@app.get("/api/jobs/portal-health")
+def get_employer_portal_health() -> dict[str, object]:
+    """Return configured employer portals and their latest health observations."""
+    try:
+        return get_portal_health()
+    except JobSourceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail="Could not load employer portal health data.") from exc
+
+
+@app.post("/api/jobs/portal-health/check")
+def run_employer_portal_health_check() -> dict[str, object]:
+    """Check read-only public ATS endpoints for configured employer portals."""
+    try:
+        return check_portal_health()
+    except JobSourceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except OSError as exc:
+        logger.exception("Could not persist employer portal health results")
+        raise HTTPException(status_code=500, detail="Could not save employer portal health results locally.") from exc
+
+
 @app.get("/api/jobs/sources")
 def get_job_sources() -> dict[str, object]:
     """Report which job sources are configured without exposing credentials."""
@@ -655,6 +713,85 @@ def get_saved_job_listings() -> dict[str, object]:
     except RuntimeError as exc:
         logger.exception("Could not load saved jobs")
         raise HTTPException(status_code=500, detail="Could not load saved job listings.") from exc
+
+
+@app.get("/api/workflow/inbox")
+def get_workflow_inbox(response: Response) -> dict[str, object]:
+    """Return discovered jobs that have not yet been promoted into the pipeline."""
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    try:
+        jobs = load_saved_jobs()
+        applications = load_applications()
+        triage = load_job_triage()
+    except RuntimeError as exc:
+        logger.exception("Could not load workflow inbox")
+        raise HTTPException(status_code=500, detail="Could not load the local job inbox.") from exc
+
+    tracked_job_ids = {str(item.get("job_id", "")) for item in applications}
+    items: list[dict[str, object]] = []
+    counts = {"new": 0, "reviewing": 0, "shortlisted": 0, "skipped": 0}
+    for job in jobs:
+        job_id = str(job.get("id", ""))
+        if not job_id or job_id in tracked_job_ids:
+            continue
+        triage_record = triage.get(job_id) or {
+            "job_id": job_id,
+            "stage": "new",
+            "notes": "",
+            "created_at": "",
+            "updated_at": "",
+        }
+        stage = str(triage_record.get("stage", "new"))
+        if stage not in counts:
+            stage = "new"
+            triage_record["stage"] = stage
+        counts[stage] += 1
+        items.append({"job": job, "triage": triage_record})
+
+    items.sort(
+        key=lambda item: str(item["job"].get("published_at", "") or ""),
+        reverse=True,
+    )
+    return {"success": True, "total": len(items), "counts": counts, "items": items}
+
+
+@app.put("/api/workflow/jobs/{job_id}/triage")
+def set_workflow_job_triage(job_id: str, request: JobTriageUpdateRequest) -> dict[str, object]:
+    """Update a discovered job's triage stage without changing the job record."""
+    try:
+        exists = any(str(item.get("id", "")) == job_id for item in load_saved_jobs())
+        if not exists:
+            raise HTTPException(status_code=404, detail="Job not found in the local discovery store.")
+        previous = load_job_triage().get(job_id, {"stage": "new", "notes": ""})
+        triage_record = update_job_triage(job_id, request.stage, request.notes)
+        if previous.get("stage") != triage_record.get("stage") or previous.get("notes", "") != triage_record.get("notes", ""):
+            _record_workflow_event(
+                "job_triage_updated",
+                f"Job moved to {request.stage.replace('_', ' ')}",
+                str((next((job.get("title", "Job") for job in load_saved_jobs() if str(job.get("id", "")) == job_id), "Job"))),
+                entity_type="job",
+                entity_id=job_id,
+                metadata={"from_stage": previous.get("stage", "new"), "to_stage": request.stage},
+            )
+        return {"success": True, "triage": triage_record}
+    except HTTPException:
+        raise
+    except (RuntimeError, ValueError) as exc:
+        logger.exception("Could not update job triage")
+        raise HTTPException(status_code=500, detail="Could not update the job's triage state.") from exc
+
+
+@app.get("/api/workflow/activity")
+def get_workflow_activity(response: Response, limit: int = Query(default=30, ge=1, le=200)) -> dict[str, object]:
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    try:
+        events = load_events(limit)
+    except RuntimeError as exc:
+        logger.exception("Could not load workflow activity")
+        raise HTTPException(status_code=500, detail="Could not load workflow activity.") from exc
+    return {"success": True, "events": events}
 
 
 @app.get("/api/applications")
@@ -716,6 +853,15 @@ def add_application(request: ApplicationCreateRequest) -> dict[str, object]:
             updated_at=now,
         ).model_dump()
         saved_record, created = create_application(record)
+        if created:
+            _record_workflow_event(
+                "application_created",
+                "Job added to pipeline",
+                f"{saved_record.get('title', 'Role')} · {saved_record.get('company', 'Company not listed')}",
+                entity_type="application",
+                entity_id=str(saved_record["id"]),
+                metadata={"job_id": request.job_id, "status": saved_record.get("status", "saved")},
+            )
         return {
             "success": True,
             "created": created,
@@ -737,6 +883,8 @@ def edit_application(
     """Save reviewed status, notes, follow-up dates and edited drafts."""
     try:
         updates = request.model_dump(exclude_unset=True, exclude_none=True)
+        existing_application = next((item for item in load_applications() if item["id"] == application_id), None)
+        existing_status = existing_application.get("status") if existing_application else None
         if not updates:
             raise HTTPException(status_code=400, detail="No application changes were provided.")
         if updates.get("status") == "applied":
@@ -755,6 +903,16 @@ def edit_application(
 
     if saved_record is None:
         raise HTTPException(status_code=404, detail="Application record not found.")
+    previous_status = existing_status if "existing_status" in locals() else None
+    if "status" in updates and previous_status != saved_record.get("status"):
+        _record_workflow_event(
+            "application_stage_changed",
+            f"Application moved to {str(saved_record.get('status', '')).replace('_', ' ')}",
+            f"{saved_record.get('title', 'Role')} · {saved_record.get('company', 'Company not listed')}",
+            entity_type="application",
+            entity_id=application_id,
+            metadata={"from_status": previous_status, "to_status": saved_record.get("status")},
+        )
     return {"success": True, "application": saved_record, "message": "Application updated locally."}
 
 

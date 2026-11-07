@@ -141,7 +141,9 @@ def suggest_profile_key(label: str, kind: str = "text", autocomplete: str = "") 
     if _is_sensitive_field(text) or LEGAL_CONSENT_PATTERN.search(text):
         return ""
     if kind == "file" and re.search(r"\b(cv|resume|résumé|curriculum vitae)\b", text):
-        return "cv_file" if CURRENT_CV_PATH.is_file() else ""
+        tailored_dir = PROJECT_ROOT / "data" / "cv" / "tailored"
+        has_tailored_cv = tailored_dir.is_dir() and any(tailored_dir.glob("*.docx"))
+        return "cv_file" if CURRENT_CV_PATH.is_file() or has_tailored_cv else ""
     if re.search(r"\b(first name|given name|firstname)\b", text): return "personal.first_name"
     if re.search(r"\b(last name|family name|surname|lastname)\b", text): return "personal.last_name"
     if re.search(r"\b(email|e mail|email address)\b", text) or autocomplete == "email": return "personal.email"
@@ -160,6 +162,29 @@ def suggest_profile_key(label: str, kind: str = "text", autocomplete: str = "") 
     if re.search(r"\b(professional experience|work experience|employment history|experience)\b", text): return "experience"
     if re.search(r"\b(education|academic background|educational background)\b", text): return "education"
     return ""
+
+
+def resolve_cv_attachment(value: str) -> Path:
+    """Resolve only CareerMate-owned CV files to a safe, exact-name PDF upload."""
+    if value == "__CAREERMATE_CURRENT_CV__":
+        candidate = CURRENT_CV_PATH
+    elif value.startswith("__CAREERMATE_TAILORED_CV__:"):
+        filename = value.split(":", 1)[1]
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,180}\.docx", filename):
+            raise BrowserAssistanceError("The selected tailored CV filename is invalid.")
+        # export_tailored_pdf verifies that both the DOCX and its structured
+        # snapshot exist inside the local tailored-CV directory before export.
+        from app.services.resume_builder import export_tailored_pdf
+        try:
+            candidate = export_tailored_pdf(filename)
+        except (FileNotFoundError, ValueError) as exc:
+            raise BrowserAssistanceError("The selected tailored CV is no longer available. Generate it again in CV Studio.") from exc
+    else:
+        raise BrowserAssistanceError("Choose the original CV or one of CareerMate's generated tailored CVs.")
+
+    if not candidate.is_file() or candidate.suffix.casefold() != ".pdf":
+        raise BrowserAssistanceError("The selected CV PDF could not be found. Generate or upload a CV first.")
+    return candidate
 
 
 def _field_from_raw(raw: dict[str, Any]) -> BrowserField | None:
@@ -846,6 +871,7 @@ async def fill_reviewed_fields(
         current_fields = session.fields
         filled: list[str] = []
         skipped: list[dict[str, str]] = []
+        attached_files: list[dict[str, str]] = []
         seen: set[str] = set()
         for item in requested_fields:
             field_id, value = str(item.get("field_id", "")), str(item.get("value", ""))
@@ -865,11 +891,16 @@ async def fill_reviewed_fields(
                 except IndexError:
                     skipped.append({"field_id": field_id, "reason": "The embedded form changed. Refresh the current step and review values again."}); continue
                 if form_field.kind == "file":
-                    if value != "__CAREERMATE_CURRENT_CV__" or not CURRENT_CV_PATH.is_file():
-                        skipped.append({"field_id": field_id, "reason": "Only the saved CV attachment can be selected automatically."}); continue
+                    try:
+                        attachment_path = resolve_cv_attachment(value)
+                    except BrowserAssistanceError as attachment_error:
+                        skipped.append({"field_id": field_id, "reason": str(attachment_error)}); continue
                     locator = target_frame.locator(f'[data-careermate-field-id="{field_id}"]')
                     if await locator.count() != 1: skipped.append({"field_id": field_id, "reason": "File field is no longer uniquely identifiable."}); continue
-                    await locator.set_input_files(str(CURRENT_CV_PATH), timeout=7000)
+                    # Passing the path makes Playwright submit the real basename
+                    # (including role, employer and generation date) to the ATS.
+                    await locator.set_input_files(str(attachment_path), timeout=7000)
+                    attached_files.append({"field_id": field_id, "filename": attachment_path.name})
                 elif form_field.kind == "select":
                     locator = target_frame.locator(f'[data-careermate-field-id="{field_id}"]')
                     if await locator.count() != 1 or not await locator.is_editable(): skipped.append({"field_id": field_id, "reason": "Dropdown is no longer editable."}); continue
@@ -894,7 +925,7 @@ async def fill_reviewed_fields(
                 filled.append(field_id)
             except Exception:
                 skipped.append({"field_id": field_id, "reason": "Could not update this control. Refresh the current step and try again."})
-        return {"success": True, "filled_field_ids": filled, "filled_count": len(filled), "skipped": skipped,
+        return {"success": True, "filled_field_ids": filled, "filled_count": len(filled), "attached_files": attached_files, "skipped": skipped,
                 "message": "Approved field values were filled; CareerMate did not submit the application.", "url": session.page.url}
 
 

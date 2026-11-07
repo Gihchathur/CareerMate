@@ -24,6 +24,45 @@ def test_public_ats_boards_validate_without_api_keys():
     assert normalized["workable"][0]["enabled"] is False
 
 
+def test_portal_registry_metadata_is_preserved_and_urls_must_be_https():
+    normalized = validate_source_config({
+        "greenhouse": [{
+            "enabled": False,
+            "board_token": "example-nordic",
+            "company": "Example Nordic AB",
+            "country": "Sweden",
+            "career_url": "https://careers.example.com",
+            "jobs_url": "https://boards.greenhouse.io/example-nordic",
+            "notes": "Example only; replace with the company's actual public portal.",
+        }]
+    })
+    entry = normalized["greenhouse"][0]
+    assert entry["career_url"] == "https://careers.example.com"
+    assert entry["jobs_url"] == "https://boards.greenhouse.io/example-nordic"
+    assert entry["notes"].startswith("Example only")
+
+
+def test_portal_registry_rejects_non_https_or_credential_bearing_urls():
+    import pytest
+    from app.services.job_sources.base import JobSourceError
+
+    for invalid_url in (
+        "http://careers.example.com",
+        "javascript:alert(1)",
+        "https://user:password@careers.example.com",
+        "not-a-url",
+    ):
+        with pytest.raises(JobSourceError):
+            validate_source_config({
+                "lever": [{
+                    "enabled": False,
+                    "site": "example-nordic",
+                    "company": "Example Nordic AB",
+                    "career_url": invalid_url,
+                }]
+            })
+
+
 def test_salary_parser_recognises_sek_range():
     assert extract_salary("Salary: SEK 40 000 - 55 000 per month") == {
         "salary_min": 40000, "salary_max": 55000, "salary_currency": "SEK"

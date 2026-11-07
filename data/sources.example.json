@@ -1,84 +1,66 @@
 {
   "greenhouse": [
     {
-      "enabled": false,
-      "board_token": "example-board-token",
-      "company": "Example AB",
-      "country": "Sweden"
+      "enabled": true,
+      "starter_sample": true,
+      "board_token": "vercel",
+      "company": "Vercel",
+      "country": "",
+      "career_url": "https://vercel.com/careers",
+      "jobs_url": "https://job-boards.greenhouse.io/vercel",
+      "notes": "CareerMate starter portal. Public Greenhouse board; verify availability with Check portal health."
     }
   ],
   "lever": [
     {
-      "enabled": false,
-      "site": "example-company",
-      "company": "Example AB",
-      "region": "eu",
-      "country": "Sweden"
+      "enabled": true,
+      "starter_sample": true,
+      "site": "spotify",
+      "company": "Spotify",
+      "region": "global",
+      "country": "",
+      "career_url": "https://www.lifeatspotify.com/jobs",
+      "jobs_url": "https://jobs.lever.co/spotify",
+      "notes": "CareerMate starter portal. Spotify identifies lifeatspotify.com and jobs.lever.co/spotify as its official careers destinations."
     }
   ],
-  "teamtailor": [
-    {
-      "enabled": false,
-      "company": "Example AB",
-      "api_key_env": "CAREERMATE_TEAMTAILOR_EXAMPLE_API_KEY",
-      "region": "eu",
-      "country": "Sweden"
-    }
-  ],
+  "teamtailor": [],
   "ashby": [
     {
-      "enabled": false,
-      "slug": "example-company",
-      "company": "Example AB",
-      "country": "Sweden"
+      "enabled": true,
+      "starter_sample": true,
+      "slug": "lovable",
+      "company": "Lovable",
+      "country": "Sweden",
+      "career_url": "https://lovable.dev/careers",
+      "jobs_url": "https://jobs.ashbyhq.com/lovable",
+      "notes": "CareerMate starter portal. Stockholm-based company; public Ashby careers board."
+    },
+    {
+      "enabled": true,
+      "starter_sample": true,
+      "slug": "legora",
+      "company": "Legora",
+      "country": "Sweden",
+      "career_url": "https://legora.com/careers",
+      "jobs_url": "https://jobs.ashbyhq.com/legora",
+      "notes": "CareerMate starter portal. Stockholm-founded legal technology company; public Ashby careers board."
+    },
+    {
+      "enabled": true,
+      "starter_sample": true,
+      "slug": "temporal",
+      "company": "Temporal",
+      "country": "",
+      "career_url": "https://temporal.io/careers",
+      "jobs_url": "https://jobs.ashbyhq.com/temporal",
+      "notes": "CareerMate starter portal. Distributed workflow platform; public Ashby careers board."
     }
   ],
-  "smartrecruiters": [
-    {
-      "enabled": false,
-      "slug": "example-company",
-      "company": "Example AB",
-      "country": "Sweden"
-    }
-  ],
-  "workable": [
-    {
-      "enabled": false,
-      "slug": "example-company",
-      "company": "Example AB",
-      "country": "Sweden"
-    }
-  ],
-  "recruitee": [
-    {
-      "enabled": false,
-      "slug": "example-company",
-      "company": "Example AB",
-      "country": "Sweden"
-    }
-  ],
-  "breezy": [
-    {
-      "enabled": false,
-      "slug": "example-company",
-      "company": "Example AB",
-      "country": "Sweden"
-    }
-  ],
-  "personio": [
-    {
-      "enabled": false,
-      "slug": "example-company",
-      "company": "Example AB",
-      "country": "Sweden"
-    }
-  ],
-  "workday": [
-    {
-      "enabled": false,
-      "slug": "https://example.wd5.myworkdayjobs.com/en-US/External",
-      "company": "Example AB",
-      "country": "Sweden"
-    }
-  ]
+  "smartrecruiters": [],
+  "workable": [],
+  "recruitee": [],
+  "breezy": [],
+  "personio": [],
+  "workday": []
 }

@@ -33,11 +33,13 @@ Hosted providers may receive CV text, profile facts, advert text, or draft text 
 
 The UI's source checkboxes select which sources a search should use. Public feed availability is managed by the source adapter. Employer-board integrations are opt-in per board in a local file.
 
-1. Copy `data/sources.example.json` to `data/sources.json`.
-2. Set `enabled: true` only for a real board that you have configured.
-3. Add each board to its source array. Entries can include `company` and `country` to improve listing labels.
+1. For a first-time setup, copy `data/portals.example.json` to `data/sources.json` (the older `data/sources.example.json` remains supported). If `data/sources.json` already exists, back it up and merge the optional fields instead of overwriting your portal list.
+2. Replace the placeholder company names, ATS identifiers and example URLs. Keep `enabled: false` until a board has been checked.
+3. Add `career_url` for the employer's main careers page and `jobs_url` for the public ATS listing page. These are saved as clickable references in Portals; the provider identifier still powers API discovery.
 4. Keep secret values out of JSON. Teamtailor entries refer to an environment variable by name; set that variable in `backend/.env`.
-5. Restart the backend and check the source status in the Find jobs UI.
+5. Restart the backend, open CareerMate → Portals, save the configuration and run a portal health check.
+
+See [Portal configuration](PORTAL-CONFIGURATION.md) for all supported providers, URL patterns and privacy rules.
 
 Example shapes:
 

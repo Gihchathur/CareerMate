@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import "./styles/tokens.css";
 import "./styles/layout.css";
 import "./styles/components.css";
+import "./styles/floating-select.css";
 import "./styles/pages/overview.css";
 import "./styles/pages/discover.css";
 import "./styles/pages/platforms.css";
@@ -17,6 +18,9 @@ import "./careermate-v2.css";
 import "./ux-hardening.css";
 import "./ux-experience.css";
 import "./ux-readability.css";
+import "./portals-workspace.css";
+import "./navigation-overflow.css";
+import "./quality-fixes.css";
 import App from "./App";
 
 createRoot(document.getElementById("root")!).render(

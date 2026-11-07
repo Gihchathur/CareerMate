@@ -25,8 +25,13 @@ import type {
   JobSourceConfigurationResponse,
   JobPlatform,
   TailoredCvResponse,
+  TailoredCvVersion,
   WorkMode,
   JobSourceId,
+  JobTriageStage,
+  WorkflowInboxResponse,
+  WorkflowEvent,
+  PortalHealthResponse,
 } from "./types";
 
 const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
@@ -188,6 +193,14 @@ export async function saveJobSourceConfig(config: JobSourceConfiguration): Promi
   });
 }
 
+export async function getPortalHealth(): Promise<PortalHealthResponse> {
+  return request<PortalHealthResponse>("/api/jobs/portal-health");
+}
+
+export async function checkPortalHealth(): Promise<PortalHealthResponse> {
+  return request<PortalHealthResponse>("/api/jobs/portal-health/check", { method: "POST" });
+}
+
 export async function searchJobs(options: JobSearchOptions): Promise<JobSearchResponse> {
   const params = new URLSearchParams();
   options.roles.forEach((role) => params.append("roles", role));
@@ -240,6 +253,26 @@ export async function matchJobs(
 
 export async function getApplications(): Promise<ApplicationsResponse> {
   return request<ApplicationsResponse>("/api/applications");
+}
+
+export async function getWorkflowInbox(): Promise<WorkflowInboxResponse> {
+  return request<WorkflowInboxResponse>("/api/workflow/inbox", { cache: "no-store" });
+}
+
+export async function updateJobTriage(jobId: string, stage: JobTriageStage, notes?: string): Promise<void> {
+  await request(`/api/workflow/jobs/${encodeURIComponent(jobId)}/triage`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stage, ...(notes === undefined ? {} : { notes }) }),
+  });
+}
+
+export async function getWorkflowActivity(limit = 30): Promise<WorkflowEvent[]> {
+  const result = await request<{ success: boolean; events: WorkflowEvent[] }>(
+    `/api/workflow/activity?limit=${encodeURIComponent(String(limit))}`,
+    { cache: "no-store" },
+  );
+  return result.events ?? [];
 }
 
 export async function createApplication(
@@ -357,8 +390,8 @@ export async function fillBrowserForm(
   applicationId: string,
   fields: BrowserFieldDraft[],
   expectedUrl?: string,
-): Promise<{ filled_count: number; filled_field_ids?: string[]; skipped: { field_id: string; reason: string }[]; message: string }> {
-  return request<{ filled_count: number; filled_field_ids?: string[]; skipped: { field_id: string; reason: string }[]; message: string }>(`/api/applications/${encodeURIComponent(applicationId)}/browser/fill`, {
+): Promise<{ filled_count: number; filled_field_ids?: string[]; attached_files?: { field_id: string; filename: string }[]; skipped: { field_id: string; reason: string }[]; message: string }> {
+  return request<{ filled_count: number; filled_field_ids?: string[]; attached_files?: { field_id: string; filename: string }[]; skipped: { field_id: string; reason: string }[]; message: string }>(`/api/applications/${encodeURIComponent(applicationId)}/browser/fill`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ fields: fields.filter((field) => field.include && field.value.trim()).map(({ field_id, value }) => ({ field_id, value })), expected_url: expectedUrl }),
@@ -374,11 +407,15 @@ export async function getPlatformDirectory(): Promise<{ success: boolean; total:
   return request("/api/platforms");
 }
 
-export async function tailorCvForJob(job_description: string, template: "classic" | "modern" | "compact"): Promise<TailoredCvResponse> {
+export async function tailorCvForJob(
+  job_description: string,
+  template: "classic" | "modern" | "compact" | "sectioned",
+  context: { job_title?: string; company?: string; job_id?: string } = {},
+): Promise<TailoredCvResponse> {
   return request("/api/cv/tailor", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ job_description, template }),
+    body: JSON.stringify({ job_description, template, ...context }),
   });
 }
 
@@ -398,5 +435,4 @@ export type JobAlert = { id:string; search_id:string; search_name:string; job_id
 export async function getJobAlerts(): Promise<{success:boolean;alerts:JobAlert[];unread:number}> { return request("/api/alerts"); }
 export async function markJobAlertRead(id:string): Promise<void> { await request(`/api/alerts/${encodeURIComponent(id)}/read`,{method:"POST"}); }
 
-export type TailoredCvVersion = { filename:string; template:string; created_at:string; ats_score:number | null };
 export async function getTailoredCvVersions(): Promise<{success:boolean;versions:TailoredCvVersion[]}> { return request("/api/cv/tailored"); }

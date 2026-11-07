@@ -1,0 +1,281 @@
+/* CareerMate 3.5 — compact, no-scroll hover rail with clearer navigation groups.
+   All 12 destinations fit in the rail; vertical spacing adapts to viewport height. */
+
+:root {
+  --cm-nav-collapsed: 60px;
+  --cm-nav-expanded: clamp(220px, 17vw, 238px);
+  --cm-rail-row: clamp(19px, 3.2vh, 29px);
+}
+
+@media (max-width: 1180px) and (min-width: 761px) {
+  :root {
+    --cm-nav-collapsed: 60px;
+    --cm-nav-expanded: 224px;
+  }
+}
+
+.cm-icon-rail {
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  height: calc(100svh - 76px) !important;
+  overflow: hidden !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.cm-icon-rail::-webkit-scrollbar,
+.cm-rail-surface::-webkit-scrollbar,
+.cm-rail-navigation::-webkit-scrollbar,
+.cm-rail-navigation::-webkit-scrollbar-thumb,
+.cm-rail-navigation::-webkit-scrollbar-track {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.cm-rail-surface {
+  display: flex !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  box-sizing: border-box !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+  padding: 8px 6px 7px !important;
+  overflow: hidden !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.cm-rail-brand {
+  min-height: 34px !important;
+  flex: 0 0 34px !important;
+  gap: 8px !important;
+  padding: 0 3px 5px !important;
+}
+
+.cm-rail-brand-symbol {
+  width: 28px !important;
+  height: 28px !important;
+  flex: 0 0 28px !important;
+  border-radius: 9px !important;
+}
+
+.cm-rail-navigation {
+  display: flex !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  flex: 1 1 0% !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  gap: 1px !important;
+  align-self: stretch !important;
+  width: 100% !important;
+  padding: 4px 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.cm-rail-group {
+  display: flex !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  flex: 0 0 auto !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 0 !important;
+}
+
+.cm-rail-group-label {
+  display: block !important;
+  max-height: 0 !important;
+  padding: 0 8px !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  font-size: 8px !important;
+  line-height: 1.1 !important;
+  letter-spacing: .12em !important;
+  transition: max-height .16s ease, opacity .14s ease, padding .16s ease;
+}
+
+.cm-icon-rail.is-expanded .cm-rail-group-label {
+  max-height: 13px !important;
+  padding-top: 2px !important;
+  padding-bottom: 3px !important;
+  color: #aeb9d4 !important;
+  opacity: 1 !important;
+}
+.cm-icon-rail.is-expanded .cm-rail-group-label::before {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin: 0 6px 1px 0;
+  border-radius: 50%;
+  background: #8d83ff;
+  box-shadow: 0 0 8px rgb(141 131 255 / 75%);
+  content: "";
+}
+
+.cm-rail-item {
+  display: flex !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  height: var(--cm-rail-row) !important;
+  min-height: var(--cm-rail-row) !important;
+  flex: 0 0 var(--cm-rail-row) !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 0 3px !important;
+  border-radius: 9px !important;
+}
+
+.cm-rail-icon-wrap {
+  display: grid !important;
+  width: 36px !important;
+  height: var(--cm-rail-row) !important;
+  flex: 0 0 36px !important;
+  place-items: center !important;
+  border-radius: 9px !important;
+}
+
+.cm-rail-icon-wrap .icon {
+  width: 18px !important;
+  height: 18px !important;
+  stroke-width: 1.85 !important;
+}
+
+.cm-rail-item-label {
+  min-width: 0 !important;
+  font-size: 10.5px !important;
+  line-height: 1.15 !important;
+  white-space: nowrap !important;
+}
+
+.cm-icon-rail.is-expanded .cm-rail-item-label {
+  max-width: 145px !important;
+}
+
+.cm-rail-item-badge {
+  top: 50% !important;
+  right: 6px !important;
+  left: auto !important;
+  width: auto !important;
+  min-width: 15px !important;
+  max-width: 28px !important;
+  height: 14px !important;
+  padding: 0 3px !important;
+  font-size: 7px !important;
+  transform: translateY(-50%) !important;
+}
+
+.cm-rail-separator {
+  width: calc(100% - 14px) !important;
+  height: 1px !important;
+  flex: 0 0 1px !important;
+  margin: 4px auto !important;
+  opacity: .72;
+  background: linear-gradient(90deg, transparent, rgb(168 177 213 / 29%), transparent) !important;
+}
+
+.cm-rail-bottom {
+  position: relative;
+  z-index: 1;
+  display: flex !important;
+  min-width: 0 !important;
+  flex: 0 0 auto !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+  padding: 5px 0 0 !important;
+  overflow: hidden !important;
+}
+
+.cm-rail-profile {
+  width: 100% !important;
+  height: 31px !important;
+  min-height: 31px !important;
+  gap: 6px !important;
+  padding: 0 3px !important;
+  border-radius: 9px !important;
+}
+
+.cm-rail-profile-ring {
+  width: 27px !important;
+  height: 27px !important;
+  flex: 0 0 27px !important;
+}
+
+.cm-rail-profile-ring .icon {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+.cm-rail-profile-copy strong { font-size: 8.5px !important; }
+.cm-rail-profile-copy small { font-size: 7.5px !important; }
+.cm-rail-footer { display: none !important; }
+
+/* Short laptop windows: hide only decorative captions, not destinations. */
+@media (max-height: 800px) and (min-width: 761px) {
+  .cm-rail-group-label { display: none !important; }
+  .cm-rail-brand { min-height: 30px !important; flex-basis: 30px !important; padding-bottom: 3px !important; }
+  .cm-rail-brand-symbol { width: 25px !important; height: 25px !important; flex-basis: 25px !important; }
+  .cm-rail-bottom { padding-top: 3px !important; }
+}
+
+@media (max-height: 650px) and (min-width: 761px) {
+  :root { --cm-rail-row: clamp(16px, 3.1vh, 20px); }
+  .cm-rail-surface { padding: 4px 5px !important; }
+  .cm-rail-brand { min-height: 26px !important; flex-basis: 26px !important; border-bottom: 0 !important; }
+  .cm-rail-brand-symbol { width: 23px !important; height: 23px !important; flex-basis: 23px !important; }
+  .cm-rail-brand-copy { display: none !important; }
+  .cm-rail-navigation { gap: 0 !important; padding: 0 !important; }
+  .cm-rail-icon-wrap { width: 32px !important; flex-basis: 32px !important; }
+  .cm-rail-icon-wrap .icon { width: 16px !important; height: 16px !important; }
+  .cm-rail-item { gap: 4px !important; }
+  .cm-rail-bottom { display: none !important; }
+}
+
+@media (max-height: 460px) and (min-width: 761px) {
+  :root { --cm-rail-row: clamp(15px, 2.9vh, 16px); }
+  .cm-rail-surface { padding-top: 2px !important; padding-bottom: 2px !important; }
+  .cm-rail-brand { min-height: 22px !important; flex-basis: 22px !important; }
+  .cm-rail-brand-symbol { width: 20px !important; height: 20px !important; flex-basis: 20px !important; }
+  .cm-rail-item { border-radius: 6px !important; }
+  .cm-rail-icon-wrap { height: var(--cm-rail-row) !important; width: 27px !important; flex-basis: 27px !important; }
+  .cm-rail-icon-wrap .icon { width: 15px !important; height: 15px !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cm-rail-navigation,
+  .cm-rail-item,
+  .cm-rail-icon-wrap,
+  .cm-rail-group-label { transition: none !important; }
+}
+
+
+/* 3.5 navigation polish: slightly larger symbols and clearer, compact group rhythm. */
+.cm-rail-icon-wrap { width: 36px !important; flex-basis: 36px !important; }
+.cm-rail-icon-wrap .icon { width: 18px !important; height: 18px !important; stroke-width: 1.85 !important; }
+.cm-rail-separator {
+  width: calc(100% - 12px) !important;
+  margin: 5px auto 4px !important;
+  opacity: .78 !important;
+  background: linear-gradient(90deg, transparent, rgb(171 181 218 / 34%), transparent) !important;
+}
+.cm-icon-rail.is-expanded .cm-rail-group-label {
+  color: #b4bfd9 !important;
+  font-size: 8px !important;
+  letter-spacing: .13em !important;
+}
+@media (max-height: 650px) and (min-width: 761px) {
+  .cm-rail-icon-wrap { width: 32px !important; flex-basis: 32px !important; }
+  .cm-rail-icon-wrap .icon { width: 16px !important; height: 16px !important; }
+}
+@media (max-height: 460px) and (min-width: 761px) {
+  .cm-rail-icon-wrap { width: 29px !important; flex-basis: 29px !important; }
+  .cm-rail-icon-wrap .icon { width: 15px !important; height: 15px !important; }
+}

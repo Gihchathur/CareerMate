@@ -19,7 +19,7 @@
 - New job alerts are stored locally and can be marked read.
 
 ## CV tailoring
-- `POST /api/cv/tailor` accepts the full job description and one of `classic`, `modern`, `compact`.
+- `POST /api/cv/tailor` accepts the full job description and one of `classic`, `modern`, `compact`, `sectioned`.
 - Requires a saved candidate profile and configured AI provider.
 - AI may reorder/rephrase existing evidence but must not add employers, dates, skills, metrics or qualifications.
 - Employment identity and chronology fields are checked against the source profile before export.

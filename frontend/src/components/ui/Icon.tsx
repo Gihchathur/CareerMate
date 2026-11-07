@@ -5,7 +5,8 @@ export type IconName =
   | "grid" | "user" | "shield" | "target" | "chevron" | "sliders"
   | "layers" | "plus" | "info" | "graduation" | "pin" | "clock"
   | "cpu" | "refresh" | "trash" | "filter" | "download" | "eye"
-  | "chart" | "bolt" | "activity" | "calendar" | "database" | "command" | "bell" | "wand" | "arrow-up-right" | "menu";
+  | "chart" | "bolt" | "activity" | "calendar" | "database" | "command" | "bell" | "wand" | "arrow-up-right" | "menu"
+  | "inbox" | "kanban" | "bookmark" | "files" | "mail" | "radar" | "compass" | "calendar-clock" | "flag" | "chevron-down";
 
 const paths: Record<IconName, string> = {
   search: "M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm10 2-4.35-4.35",
@@ -42,6 +43,16 @@ const paths: Record<IconName, string> = {
   wand: "m15 4 5 5M4 20l11-11m-9 1 2 2m6-8 2 2m-9 9 2 2M18 2l.8 2.2L21 5l-2.2.8L18 8l-.8-2.2L15 5l2.2-.8L18 2Z",
   "arrow-up-right": "M7 17 17 7M7 7h10v10",
   menu: "M4 6h16M4 12h16M4 18h16",
+  inbox: "M4 4h16l2 11h-6l-2 3h-4l-2-3H2L4 4Zm-2 11 2 5h16l2-5",
+  kanban: "M4 4h4v16H4zM10 4h4v10h-4zM16 4h4v13h-4z",
+  bookmark: "M6 3h12v18l-6-4-6 4V3Z",
+  files: "M8 7V3h12v14h-4M4 7h12v14H4zM7 11h6M7 15h6",
+  mail: "M3 5h18v14H3zM3 6l9 7 9-7",
+  radar: "M12 12 19 5M12 3v2m9 7h-2m-7 9v-2m-9-7h2M12 12l-5-5m5-4a9 9 0 1 0 9 9",
+  compass: "m16.2 7.8-2.8 5.6-5.6 2.8 2.8-5.6 5.6-2.8ZM12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z",
+  "calendar-clock": "M8 2v4m8-4v4M3 10h13M5 4h14a2 2 0 0 1 2 2v8M3 6v14h10m4-2 2 2 3-4",
+  flag: "M5 21V4m0 0c5-4 9 4 15 0v12c-6 4-10-4-15 0",
+  "chevron-down": "m6 9 6 6 6-6",
 };
 
 export function Icon({ name, className, ...props }: SVGProps<SVGSVGElement> & { name: IconName }) {

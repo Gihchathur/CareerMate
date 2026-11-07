@@ -7,6 +7,7 @@ class CandidatePersonal(BaseModel):
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
     name: str = ""
+    headline: str = ""
     email: str = ""
     phone: str = ""
     location: str = ""

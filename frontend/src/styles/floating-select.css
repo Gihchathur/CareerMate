@@ -1,0 +1,81 @@
+/* Accessible select popovers are portalled to body so page/sidebar overflow
+   and hover-navigation transitions cannot clip the option list. */
+.cm-floating-select {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  padding: 0 13px 0 15px;
+  border: 1px solid #dce2f0;
+  border-radius: 12px;
+  color: #293751;
+  background: linear-gradient(180deg, #fff 0%, #fafbff 100%);
+  box-shadow: 0 2px 5px rgb(25 35 67 / 3%), inset 0 1px #fff;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease, background .18s ease;
+}
+.cm-floating-select:hover:not(:disabled) { border-color: #b9b3ff; background: #fff; box-shadow: 0 5px 14px rgb(84 75 185 / 7%); }
+.cm-floating-select.is-open, .cm-floating-select:focus-visible { border-color: #8e83ff; outline: 0; box-shadow: 0 0 0 4px rgb(104 92 246 / 12%), 0 7px 18px rgb(80 73 165 / 8%); }
+.cm-floating-select:disabled { cursor: not-allowed; opacity: .58; }
+.cm-floating-select-value, .cm-floating-select-placeholder { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 650; }
+.cm-floating-select-placeholder { color: #9aa5b8; font-weight: 500; }
+.cm-floating-select-chevron { width: 16px !important; height: 16px !important; color: #7c75dc; transition: transform .18s ease; }
+.cm-floating-select.is-open .cm-floating-select-chevron { transform: rotate(180deg); }
+.cm-floating-select-popover {
+  display: flex;
+  flex-direction: column;
+  min-width: 280px;
+  overflow: hidden;
+  border: 1px solid rgb(196 196 239 / 78%);
+  border-radius: 17px;
+  color: #293650;
+  background: rgb(255 255 255 / 98%);
+  box-shadow: 0 22px 65px rgb(28 32 76 / 22%), 0 4px 14px rgb(51 53 101 / 9%), inset 0 1px #fff;
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  backdrop-filter: blur(22px) saturate(150%);
+  animation: cm-select-pop .16s cubic-bezier(.2,.8,.2,1) both;
+  transform-origin: top center;
+}
+.cm-floating-select-popover.placement-top { transform-origin: bottom center; }
+@keyframes cm-select-pop { from { opacity: 0; transform: translateY(-5px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.cm-floating-select-topline { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 13px 8px; color: #858ca3; font-size: 9px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
+.cm-floating-select-topline kbd { padding: 3px 6px; border: 1px solid #e8e9f3; border-radius: 6px; color: #8a90a5; background: #fafaff; font-size: 9px; font-weight: 700; }
+.cm-floating-select-search { display: flex; align-items: center; gap: 8px; margin: 0 10px 8px; padding: 0 10px; border: 1px solid #e7e8f4; border-radius: 10px; color: #8b8eb0; background: #f9f9ff; }
+.cm-floating-select-search .icon { width: 14px !important; height: 14px !important; }
+.cm-floating-select-search input { width: 100%; min-width: 0; min-height: 36px; padding: 0; border: 0 !important; outline: 0 !important; color: #34405b; background: transparent !important; box-shadow: none !important; font-size: 11px; }
+.cm-floating-select-options { display: grid; gap: 3px; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 4px 8px 8px; scrollbar-width: thin; scrollbar-color: #cbc8ef transparent; }
+.cm-floating-select-option { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-width: 0; min-height: 39px; padding: 8px 10px; border: 1px solid transparent; border-radius: 10px; color: #46516c; background: transparent; text-align: left; cursor: pointer; transition: background .14s ease, border-color .14s ease, color .14s ease; }
+.cm-floating-select-option:hover, .cm-floating-select-option.is-active { border-color: #e8e6ff; color: #4339bd; background: linear-gradient(100deg, #f5f3ff, #f9fbff); }
+.cm-floating-select-option.is-selected { border-color: #d9d5ff; color: #5145d2; background: linear-gradient(100deg, #f0eeff, #f8f8ff); }
+.cm-floating-select-option:disabled { opacity: .45; cursor: not-allowed; }
+.cm-floating-select-option-copy { display: grid; gap: 2px; min-width: 0; }
+.cm-floating-select-option-copy strong { overflow-wrap: anywhere; font-size: 11px; line-height: 1.4; font-weight: 700; }
+.cm-floating-select-option-copy small { color: #8d96aa; font-size: 9px; line-height: 1.4; }
+.cm-floating-select-option-check { display: grid; place-items: center; width: 22px; height: 22px; flex: 0 0 auto; border-radius: 7px; color: transparent; background: transparent; }
+.cm-floating-select-option.is-selected .cm-floating-select-option-check { color: #fff; background: linear-gradient(135deg, #8076fc, #5d52e6); box-shadow: 0 3px 8px rgb(104 92 246 / 22%); }
+.cm-floating-select-option-check .icon { width: 13px !important; height: 13px !important; }
+.cm-floating-select-empty { margin: 0; padding: 18px 12px; color: #8a92a7; text-align: center; font-size: 11px; }
+.cm-floating-select-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border-top: 1px solid #eff0f7; color: #9aa2b4; background: #fcfcff; font-size: 9px; }
+@media (prefers-reduced-motion: reduce) { .cm-floating-select-popover { animation: none; } .cm-floating-select, .cm-floating-select-chevron { transition: none; } }
+
+/* Use the same elevated, portalled control in every workspace module. */
+.cm-floating-select { position: relative; z-index: 0; }
+.cm-floating-select-value, .cm-floating-select-placeholder { font-size: 12px; line-height: 1.35; }
+.cm-floating-select-popover { max-width: calc(100vw - 24px); isolation: isolate; }
+.cm-floating-select-options { overscroll-behavior: contain; }
+.cm-floating-select-option { min-height: 42px; }
+.cm-floating-select-option-copy strong { font-size: 12px; }
+.cm-floating-select-option-copy small { font-size: 10px; }
+.workflow-stage-floating-select { width: 118px; min-height: 32px; padding: 0 8px; border-radius: 8px; }
+.workflow-stage-floating-select .cm-floating-select-value { font-size: 10px; }
+.cm-evidence-select { min-height: 42px; }
+.saved-search-controls > .cm-floating-select { min-height: 38px; }
+@media (max-width: 620px) {
+  .cm-floating-select-popover { max-width: calc(100vw - 20px); }
+  .workflow-stage-floating-select { width: 100%; }
+}

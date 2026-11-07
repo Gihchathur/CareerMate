@@ -1537,3 +1537,110 @@ body { background: var(--workspace-bg); color: var(--workspace-ink); }
 .external-quick-search small { flex-basis:100%; color:#a0a5b3; font-size:9px; }
 
 /* 1.0 visual system is layered in redesign.css */
+
+/* Application form review states: a field becomes green only after the user
+   explicitly reviews it or CareerMate confirms it was filled in the employer form. */
+.browser-field-card.state-needs-input {
+  border-color: #edc17b;
+  background: linear-gradient(135deg, #fffaf0 0%, #ffffff 72%);
+  box-shadow: inset 3px 0 0 #e4a43f;
+}
+.browser-field-card.state-needs-input .browser-field-input,
+.browser-field-card.state-needs-input textarea,
+.browser-field-card.state-needs-input .cm-floating-select {
+  border-color: #e4bd7b;
+  background: #fffdf8;
+}
+.browser-field-card.state-needs-input .browser-field-input:focus,
+.browser-field-card.state-needs-input textarea:focus,
+.browser-field-card.state-needs-input .cm-floating-select:focus-visible {
+  outline: 3px solid rgb(228 164 63 / 16%);
+  border-color: #d8932e;
+}
+.browser-field-card.state-accepted {
+  border-color: #b9e5d1;
+  background: linear-gradient(135deg, #f4fcf7 0%, #ffffff 74%);
+  box-shadow: inset 3px 0 0 #36a879;
+}
+.browser-field-card.state-accepted .browser-field-input,
+.browser-field-card.state-accepted textarea,
+.browser-field-card.state-accepted .cm-floating-select {
+  border-color: #b9e5d1;
+  background: #fbfffc;
+}
+.browser-field-card.state-suggested {
+  border-color: #cbd8f4;
+  background: linear-gradient(135deg, #f7f9ff 0%, #ffffff 74%);
+  box-shadow: inset 3px 0 0 #7190d8;
+}
+.browser-field-card.state-optional {
+  border-color: #e6e9f1;
+  background: #fff;
+}
+.browser-field-state-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid transparent !important;
+  border-radius: 999px !important;
+  padding: 4px 8px !important;
+  font-size: 9px !important;
+  font-weight: 800 !important;
+  letter-spacing: .01em !important;
+  line-height: 1.2;
+  text-transform: none !important;
+  white-space: nowrap;
+}
+.browser-field-state-badge.needs-input {
+  color: #89520b !important;
+  border-color: #f1d6a8 !important;
+  background: #fff0d5 !important;
+}
+.browser-field-state-badge.accepted {
+  color: #176a4c !important;
+  border-color: #c4ead7 !important;
+  background: #e7f8ef !important;
+}
+.browser-field-state-badge.suggested {
+  color: #3e5f9f !important;
+  border-color: #d4e0fa !important;
+  background: #edf3ff !important;
+}
+.browser-field-state-badge.optional {
+  color: #667188 !important;
+  border-color: #e2e6ee !important;
+  background: #f4f6fa !important;
+}
+.browser-field-kind { flex: 0 0 auto; white-space: nowrap; }
+.browser-field-include { line-height: 1.4; }
+.browser-control-label { font-size: 11px; line-height: 1.45; }
+.browser-field-card .field > span { font-size: 11px; }
+.browser-field-card .field input,
+.browser-field-card .field textarea,
+.browser-field-input { font-size: 12px; }
+@media (max-width: 620px) {
+  .browser-field-card-header { align-items: flex-start; }
+  .browser-field-include span { align-items: flex-start; }
+  .browser-field-state-badge { white-space: normal; }
+}
+
+
+/* Compact visual preview for the ATS-safe sectioned CV document template. */
+.cv-template-layout-preview { margin-top: 12px; border: 1px solid #e4e7f1; border-radius: 12px; background: #fbfcff; overflow: hidden; }
+.cv-template-layout-preview > summary { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 10px 13px; color: #5652a6; font-size: 11px; font-weight: 750; cursor: pointer; list-style: none; }
+.cv-template-layout-preview > summary::-webkit-details-marker { display: none; }
+.cv-template-layout-preview > summary::after { content: "⌄"; margin-left: auto; font-size: 15px; transition: transform .18s ease; }
+.cv-template-layout-preview[open] > summary::after { transform: rotate(180deg); }
+.cv-template-layout-paper { max-width: 650px; margin: 0 auto 12px; padding: 22px 25px; border: 1px solid #e6e8ef; border-radius: 4px; color: #26344d; background: #fff; box-shadow: 0 8px 24px rgb(31 44 74 / 7%); }
+.cv-template-layout-paper header { text-align: center; }
+.cv-template-layout-paper h4 { margin: 0 0 3px; color: #192744; font-size: 20px; font-weight: 850; }
+.cv-template-layout-paper header > strong { display: block; margin-bottom: 6px; color: #5146c2; font-size: 10px; letter-spacing: .04em; }
+.cv-template-layout-contact { margin: 2px 0 0; color: #697791; font-size: 9px; line-height: 1.45; }
+.cv-template-layout-accent { height: 3px; margin: 9px 0 13px; border-radius: 3px; background: #8c83f6; }
+.cv-template-layout-paper section { margin-top: 11px; }
+.cv-template-layout-paper section strong { display: block; padding-bottom: 4px; border-bottom: 1px solid #d9ddf0; color: #263650; font-size: 9px; font-weight: 850; letter-spacing: .04em; }
+.cv-template-layout-paper section > div { width: 70%; height: 5px; margin-top: 6px; border-radius: 5px; background: #edf0f6; }
+.cv-template-layout-paper section:nth-of-type(2) > div { width: 88%; }
+.cv-template-layout-paper section:nth-of-type(3) > div { width: 95%; }
+.cv-template-layout-preview > small { display: block; padding: 0 13px 12px; color: #7d879b; font-size: 10px; line-height: 1.5; }
+@media (max-width: 620px) { .cv-template-layout-paper { padding: 16px; } }

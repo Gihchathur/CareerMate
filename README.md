@@ -1,14 +1,14 @@
-# CareerMate 2.2
+# CareerMate 3.7.0
 
 > A redesigned, local-first career operating system for finding opportunities, evaluating fit, preparing applications and tracking outcomes.
 
 <p align="center">
-  <img src="frontend/public/careermate-logo.svg" alt="CareerMate logo" width="420" />
+  <img src="frontend/public/careermate-symbol.svg" alt="CareerMate logo" width="88" />
 </p>
 
 <p align="center">
   <strong>Local-first, AI-assisted job search and application preparation.</strong><br />
-  Search opportunities, understand CV-to-role evidence, prepare application materials, and review supported form fields before submitting.
+  Search employer career portals, understand CV-to-role evidence, prepare application materials, and review supported form fields before submitting.
 </p>
 
 <p align="center">
@@ -17,21 +17,27 @@
   <img src="https://img.shields.io/badge/status-community%20project-596579" alt="Community project" />
 </p>
 
-CareerMate runs on your computer. Candidate profiles, candidate evidence, job records, application drafts and caches are stored in local JSON files. You can use local Ollama inference or configure an online AI API. Hosted AI sends the task content needed for the operation to that provider, and CareerMate requires explicit consent before using a hosted provider.
+CareerMate 3.7.0 runs on your computer. Candidate profiles, candidate evidence, job records, application drafts and caches are stored in local JSON files. You can use local Ollama inference or configure an online AI API. Hosted AI sends the task content needed for the operation to that provider, and CareerMate requires explicit consent before using a hosted provider.
 
-## CareerMate 2.2 workspace
+## CareerMate 3.7.0 workspace
 
-The redesigned workspace adds grouped navigation, a keyboard command palette (`Ctrl/Cmd + K`), responsive mobile navigation, career analytics, an automation centre and a candidate evidence vault. The evidence vault stores professional claims locally and requires explicit user verification. Analytics are calculated from recorded workspace data; historical trends and time-saved metrics are not invented.
+The workflow-first workspace introduces Today, Explore, Inbox, Match intelligence, Scheduled scans, Pipeline, Follow-ups, Portals, Analytics, CV, Documents and Config. All application dropdowns use a shared portalled select that stays above page panels and the hover navigation rail. The desktop navigation is a compact 60px icon rail with no internal scrollbar; spacing adapts to shorter laptop viewports so every destination remains visible. Discovered jobs flow into a dedicated triage Inbox before being promoted into the application Pipeline. The existing AI provider configuration, CV studio, candidate evidence vault and local-first storage remain in place. Analytics are calculated from recorded workspace data; historical trends and time-saved metrics are not invented.
+
+## CareerMate 3.7.0 workflow
+
+The workflow foundation adds a dedicated discovery Inbox, triage stages, a Pipeline board, a Today action dashboard, Follow-ups and a Documents library. The Portal directory is seeded with five employer examples (Spotify, Vercel, Lovable, Legora and Temporal) on first launch and during the one-time 3.3/3.4 upgrade. A local workflow event ledger records job discovery, triage and application-stage changes. See [`docs/CAREERMATE_3.0_WORKFLOW.md`](docs/CAREERMATE_3.0_WORKFLOW.md) for the workflow rules, API endpoints, storage paths and remaining roadmap.
+
+The workflow is intentionally human-approved: Explore queries configured employer ATS portals only, and applications are never submitted automatically. External shortcuts, where retained for reference, are not job-ingestion sources. Existing AI provider configuration and local-first data storage are retained.
 
 ## Frontend experience architecture
 
-The interface uses a shared component system and a dedicated CareerMate 2.2 interaction and visual layer:
+The interface uses a shared component system and a dedicated CareerMate 3.5 workflow and visual layer:
 
 - `frontend/src/components/layout/WorkspaceShell.tsx` owns the application frame, navigation, page heading, and responsive tab navigation.
 - `frontend/src/components/ui/Icon.tsx` provides the shared icon language.
 - `frontend/src/components/ui/SourceMark.tsx` provides recognizable source marks for job-board and ATS listings.
 - `frontend/src/ux-hardening.css` contains the earlier responsive job-feed and mobile navigation hardening.
-- `frontend/src/ux-experience.css` contains the hover-first desktop rail, active-state lighting, ambient canvas treatment, readable page rhythm, drawer hardening and cross-page responsive refinements.
+- `frontend/src/ux-experience.css` contains the hover-first desktop rail, active-state lighting, ambient canvas treatment, readable page rhythm, drawer hardening and cross-page responsive refinements. `frontend/src/navigation-overflow.css` keeps all desktop destinations visible without a nested sidebar scrollbar and compacts the rail on short screens.
 - `frontend/src/styles/tokens.css` defines typography, color, spacing, and motion foundations.
 - `frontend/src/styles/layout.css` defines the document-first scrolling layout and responsive navigation.
 - `frontend/src/styles/components.css` defines shared forms, buttons, cards, job rows, and dialog surfaces.
@@ -43,7 +49,7 @@ The document is the page-level vertical scroll container. Navigation does not cr
 ## Features
 
 - Import CV text from PDF, DOCX or TXT and review the extracted candidate profile.
-- Search supported public feeds and selected employer career boards.
+- Search enabled employer ATS portals configured in the Portals directory. Explore does not mix in public aggregators or external shortcuts; historical public-feed records remain stored but are not shown in this view.
 - Choose country, city, work arrangement and sources for each search.
 - Compare job requirements against profile evidence, with supported, partially supported and not-evidenced classifications.
 - Draft tailored cover letters and employer-question answers without intentionally inventing qualifications.
@@ -51,6 +57,8 @@ The document is the page-level vertical scroll container. Navigation does not cr
 - Prepare supported application forms in Chromium, including multi-tab and embedded-frame flows, review values, and explicitly approve final submission.
 - Store source-backed professional claims in the local evidence vault; claims remain pending until explicitly verified.
 - Review application source health, saved-search preferences and recent alerts in the Automation Centre.
+- Review application fields with clear Needs your input, Suggested, Accepted and Filled states before continuing.
+- Generate a structured CV layout with a centered headline, categorized technical skills, and clearly divided experience, project, education and achievement sections.
 - Review job-match distribution, application funnel and source effectiveness in Career Analytics.
 - Use Ollama locally or configure OpenAI and OpenAI-compatible APIs.
 
@@ -129,7 +137,7 @@ The **Find jobs** workspace lets you choose the sources used by each search. Bui
 | Lever | Configure specific company site identifiers and region in `data/sources.json`. |
 | Teamtailor | Configure specific company boards and an API key environment-variable name in `data/sources.json`; put the key value in `backend/.env`. |
 
-To configure employer boards, copy `data/sources.example.json` to `data/sources.json` and replace the examples with employer-specific values. Keep `enabled` set to `false` until an entry is correctly configured. `data/sources.json` is ignored by Git because your board configuration may contain private details. Do not put API key values in that file.
+For a first-time setup, use the richer `data/portals.example.json` template: copy it to `data/sources.json`, then replace the example company names, ATS identifiers and public URLs. If `data/sources.json` already exists, back it up and merge fields rather than overwriting your existing portal list. Keep `enabled` set to `false` until an entry is correctly configured. The active `data/sources.json` is ignored by Git because your board configuration may contain private details. Do not put API key values in that file. See [Portal configuration](docs/PORTAL-CONFIGURATION.md) for provider-specific URL formats and credential handling. See [Sidebar navigation](docs/SIDEBAR-NAVIGATION.md) for navigation behavior and Overview routing.
 
 Country and city filters are best-effort because public feeds often omit structured location data. For country-specific coverage, configure employer boards relevant to that market and check source warnings in the search result. The adapter architecture can be extended for other public APIs, but arbitrary career pages are not automatically supported; a new source requires an adapter, normalization and tests.
 
@@ -201,11 +209,11 @@ MIT. See [LICENSE](LICENSE).
 
 ## CareerMate 0.9 feature expansion
 
-The 0.9 work adds a searchable 58-platform directory, additional public employer ATS adapters (Ashby, Workday, SmartRecruiters, Workable, Recruitee, Breezy HR and Personio), local saved searches and scheduled alerts, salary/freshness/company filters, and AI-assisted CV tailoring with three DOCX layouts, ATS heuristic feedback and PDF export.
+The 0.9 work adds a searchable 58-platform directory, additional public employer ATS adapters (Ashby, Workday, SmartRecruiters, Workable, Recruitee, Breezy HR and Personio), local saved searches and scheduled alerts, salary/freshness/company filters, and AI-assisted CV tailoring with four DOCX layouts (including a sectioned professional format with a centered identity header and categorized technical skills), ATS heuristic feedback and PDF export.
 
 See [docs/FEATURE-EXPANSION.md](docs/FEATURE-EXPANSION.md) for setup instructions, capability distinctions and limitations. External job-board shortcuts are not automatic integrations; only configured direct-feed adapters retrieve listings.
 
-## CareerMate 2.2.0 navigation and UX
+## CareerMate 3.7.0 workflow-first navigation and UX
 
 - Desktop has no sidebar toggle button: move the pointer into the 76px SVG icon rail and it expands horizontally; move into the page canvas and it collapses back to icons.
 - The expanded width responds to the viewport (238–286px) and the canvas shifts to reserve space rather than being covered.
@@ -214,3 +222,13 @@ See [docs/FEATURE-EXPANSION.md](docs/FEATURE-EXPANSION.md) for setup instruction
 - Cross-page spacing, typography, responsive grids, action wrapping and portalled detail drawers have been hardened.
 
 UX audit and verification notes: [`docs/UX-HARDENING.md`](docs/UX-HARDENING.md). Hover-first preview: [`docs/previews/`](docs/previews/).
+
+
+## CareerMate 3.7 application automation and CV layout
+
+- Browser-assisted application dropdowns use a searchable, keyboard-operable popover rendered outside page overflow containers.
+- Required or question-style fields without answers are highlighted; profile/AI suggestions remain marked for review; manually reviewed values and fields confirmed filled in the employer form have distinct accepted states.
+- CV Studio adds a Sectioned Professional layout based on the structure of the saved Backend CV reference: centered name/title, compact two-line contact header, grouped technical skills, dated experience/project/education headings, and clearly divided sections.
+- Candidate Profile includes an editable CV headline/title field used below the name in this format.
+
+See [CareerMate 3.7 release notes](docs/CAREERMATE_3.7_RELEASE.md).

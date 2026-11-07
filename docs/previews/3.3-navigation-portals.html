@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CareerMate 3.3 — Navigation and portals review</title>
+  <link rel="stylesheet" href="../../frontend/src/careermate-v2.css" />
+  <link rel="stylesheet" href="../../frontend/src/ux-experience.css" />
+  <link rel="stylesheet" href="../../frontend/src/portals-workspace.css" />
+  <link rel="stylesheet" href="../../frontend/src/navigation-overflow.css" />
+  <style>
+    * { box-sizing:border-box }
+    body { margin:0; font-family:Inter,Segoe UI,Arial,sans-serif; color:#24314a; }
+    .cm-brand-symbol { position:relative; display:block; width:34px; height:34px; border-radius:11px; background:linear-gradient(145deg,#8374ff,#5646df); }
+    .cm-brand-symbol span { position:absolute; height:3px; border-radius:2px; background:#fff; transform:rotate(-40deg); }
+    .cm-brand-symbol span:nth-child(1){top:9px;left:9px;width:11px}.cm-brand-symbol span:nth-child(2){top:15px;left:11px;width:15px}.cm-brand-symbol span:nth-child(3){top:21px;left:14px;width:9px}
+    .cm-rail-brand-symbol { position:relative }
+    .icon { display:block; width:17px; height:17px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round }
+    .cm-main { width:100%; padding:32px clamp(20px,4vw,56px); }
+    .cm-page-header { margin-bottom:20px }.cm-page-heading-copy .cm-kicker {color:#7667ee;font-size:10px;font-weight:800;letter-spacing:.16em}.cm-page-heading-copy h1{font-size:30px;margin:7px 0;color:#202c43}.cm-page-heading-copy p{margin:0;color:#697790;font-size:13px}
+    .portal-row { grid-template-columns:42px minmax(0,1fr) auto auto; }
+    .demo-note { margin-top:16px; color:#738099; font-size:12px }
+    .cm-footer {display:none}
+  </style>
+</head>
+<body>
+<div class="cm-app-shell">
+  <header class="cm-topbar">
+    <span class="cm-brand-symbol"><span></span><span></span><span></span></span>
+    <strong class="cm-brand-name">careermate.</strong>
+    <span class="cm-brand-edition">PERSONAL OS</span>
+    <div class="cm-topbar-context"><span class="cm-live-dot"></span><span>Your career workspace</span><span class="cm-context-divider">/</span><span>portals</span></div>
+    <div class="cm-topbar-actions"><button class="cm-command-trigger"><span>Jump to anything</span><kbd>⌘ K</kbd></button></div>
+  </header>
+  <div class="cm-workspace">
+    <aside class="cm-icon-rail" aria-label="Primary navigation">
+      <div class="cm-rail-surface">
+        <div class="cm-rail-brand"><span class="cm-brand-symbol cm-rail-brand-symbol"><span></span><span></span><span></span></span><span class="cm-rail-brand-copy"><strong>CareerMate</strong><small>PERSONAL OS</small></span></div>
+        <nav class="cm-rail-navigation" aria-label="Workspace sections">
+          <div class="cm-rail-group"><span class="cm-rail-group-label">WORKSPACE</span><button class="cm-rail-item"><span class="cm-rail-icon-wrap"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span><span class="cm-rail-item-label">Today</span></button></div>
+          <span class="cm-rail-separator"></span>
+          <div class="cm-rail-group"><span class="cm-rail-group-label">DISCOVER</span>
+            <button class="cm-rail-item"><span class="cm-rail-icon-wrap"><svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3M11 7v8m-4-4h8"/></svg></span><span class="cm-rail-item-label">Explore</span><span class="cm-rail-item-badge">5</span></button>
+            <button class="cm-rail-item"><span class="cm-rail-icon-wrap"><svg class="icon" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM4 8l8 6 8-6"/></svg></span><span class="cm-rail-item-label">Inbox</span><span class="cm-rail-item-badge">12</span></button>
+            <button class="cm-rail-item"><span class="cm-rail-icon-wrap"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 2v3m10 7h-3"/></svg></span><span class="cm-rail-item-label">Match intelligence</span></button>
+            <button class="cm-rail-item"><span class="cm-rail-icon-wrap"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg></span><span class="cm-rail-item-label">Scheduled scans</span></button>
+          </div>
+          <span class="cm-rail-separator"></span>
+          <div class="cm-rail-group"><span class="cm-rail-group-label">MANAGE</span>
+            <button class="cm-rail-item"><span class="cm-rail-icon-wrap"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="4" width="6" height="16" rx="1"/><rect x="11" y="4" width="4" height="10" rx="1"/><rect x="17" y="4" width="4" height="16" rx="1"/></svg></span><span class="cm-rail-item-label">Pipeline</span></button>
+            <button class="cm-rail-item"><span class="cm-rail-icon-wrap"><svg class="icon" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM3 7l9 7 9-7"/></svg></span><span class="cm-rail-item-label">Follow-ups</span></button>
+            <button class="cm-rail-item is-active"><span class="cm-rail-icon-wrap"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg></span><span class="cm-rail-item-label">Portals</span></button>
+          </div>
+          <span class="cm-rail-separator"></span>
+          <div class="cm-rail-group"><span class="cm-rail-group-label">INSIGHTS</span><button class="cm-rail-item"><span class="cm-rail-icon-wrap"><svg class="icon" viewBox="0 0 24 24"><path d="M4 19V5m0 14h17M8 15l4-4 3 2 5-7"/></svg></span><span class="cm-rail-item-label">Analytics</span></button></div>
+          <span class="cm-rail-separator"></span>
+          <div class="cm-rail-group"><span class="cm-rail-group-label">YOUR CAREER</span>
+            <button class="cm-rail-item"><span class="cm-rail-icon-wrap"><svg class="icon" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7"/></svg></span><span class="cm-rail-item-label">CV</span></button>
+            <button class="cm-rail-item"><span class="cm-rail-icon-wrap"><svg class="icon" viewBox="0 0 24 24"><path d="M5 4h13v16H5zM2 7v15h13M8 8h7M8 12h7M8 16h5"/></svg></span><span class="cm-rail-item-label">Documents</span></button>
+          </div>
+          <span class="cm-rail-separator"></span>
+          <div class="cm-rail-group"><span class="cm-rail-group-label">PREFERENCES</span><button class="cm-rail-item"><span class="cm-rail-icon-wrap"><svg class="icon" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16M9 4v6m6 4v6"/></svg></span><span class="cm-rail-item-label">Config</span></button></div>
+        </nav>
+        <div class="cm-rail-bottom"><button class="cm-rail-profile"><span class="cm-rail-profile-ring"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-5 4-7 8-7s7 2 8 7"/></svg></span><span class="cm-rail-profile-copy"><strong>Profile readiness</strong><small>67% complete</small></span><span class="cm-rail-profile-arrow">↗</span></button><div class="cm-rail-footer"><span class="cm-rail-footer-dot"></span>Local AI · Local first</div></div>
+      </div>
+    </aside>
+    <main class="cm-main" data-view="platforms">
+      <div class="cm-page-header"><div class="cm-page-heading-copy"><span class="cm-kicker">EMPLOYER SOURCES</span><h1>Portals</h1><p>Monitor the employer career pages you follow and keep supported job boards healthy.</p></div></div>
+      <div class="cm-content-frame">
+        <section class="portal-health-strip"><div class="portal-health-summary-copy"><strong>5 employer portals configured</strong><span>5 enabled <i></i> 0 paused <i></i> Run a health check to verify availability</span></div><div class="portal-health-summary-stats"><span class="portal-health-stat is-live"><b>0</b> live</span><span class="portal-health-stat is-empty"><b>0</b> empty</span><span class="portal-health-stat is-unchecked"><b>5</b> not checked</span><span class="portal-health-stat is-warning"><b>0</b> attention</span></div></section>
+        <section class="panel portal-directory-panel">
+          <div class="portal-section-heading"><div><p class="eyebrow">MONITORED EMPLOYERS</p><h2>Monitored employers</h2><p class="panel-description">Five configured starter portals. Run a health check to confirm live ATS availability.</p></div><span class="portal-total-chip">5 portals</span></div>
+          <div class="portal-directory-tools"><label class="portal-search"><span>⌕</span><input placeholder="Find a company or portal…" /></label><div class="portal-filter-tabs"><button class="is-active">All <span>5</span></button><button>Active <span>5</span></button><button>Paused <span>0</span></button></div></div>
+          <div class="portal-list">
+            <article class="portal-row"><span class="portal-brand-mark"><span class="portal-company-monogram portal-monogram-lever">SP</span></span><div class="portal-row-main"><div class="portal-row-titleline"><strong>Spotify</strong><span class="portal-starter-chip">Starter</span><span class="portal-status-badge status-not_checked"><i></i>Not checked</span></div><span class="portal-domain-line">jobs.lever.co/spotify <span>·</span> Lever · Global</span><small class="portal-row-message">Ready for the first health check.</small><div class="portal-url-actions"><a>Career page ↗</a><a>Public jobs board ↗</a></div></div><span class="portal-job-count"><strong>—</strong><small>jobs</small></span><label class="portal-enable-toggle"><input type="checkbox" checked/><span>Enabled</span></label></article>
+            <article class="portal-row"><span class="portal-brand-mark"><span class="portal-company-monogram portal-monogram-greenhouse">V</span></span><div class="portal-row-main"><div class="portal-row-titleline"><strong>Vercel</strong><span class="portal-starter-chip">Starter</span><span class="portal-status-badge status-not_checked"><i></i>Not checked</span></div><span class="portal-domain-line">job-boards.greenhouse.io/vercel <span>·</span> Greenhouse</span><small class="portal-row-message">Ready for the first health check.</small><div class="portal-url-actions"><a>Career page ↗</a><a>Public jobs board ↗</a></div></div><span class="portal-job-count"><strong>—</strong><small>jobs</small></span><label class="portal-enable-toggle"><input type="checkbox" checked/><span>Enabled</span></label></article>
+            <article class="portal-row"><span class="portal-brand-mark"><span class="portal-company-monogram portal-monogram-ashby">LO</span></span><div class="portal-row-main"><div class="portal-row-titleline"><strong>Lovable</strong><span class="portal-starter-chip">Starter</span><span class="portal-status-badge status-not_checked"><i></i>Not checked</span></div><span class="portal-domain-line">jobs.ashbyhq.com/lovable <span>·</span> Ashby · Sweden</span><small class="portal-row-message">Ready for the first health check.</small></div><span class="portal-job-count"><strong>—</strong><small>jobs</small></span><label class="portal-enable-toggle"><input type="checkbox" checked/><span>Enabled</span></label></article>
+            <article class="portal-row"><span class="portal-brand-mark"><span class="portal-company-monogram portal-monogram-ashby">LE</span></span><div class="portal-row-main"><div class="portal-row-titleline"><strong>Legora</strong><span class="portal-starter-chip">Starter</span><span class="portal-status-badge status-not_checked"><i></i>Not checked</span></div><span class="portal-domain-line">jobs.ashbyhq.com/legora <span>·</span> Ashby · Sweden</span><small class="portal-row-message">Ready for the first health check.</small></div><span class="portal-job-count"><strong>—</strong><small>jobs</small></span><label class="portal-enable-toggle"><input type="checkbox" checked/><span>Enabled</span></label></article>
+            <article class="portal-row"><span class="portal-brand-mark"><span class="portal-company-monogram portal-monogram-ashby">TE</span></span><div class="portal-row-main"><div class="portal-row-titleline"><strong>Temporal</strong><span class="portal-starter-chip">Starter</span><span class="portal-status-badge status-not_checked"><i></i>Not checked</span></div><span class="portal-domain-line">jobs.ashbyhq.com/temporal <span>·</span> Ashby</span><small class="portal-row-message">Ready for the first health check.</small></div><span class="portal-job-count"><strong>—</strong><small>jobs</small></span><label class="portal-enable-toggle"><input type="checkbox" checked/><span>Enabled</span></label></article>
+          </div>
+          <div class="portal-section-heading"><div><p class="panel-description">Sample portals are enabled. Run a health check before relying on them for discovery.</p></div></div>
+        </section>
+      </div>
+      <p class="demo-note">UI preview only: the five example portals will be seeded into local data on first load or the 3.3 upgrade.</p>
+    </main>
+  </div>
+</div>
+</body>
+</html>

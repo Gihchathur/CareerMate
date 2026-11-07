@@ -426,3 +426,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .cm-evidence-spinner { width: 20px; height: 20px; margin-bottom: 9px; border: 2px solid #e7e4ff; border-top-color: #7668e9; border-radius: 50%; animation: cm-spin .9s linear infinite; }
 .cm-evidence-disclaimer { display: flex; align-items: flex-start; gap: 7px; margin-top: 14px; padding-top: 11px; border-top: 1px solid #eff1f5; color: #98a1b1; font-size: 8px; line-height: 1.5; }.cm-evidence-disclaimer .icon { flex: 0 0 auto; width: 13px; height: 13px; color: #8c83df; }
 @media(max-width:680px) { .cm-evidence-vault { padding: 15px; }.cm-evidence-form { grid-template-columns: 1fr; padding: 12px; }.cm-evidence-wide { grid-column: auto; }.cm-evidence-form-heading,.cm-evidence-form-footer { grid-column: auto; }.cm-evidence-record { flex-wrap: wrap; }.cm-evidence-record-actions { width: 100%; justify-content: flex-end; }.cm-evidence-list-heading { align-items: flex-start; flex-direction: column; }.cm-evidence-summary { gap: 6px; }.cm-evidence-summary > div { flex-direction: column; gap: 1px; padding: 9px; } }
+
+/* Evidence form dropdowns use the shared body-portalled select. */
+.cm-evidence-field > .cm-floating-select { width: 100%; }

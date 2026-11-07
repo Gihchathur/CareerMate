@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { createCandidateEvidence, deleteCandidateEvidence, getCandidateEvidence, updateCandidateEvidence } from "../../api";
 import type { CandidateEvidence, CandidateEvidenceInput } from "../../types";
 import { Icon } from "../ui/Icon";
+import { FloatingSelect } from "../ui/FloatingSelect";
 
 const CATEGORY_LABELS: Record<CandidateEvidenceInput["category"], string> = {
   skill: "Skill", experience: "Experience", project: "Project", achievement: "Achievement", education: "Education",
@@ -94,8 +95,8 @@ export function EvidenceVault() {
       <form className="cm-evidence-form" onSubmit={addEvidence}>
         <div className="cm-evidence-form-heading"><strong>Add a professional claim</strong><small>Use measurable, factual statements where possible.</small></div>
         <label className="cm-evidence-field cm-evidence-wide"><span>Claim</span><input required minLength={3} maxLength={1200} value={form.claim} onChange={(event) => setForm((current) => ({ ...current, claim: event.target.value }))} placeholder="e.g. Reduced notification delivery failures by 25%" /></label>
-        <label className="cm-evidence-field"><span>Category</span><select value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value as CandidateEvidenceInput["category"] }))}>{Object.entries(CATEGORY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        <label className="cm-evidence-field"><span>Supporting source</span><select value={form.source_type} onChange={(event) => setForm((current) => ({ ...current, source_type: event.target.value as CandidateEvidenceInput["source_type"] }))}>{Object.entries(SOURCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label className="cm-evidence-field"><span>Category</span><FloatingSelect className="cm-evidence-select" ariaLabel="Evidence category" value={form.category} onChange={(value) => setForm((current) => ({ ...current, category: value as CandidateEvidenceInput["category"] }))} options={Object.entries(CATEGORY_LABELS).map(([value, label]) => ({ value, label }))} /></label>
+        <label className="cm-evidence-field"><span>Supporting source</span><FloatingSelect className="cm-evidence-select" ariaLabel="Supporting source" value={form.source_type} onChange={(value) => setForm((current) => ({ ...current, source_type: value as CandidateEvidenceInput["source_type"] }))} options={Object.entries(SOURCE_LABELS).map(([value, label]) => ({ value, label }))} /></label>
         <label className="cm-evidence-field"><span>Source reference</span><input maxLength={500} value={form.source_reference} onChange={(event) => setForm((current) => ({ ...current, source_reference: event.target.value }))} placeholder="Company, project, role or CV section" /></label>
         <label className="cm-evidence-field cm-evidence-wide"><span>Supporting detail</span><textarea rows={2} maxLength={4000} value={form.supporting_detail} onChange={(event) => setForm((current) => ({ ...current, supporting_detail: event.target.value }))} placeholder="What did you do, which tools were involved, and how can this claim be checked?" /></label>
         <div className="cm-evidence-form-footer"><span>Stored locally in your CareerMate data folder.</span><button type="submit" className="cm-button cm-button-primary" disabled={saving || !form.claim.trim()}><Icon name="plus" />{saving ? "Saving…" : "Add evidence"}</button></div>

@@ -215,3 +215,39 @@ def test_submit_endpoint_never_calls_browser_when_user_did_not_approve(monkeypat
     )
     assert response.status_code == 409
     assert "not approved" in response.json()["detail"].casefold()
+
+
+def test_resolve_cv_attachment_preserves_the_role_company_filename(monkeypatch, tmp_path):
+    from app.models.candidate import CandidateProfile
+    from app.services import resume_builder
+
+    output_dir = tmp_path / "tailored"
+    monkeypatch.setattr(resume_builder, "OUTPUT_DIR", output_dir)
+    profile = CandidateProfile.model_validate({
+        "personal": {"name": "Gihan Chathuranga", "headline": "Backend Engineer"},
+        "summary": "Backend engineer experienced in production APIs, messaging and cloud platforms.",
+        "skills": ["C#", ".NET", "RabbitMQ", "Kubernetes"],
+    })
+    tailored = {"summary": profile.summary, "skills": profile.skills, "experience": [], "keyword_gaps": []}
+    monkeypatch.setattr(resume_builder, "_grounded_tailoring", lambda _profile, _jd: tailored)
+    monkeypatch.setattr(resume_builder, "_ats_score", lambda *_args: {"score": 84, "checks": []})
+    generated = resume_builder.create_tailored_cv(
+        profile,
+        "Backend Engineer role requiring .NET services, RabbitMQ messaging, Kubernetes and observability. " * 3,
+        "sectioned",
+        job_title="Backend Engineer",
+        company="Spotify",
+        job_id="job:spotify:backend",
+    )
+
+    path = browser_assistance.resolve_cv_attachment(f"__CAREERMATE_TAILORED_CV__:{generated['filename']}")
+    assert path.is_file()
+    assert path.name == generated["pdf_filename"]
+    assert "Spotify" in path.name
+    assert "Backend_Engineer" in path.name
+
+def test_resolve_cv_attachment_rejects_paths_and_unowned_files():
+    with pytest.raises(browser_assistance.BrowserAssistanceError, match="Choose the original CV"):
+        browser_assistance.resolve_cv_attachment("C:/Users/candidate/resume.pdf")
+    with pytest.raises(browser_assistance.BrowserAssistanceError, match="filename is invalid"):
+        browser_assistance.resolve_cv_attachment("__CAREERMATE_TAILORED_CV__:../escape.docx")
