@@ -10,6 +10,7 @@ import httpx
 from app.models.job import JobPosting
 from app.services.job_sources.base import (
     JobSourceError,
+    JobSourceIncompleteError,
     get_with_retries,
     classify_work_mode,
     clean_html,
@@ -86,7 +87,7 @@ def fetch_site_jobs(
     region: str = "global",
     default_country: str = "",
     page_size: int = 100,
-    max_pages: int = 10,
+    max_pages: int = 200,
 ) -> list[JobPosting]:
     """Fetch published jobs from one known Lever site slug."""
     site_slug = site.strip()
@@ -95,7 +96,7 @@ def fetch_site_jobs(
         raise JobSourceError("A valid Lever site slug is required.")
     if region_key not in API_ROOTS:
         raise JobSourceError("Lever region must be 'global' or 'eu'.")
-    if not 1 <= page_size <= 100 or not 1 <= max_pages <= 20:
+    if not 1 <= page_size <= 100 or not 1 <= max_pages <= 500:
         raise JobSourceError("Invalid Lever pagination settings.")
 
     jobs: list[JobPosting] = []
@@ -124,4 +125,9 @@ def fetch_site_jobs(
         )
         if len(payload) < page_size:
             break
+        if page + 1 >= max_pages:
+            raise JobSourceIncompleteError(
+                f"Lever site '{site_slug}' reached the {max_pages * page_size:,}-job pagination safety limit; results are partial. Increase max_pages or verify the provider board.",
+                jobs,
+            )
     return jobs

@@ -13,6 +13,7 @@ import { PipelineBoard } from "./components/workflow/PipelineBoard";
 import { FollowUps } from "./components/workflow/FollowUps";
 import { DocumentsLibrary } from "./components/workflow/DocumentsLibrary";
 import "./styles/workflow.css";
+import "./reference-dashboard.css";
 import {
   analyzeCv,
   closeBrowserSession,
@@ -93,6 +94,7 @@ import type {
   WorkflowEvent,
   WorkflowInboxResponse,
   PortalHealthResponse,
+  PortalSearchCoverage,
   PortalHealthItem,
   PortalHealthStatus,
 } from "./types";
@@ -119,7 +121,6 @@ const SOURCE_OPTIONS: { id: keyof JobSourceConfiguration; title: string }[] = [
   { id: "workday", title: "Workday" },
 ];
 
-type PlatformShortcut = { id: string; name: string; url: string; enabled: boolean; description?: string; category?: string };
 type EmployerBoardProvider = keyof JobSourceConfiguration;
 const BOARD_PROVIDERS: EmployerBoardProvider[] = ["greenhouse", "lever", "teamtailor", "ashby", "smartrecruiters", "workable", "recruitee", "breezy", "personio", "workday"];
 const BOARD_PROVIDER_LABELS: Record<EmployerBoardProvider, string> = {
@@ -137,6 +138,23 @@ function employerBoardIdentifier(provider: EmployerBoardProvider, board: JobBoar
 
 function employerPortalId(provider: EmployerBoardProvider, board: JobBoardConfig): string {
   return `${provider}:${employerBoardIdentifier(provider, board).toLocaleLowerCase()}`;
+}
+
+function enabledEmployerPortalIds(
+  config: JobSourceConfiguration,
+  statuses: Record<JobSourceId, JobSourceStatus>,
+): string[] {
+  return BOARD_PROVIDERS.flatMap((provider) =>
+    config[provider]
+      .filter((board) => board.enabled && employerBoardIdentifier(provider, board) && canSelectSource(provider, statuses[provider]))
+      .map((board) => employerPortalId(provider, board)),
+  );
+}
+
+function selectedPortalSourceIds(config: JobSourceConfiguration, portalIds: string[]): JobSourceId[] {
+  return BOARD_PROVIDERS
+    .filter((provider) => config[provider].some((board) => portalIds.includes(employerPortalId(provider, board))))
+    .map((provider) => provider);
 }
 
 function employerPortalDomain(provider: EmployerBoardProvider, board: JobBoardConfig): string {
@@ -174,472 +192,6 @@ function employerPortalJobsUrl(provider: EmployerBoardProvider, board: JobBoardC
 function portalStatusLabel(status: PortalHealthStatus): string {
   return status === "live" ? "Live" : status === "empty" ? "Live · no jobs" : status === "paused" ? "Paused" : status === "needs_setup" ? "Needs setup" : status === "broken" ? "Unreachable" : "Not checked";
 }
-const DEFAULT_PLATFORM_SHORTCUTS: PlatformShortcut[] = [
-  {
-    "id": "linkedin",
-    "name": "LinkedIn Jobs",
-    "url": "https://www.linkedin.com/jobs/search/?keywords={query}&location={location}",
-    "enabled": true,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "professional_network"
-  },
-  {
-    "id": "indeed",
-    "name": "Indeed",
-    "url": "https://www.indeed.com/jobs?q={query}&l={location}",
-    "enabled": true,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "job_board"
-  },
-  {
-    "id": "glassdoor",
-    "name": "Glassdoor",
-    "url": "https://www.glassdoor.com/Job/jobs.htm?sc.keyword={query}&locT=C&locName={location}",
-    "enabled": true,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "job_board"
-  },
-  {
-    "id": "wellfound",
-    "name": "Wellfound",
-    "url": "https://wellfound.com/jobs?query={query}",
-    "enabled": true,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "startup"
-  },
-  {
-    "id": "ziprecruiter",
-    "name": "ZipRecruiter",
-    "url": "https://www.ziprecruiter.com/jobs-search?search={query}&location={location}",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "job_board"
-  },
-  {
-    "id": "monster",
-    "name": "Monster",
-    "url": "https://www.monster.com/jobs/search?q={query}&where={location}",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "job_board"
-  },
-  {
-    "id": "careerbuilder",
-    "name": "CareerBuilder",
-    "url": "https://www.careerbuilder.com/jobs?keywords={query}&location={location}",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "job_board"
-  },
-  {
-    "id": "simplyhired",
-    "name": "SimplyHired",
-    "url": "https://www.simplyhired.com/search?q={query}&l={location}",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "job_board"
-  },
-  {
-    "id": "dice",
-    "name": "Dice",
-    "url": "https://www.dice.com/jobs?q={query}&location={location}",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "technology"
-  },
-  {
-    "id": "thelocal",
-    "name": "The Local Jobs",
-    "url": "https://www.thelocal.com/jobs/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "regional"
-  },
-  {
-    "id": "eures",
-    "name": "EURES",
-    "url": "https://eures.europa.eu/index_en",
-    "enabled": true,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "government"
-  },
-  {
-    "id": "arbetsformedlingen",
-    "name": "Arbetsförmedlingen",
-    "url": "https://arbetsformedlingen.se/platsbanken/",
-    "enabled": false,
-    "description": "Automatic feed connector available.",
-    "category": "government"
-  },
-  {
-    "id": "jobtech",
-    "name": "JobTech/Platsbanken",
-    "url": "https://arbetsformedlingen.se/platsbanken/",
-    "enabled": true,
-    "description": "Automatic feed connector available.",
-    "category": "government"
-  },
-  {
-    "id": "remoteok",
-    "name": "Remote OK",
-    "url": "https://remoteok.com/",
-    "enabled": true,
-    "description": "Automatic feed connector available.",
-    "category": "remote"
-  },
-  {
-    "id": "arbeitnow",
-    "name": "Arbeitnow",
-    "url": "https://arbeitnow.com/",
-    "enabled": true,
-    "description": "Automatic feed connector available.",
-    "category": "remote"
-  },
-  {
-    "id": "weworkremotely",
-    "name": "We Work Remotely",
-    "url": "https://weworkremotely.com/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "remote"
-  },
-  {
-    "id": "remotive",
-    "name": "Remotive",
-    "url": "https://remotive.com/remote-jobs",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "remote"
-  },
-  {
-    "id": "eurojobs",
-    "name": "EuroJobs",
-    "url": "https://www.eurojobs.com/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "regional"
-  },
-  {
-    "id": "jobsinnetwork",
-    "name": "JobsinNetwork",
-    "url": "https://www.jobsinnetwork.com/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "regional"
-  },
-  {
-    "id": "stepstone",
-    "name": "StepStone",
-    "url": "https://www.stepstone.com/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "regional"
-  },
-  {
-    "id": "totaljobs",
-    "name": "Totaljobs",
-    "url": "https://www.totaljobs.com/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "regional"
-  },
-  {
-    "id": "reed",
-    "name": "Reed",
-    "url": "https://www.reed.co.uk/jobs",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "regional"
-  },
-  {
-    "id": "cv_library",
-    "name": "CV-Library",
-    "url": "https://www.cv-library.co.uk/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "regional"
-  },
-  {
-    "id": "jobsite",
-    "name": "Jobsite",
-    "url": "https://www.jobsite.co.uk/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "regional"
-  },
-  {
-    "id": "jobindex",
-    "name": "Jobindex",
-    "url": "https://www.jobindex.dk/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "regional"
-  },
-  {
-    "id": "finn",
-    "name": "FINN Jobb",
-    "url": "https://www.finn.no/job/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "regional"
-  },
-  {
-    "id": "nav",
-    "name": "NAV Arbeidsplassen",
-    "url": "https://arbeidsplassen.nav.no/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "government"
-  },
-  {
-    "id": "jobbsafari",
-    "name": "Jobbsafari",
-    "url": "https://www.jobbsafari.se/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "regional"
-  },
-  {
-    "id": "academicwork",
-    "name": "Academic Work",
-    "url": "https://www.academicwork.se/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "regional"
-  },
-  {
-    "id": "thehub",
-    "name": "The Hub",
-    "url": "https://thehub.io/jobs",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "startup"
-  },
-  {
-    "id": "oyster",
-    "name": "Oyster",
-    "url": "https://www.oysterhr.com/careers",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "remote"
-  },
-  {
-    "id": "otta",
-    "name": "Welcome to the Jungle",
-    "url": "https://www.welcometothejungle.com/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "technology"
-  },
-  {
-    "id": "himalayas",
-    "name": "Himalayas",
-    "url": "https://himalayas.app/jobs",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "remote"
-  },
-  {
-    "id": "workingnomads",
-    "name": "Working Nomads",
-    "url": "https://www.workingnomads.com/jobs",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "remote"
-  },
-  {
-    "id": "startupjobs",
-    "name": "Startup.jobs",
-    "url": "https://startup.jobs/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "startup"
-  },
-  {
-    "id": "ycombinator",
-    "name": "Y Combinator Work at a Startup",
-    "url": "https://www.ycombinator.com/jobs",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "startup"
-  },
-  {
-    "id": "hackernews",
-    "name": "Hacker News Who is Hiring",
-    "url": "https://news.ycombinator.com/submitted?id=whoishiring",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "community"
-  },
-  {
-    "id": "otta_jobs",
-    "name": "Otta",
-    "url": "https://otta.com/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "technology"
-  },
-  {
-    "id": "greenhouse",
-    "name": "Greenhouse boards",
-    "url": "https://www.greenhouse.io/",
-    "enabled": true,
-    "description": "Automatic feed connector available.",
-    "category": "ats"
-  },
-  {
-    "id": "lever",
-    "name": "Lever boards",
-    "url": "https://www.lever.co/",
-    "enabled": true,
-    "description": "Automatic feed connector available.",
-    "category": "ats"
-  },
-  {
-    "id": "teamtailor",
-    "name": "Teamtailor boards",
-    "url": "https://www.teamtailor.com/",
-    "enabled": true,
-    "description": "Automatic feed connector available.",
-    "category": "ats"
-  },
-  {
-    "id": "ashby",
-    "name": "Ashby",
-    "url": "https://jobs.ashbyhq.com/",
-    "enabled": false,
-    "description": "Employer board can be connected by configuring its company slug.",
-    "category": "ats"
-  },
-  {
-    "id": "workday",
-    "name": "Workday",
-    "url": "https://www.workday.com/",
-    "enabled": false,
-    "description": "Employer board can be connected by configuring its company slug.",
-    "category": "ats"
-  },
-  {
-    "id": "smartrecruiters",
-    "name": "SmartRecruiters",
-    "url": "https://www.smartrecruiters.com/",
-    "enabled": false,
-    "description": "Employer board can be connected by configuring its company slug.",
-    "category": "ats"
-  },
-  {
-    "id": "workable",
-    "name": "Workable",
-    "url": "https://www.workable.com/",
-    "enabled": false,
-    "description": "Employer board can be connected by configuring its company slug.",
-    "category": "ats"
-  },
-  {
-    "id": "recruitee",
-    "name": "Recruitee",
-    "url": "https://recruitee.com/",
-    "enabled": false,
-    "description": "Employer board can be connected by configuring its company slug.",
-    "category": "ats"
-  },
-  {
-    "id": "personio",
-    "name": "Personio",
-    "url": "https://www.personio.com/",
-    "enabled": false,
-    "description": "Employer board can be connected by configuring its company slug.",
-    "category": "ats"
-  },
-  {
-    "id": "breezy",
-    "name": "Breezy HR",
-    "url": "https://breezy.hr/",
-    "enabled": false,
-    "description": "Employer board can be connected by configuring its company slug.",
-    "category": "ats"
-  },
-  {
-    "id": "rippling",
-    "name": "Rippling",
-    "url": "https://www.rippling.com/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "ats"
-  },
-  {
-    "id": "icims",
-    "name": "iCIMS",
-    "url": "https://www.icims.com/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "ats"
-  },
-  {
-    "id": "pinpoint",
-    "name": "Pinpoint",
-    "url": "https://www.pinpointhq.com/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "ats"
-  },
-  {
-    "id": "jazzhr",
-    "name": "JazzHR",
-    "url": "https://www.jazzhr.com/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "ats"
-  },
-  {
-    "id": "bullhorn",
-    "name": "Bullhorn",
-    "url": "https://www.bullhorn.com/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "ats"
-  },
-  {
-    "id": "oracle_taleo",
-    "name": "Oracle Taleo",
-    "url": "https://www.oracle.com/human-capital-management/taleo/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "ats"
-  },
-  {
-    "id": "successfactors",
-    "name": "SAP SuccessFactors",
-    "url": "https://www.sap.com/products/hcm.html",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "ats"
-  },
-  {
-    "id": "jobvite",
-    "name": "Jobvite",
-    "url": "https://www.jobvite.com/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "ats"
-  },
-  {
-    "id": "bamboohr",
-    "name": "BambooHR",
-    "url": "https://www.bamboohr.com/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "ats"
-  },
-  {
-    "id": "smartrecruiters_portal",
-    "name": "SmartRecruiters Jobs",
-    "url": "https://www.smartrecruiters.com/",
-    "enabled": false,
-    "description": "External search shortcut; automatic importing is not enabled.",
-    "category": "ats"
-  }
-];
 
 const APPLICATION_STATUS_LABELS: Record<ApplicationStatus, string> = {
   saved: "Saved",
@@ -677,23 +229,18 @@ function canSelectSource(source: JobSourceId, status: JobSourceStatus): boolean 
   return source !== "teamtailor" || status.credentials_ready === true;
 }
 
-function enabledPortalSourceIds(
-  config: JobSourceConfiguration,
-  statuses: Record<JobSourceId, JobSourceStatus>,
-): JobSourceId[] {
-  return SOURCE_OPTIONS
-    .filter(({ id }) => (config[id] ?? []).some((board) => board.enabled) && canSelectSource(id, statuses[id]))
-    .map(({ id }) => id);
-}
-
-function isJobFromEnabledPortal(job: JobResult, config: JobSourceConfiguration, selectedSources: JobSourceId[]): boolean {
+function isJobFromEnabledPortal(job: JobResult, config: JobSourceConfiguration, selectedPortalIds: string[]): boolean {
   const provider = job.source.trim().toLocaleLowerCase() as keyof JobSourceConfiguration;
-  if (!SOURCE_OPTIONS.some((item) => item.id === provider) || !selectedSources.includes(provider)) return false;
+  if (!SOURCE_OPTIONS.some((item) => item.id === provider)) return false;
+  const selected = new Set(selectedPortalIds.map((id) => id.trim().toLocaleLowerCase()));
+  // New records carry an authoritative provider:company ID from the backend.
+  // Use it first; company-name/source-ID heuristics remain for older saved jobs.
+  if (job.portal_id?.trim()) return selected.has(job.portal_id.trim().toLocaleLowerCase());
   const normalize = (value: string) => value.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, " ");
   const company = normalize(job.company || "");
   const sourceId = (job.source_id || "").toLocaleLowerCase();
   return (config[provider] ?? []).some((board) => {
-    if (!board.enabled) return false;
+    if (!board.enabled || !selectedPortalIds.includes(employerPortalId(provider, board))) return false;
     const configuredCompany = normalize(board.company || board.slug || board.site || board.board_token || "");
     const identifiers = [board.board_token, board.site, board.company, board.slug]
       .filter((value): value is string => Boolean(value?.trim()))
@@ -896,6 +443,10 @@ function App() {
   const [newBoardRegion, setNewBoardRegion] = useState("eu");
   const [newBoardApiKeyEnv, setNewBoardApiKeyEnv] = useState("CAREERMATE_TEAMTAILOR_API_KEY");
   const [selectedSources, setSelectedSources] = useState<JobSourceId[]>([]);
+  const [selectedPortalIds, setSelectedPortalIds] = useState<string[]>([]);
+  const [exploreResultTab, setExploreResultTab] = useState<"results" | "selected" | "applied">("results");
+  const [exploreSort, setExploreSort] = useState<"relevance" | "newest" | "company">("relevance");
+  const [exploreViewMode, setExploreViewMode] = useState<"list" | "grid">("list");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [aiSettings, setAiSettings] = useState<AISettingsResponse | null>(null);
@@ -913,10 +464,9 @@ function App() {
   const [workMode, setWorkMode] = useState<WorkMode>("any");
   const [pageSize, setPageSize] = useState(20);
   const [searchOffset, setSearchOffset] = useState(0);
-  const [searchHasMore, setSearchHasMore] = useState(false);
   const [searchTotalReported, setSearchTotalReported] = useState(0);
-  const [searchTotalApproximate, setSearchTotalApproximate] = useState(false);
   const [searchFilterNote, setSearchFilterNote] = useState("");
+  const [portalCoverage, setPortalCoverage] = useState<PortalSearchCoverage[]>([]);
   const [activeSearch, setActiveSearch] = useState<JobSearchCriteria | null>(null);
   const [jobs, setJobs] = useState<JobResult[]>([]);
   const [availableMatchJobs, setAvailableMatchJobs] = useState<JobResult[]>([]);
@@ -943,7 +493,7 @@ function App() {
   const [maximumSalary, setMaximumSalary] = useState("");
   const [freshnessDays, setFreshnessDays] = useState("30");
   const [excludedCompaniesText, setExcludedCompaniesText] = useState("");
-  const [savedSearches, setSavedSearches] = useState<{id:string;name:string;roles:string[];country:string;city:string;work_mode:WorkMode;sources:JobSourceId[];frequency:"manual"|"daily"|"weekly";created_at:string}[]>([]);
+  const [savedSearches, setSavedSearches] = useState<{id:string;name:string;roles:string[];country:string;city:string;work_mode:WorkMode;sources:JobSourceId[];portal_ids?:string[];frequency:"manual"|"daily"|"weekly";created_at:string}[]>([]);
   const [savedSearchName, setSavedSearchName] = useState("My job search");
   const [checkingAlertId, setCheckingAlertId] = useState<string | null>(null);
   const [alertFrequency, setAlertFrequency] = useState<"manual"|"daily"|"weekly">("daily");
@@ -990,11 +540,6 @@ function App() {
   const [manualAdvertSavingId, setManualAdvertSavingId] = useState<string | null>(null);
   const [enrichingApplicationId, setEnrichingApplicationId] = useState<string | null>(null);
   const [jobFilter, setJobFilter] = useState("");
-  const [platformShortcuts, setPlatformShortcuts] = useState<PlatformShortcut[]>(DEFAULT_PLATFORM_SHORTCUTS);
-  const [platformFilter, setPlatformFilter] = useState("");
-  const [platformPrefsLoaded, setPlatformPrefsLoaded] = useState(false);
-  const [customPlatformName, setCustomPlatformName] = useState("");
-  const [customPlatformUrl, setCustomPlatformUrl] = useState("");
   const [applicationListTab, setApplicationListTab] = useState<"all" | "active" | "submitted" | "offers">("all");
   const [applications, setApplications] = useState<ApplicationRecord[]>([]);
   const [workflowInboxData, setWorkflowInboxData] = useState<WorkflowInboxResponse | null>(null);
@@ -1088,34 +633,6 @@ function App() {
     }
   }, []);
 
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("careermate.platform-shortcuts.v1");
-      if (saved) {
-        const parsed: unknown = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          const cleaned = parsed.filter((item): item is PlatformShortcut => Boolean(item) && typeof item === "object"
-            && typeof (item as PlatformShortcut).id === "string"
-            && typeof (item as PlatformShortcut).name === "string"
-            && typeof (item as PlatformShortcut).url === "string"
-            && typeof (item as PlatformShortcut).enabled === "boolean");
-          if (cleaned.length) {
-            const savedById = new Map(cleaned.map((item) => [item.id, item]));
-            const merged = DEFAULT_PLATFORM_SHORTCUTS.map((item) => savedById.get(item.id) ?? item);
-            const custom = cleaned.filter((item) => item.id.startsWith("custom-") && !merged.some((base) => base.id === item.id));
-            setPlatformShortcuts([...merged, ...custom].slice(0, 100));
-          }
-        }
-      }
-    } catch { /* Keep built-in shortcuts if saved preferences are malformed. */ }
-    setPlatformPrefsLoaded(true);
-  }, []);
-
-  useEffect(() => {
-    if (!platformPrefsLoaded) return;
-    try { localStorage.setItem("careermate.platform-shortcuts.v1", JSON.stringify(platformShortcuts)); }
-    catch { /* Platform shortcuts remain usable for this session if storage is unavailable. */ }
-  }, [platformShortcuts, platformPrefsLoaded]);
 
   const refreshStatus = useCallback(async () => {
     const status = await getCvStatus();
@@ -1167,7 +684,9 @@ function App() {
           const loadedConfig = { ...EMPTY_JOB_SOURCE_CONFIG, ...(sourceConfigResponse?.config ?? {}) };
           setJobSources(mergedStatus);
           setSourceConfig(loadedConfig);
-          setSelectedSources(enabledPortalSourceIds(loadedConfig, mergedStatus));
+          const enabledPortals = enabledEmployerPortalIds(loadedConfig, mergedStatus);
+          setSelectedPortalIds(enabledPortals);
+          setSelectedSources(selectedPortalSourceIds(loadedConfig, enabledPortals));
         }
 
         if (status.profile_saved) {
@@ -1329,46 +848,64 @@ function App() {
     }
   }
 
-  async function executeJobSearch(criteria: JobSearchCriteria, offset: number) {
+  async function executeJobSearch(criteria: JobSearchCriteria, refreshPortals = false) {
     setJobLoading(true);
+    setPortalCoverage([]);
     setError("");
     setNotice("Searching your enabled employer portals.");
 
     try {
-      const result = await searchJobs({ ...criteria, offset });
-      setActiveSearch(criteria);
-      setJobs(result.jobs);
+      const result = await searchJobs({ ...criteria, offset: 0, refresh_portals: refreshPortals });
+      // The server has already restricted this inventory to the exact selected
+      // company portals and applied role/location/advanced filters. Do not run a
+      // second client-side portal check that can hide valid returned matches.
+      // `matching_jobs` is the full unique inventory; `jobs` remains a fallback
+      // for an older backend so the workspace never drops a valid page silently.
+      const searchInventory = Array.isArray(result.matching_jobs)
+        ? result.matching_jobs
+        : result.jobs;
+      const searchCriteria = { ...criteria, limit: pageSize };
+      setActiveSearch(searchCriteria);
+      setJobs(searchInventory);
+      setPortalCoverage(result.portal_results ?? []);
       // The search endpoint persists normalized jobs; refresh the workflow inbox
       // so every successful discovery immediately enters the triage process.
       await refreshWorkflowData();
       setAvailableMatchJobs((current) => {
         const merged = new Map(current.map((job) => [job.id, job]));
-        result.jobs.forEach((job) => merged.set(job.id, { ...merged.get(job.id), ...job }));
+        searchInventory.forEach((job) => merged.set(job.id, { ...merged.get(job.id), ...job }));
         return Array.from(merged.values());
       });
-      setSelectedMatchJobIds((current) => [...new Set([...current, ...result.jobs.slice(0, 3).map((job) => job.id)])].slice(0, 20));
+      setSelectedMatchJobIds((current) => [...new Set([...current, ...searchInventory.slice(0, 3).map((job) => job.id)])].slice(0, 20));
       setMatchSelectionSearch("");
       setSelectedJob(null);
       setMatches([]);
-      setSearchOffset(result.offset);
-      setSearchHasMore(result.has_more);
-      setSearchTotalReported(result.total_reported);
-      setSearchTotalApproximate(result.total_is_approximate);
+      setSearchOffset(0);
+      setSearchTotalReported(searchInventory.length);
       setSearchFilterNote(result.filter_note);
 
       const warningText = result.warnings.length
         ? ` Some source searches had warnings: ${result.warnings.join("; ")}`
         : "";
-      const totalLabel = `Selected sources reported ${result.total_reported.toLocaleString()} raw matches before local filtering${result.total_is_approximate ? " (approximate when multiple roles, employer boards, or a work-mode filter are used)" : ""}.`;
+      const totalLabel = `Found ${result.total_reported.toLocaleString()} role and location matches before cross-board de-duplication${result.total_is_approximate ? " (approximate across portals and filters)" : ""}.`;
+      const initialPageCount = Math.min(searchInventory.length, pageSize);
       setNotice(
-        `Showing ${result.returned} unique jobs on page ${Math.floor(offset / criteria.limit) + 1}. ` +
+        `Showing ${initialPageCount.toLocaleString()} of ${searchInventory.length.toLocaleString()} unique matching jobs. ` +
         `${result.saved_total.toLocaleString()} unique job records are saved locally. ${totalLabel}${warningText}`
       );
 
-      if (result.returned === 0 && result.filtered_out > 0) {
+      if (searchInventory.length === 0 && (result.advanced_filtered_out ?? 0) > 0) {
         setNotice(
-          `No jobs on this page matched the selected work mode. ${result.filtered_out} listing(s) were excluded because their detected work mode did not match. Try Any or move to the next page.`
+          `${result.advanced_filtered_out.toLocaleString()} listing(s) matched your requested role and location, but were removed by the advanced salary, freshness or company-exclusion filters. Review Advanced filters and relax any exclusions.`,
         );
+      } else if (searchInventory.length === 0 && result.filtered_out > 0) {
+        const exclusions = result.filtered_out_by ?? { country: 0, city: 0, work_mode: 0 };
+        const reasons = [
+          exclusions.country ? `${exclusions.country} country mismatch(es)` : "",
+          exclusions.city ? `${exclusions.city} city mismatch(es)` : "",
+          exclusions.work_mode ? `${exclusions.work_mode} work-arrangement mismatch(es)` : "",
+        ].filter(Boolean);
+        setNotice(`No jobs on this page passed your location and work-arrangement filters. ${reasons.join(", ") || `${result.filtered_out} listing(s) filtered out`}. Review each portal's coverage report below.`);
       }
     } catch (searchError) {
       setError(searchError instanceof Error ? searchError.message : "Job search failed.");
@@ -1378,11 +915,16 @@ function App() {
     }
   }
 
-  function toggleJobSource(source: JobSourceId, checked: boolean) {
-    setSelectedSources((current) => {
-      if (checked) return current.includes(source) ? current : [...current, source];
-      return current.filter((item) => item !== source);
-    });
+  function toggleEmployerPortal(portalId: string, checked: boolean) {
+    const nextPortalIds = checked
+      ? (selectedPortalIds.includes(portalId) ? selectedPortalIds : [...selectedPortalIds, portalId])
+      : selectedPortalIds.filter((item) => item !== portalId);
+    setSelectedPortalIds(nextPortalIds);
+    setSelectedSources(selectedPortalSourceIds(sourceConfig, nextPortalIds));
+    setPortalCoverage([]);
+    // Changing company boards invalidates the previous search context; the user
+    // must run the new selection before paging or live-refreshing it.
+    setActiveSearch(null);
   }
 
   async function handleRefreshSourceConfig() {
@@ -1393,8 +935,11 @@ function App() {
       const nextConfig = { ...EMPTY_JOB_SOURCE_CONFIG, ...result.config };
       setSourceConfig(nextConfig);
       setJobSources({ ...EMPTY_SOURCE_STATUS, ...result.sources });
-      setSelectedSources(enabledPortalSourceIds(nextConfig, result.sources));
-      setNotice("Employer portal providers refreshed.");
+      const enabledPortals = enabledEmployerPortalIds(nextConfig, result.sources);
+      const retainedSelection = selectedPortalIds.filter((portalId) => enabledPortals.includes(portalId));
+      setSelectedPortalIds(retainedSelection);
+      setSelectedSources(selectedPortalSourceIds(nextConfig, retainedSelection));
+      setNotice("Employer portal configuration refreshed. Your current company selection was preserved.");
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : "Could not refresh job platform configuration.");
       setNotice("");
@@ -1425,9 +970,12 @@ function App() {
       setJobSources({ ...EMPTY_SOURCE_STATUS, ...result.sources });
       const health = await getPortalHealth().catch(() => null);
       if (health) setPortalHealth(health);
-      // Search every active employer portal by default. No public-feed or
-      // external-shortcut sources are implicitly added to Explore.
-      setSelectedSources(enabledPortalSourceIds(result.config, result.sources));
+      // Keep the user's company-level selection when saving portal settings.
+      // Newly added boards are available in Explore but are not silently selected.
+      const enabledPortals = enabledEmployerPortalIds(result.config, result.sources);
+      const retainedSelection = selectedPortalIds.filter((portalId) => enabledPortals.includes(portalId));
+      setSelectedPortalIds(retainedSelection);
+      setSelectedSources(selectedPortalSourceIds(result.config, retainedSelection));
       setNotice(result.message || "Job platform settings saved locally.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Could not save job platform settings.");
@@ -1473,26 +1021,6 @@ function App() {
     setSourceConfig((current) => ({ ...current, [provider]: current[provider].filter((_, itemIndex) => itemIndex !== index) }));
   }
 
-  function platformSearchUrl(platform: PlatformShortcut): string | null {
-    const query = jobRoles.split("\n").map((item) => item.trim()).filter(Boolean).join(" ") || "software engineer";
-    const location = [jobCity.trim(), jobCountry.trim()].filter(Boolean).join(", ");
-    const candidate = platform.url.replaceAll("{query}", encodeURIComponent(query)).replaceAll("{location}", encodeURIComponent(location));
-    return safeExternalUrl(candidate);
-  }
-
-  function addCustomPlatformShortcut() {
-    const name = customPlatformName.trim();
-    const url = customPlatformUrl.trim();
-    if (!name || !url) { setError("Enter both a platform name and its public HTTPS search URL."); return; }
-    let parsed: URL;
-    try { parsed = new URL(url); } catch { setError("Enter a valid HTTPS URL for the platform."); return; }
-    if (parsed.protocol !== "https:") { setError("Custom platform links must use HTTPS."); return; }
-    if (platformShortcuts.length >= 20) { setError("Keep at most 20 platform shortcuts."); return; }
-    const id = `custom-${Date.now()}`;
-    setPlatformShortcuts((current) => [...current, { id, name, url, enabled: true, description: "Custom external search link." }]);
-    setCustomPlatformName(""); setCustomPlatformUrl(""); setError(""); setNotice(`Added ${name} to your local platform shortcuts.`);
-  }
-
   async function refreshSavedSearches() {
     try {
       const result = await getSavedSearches(); setSavedSearches(result.searches);
@@ -1503,9 +1031,9 @@ function App() {
   async function handleSaveCurrentSearch() {
     const roles = jobRoles.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
     if (!roles.length) { setError("Enter a job title before saving this search."); return; }
-    if (!selectedSources.length) { setError("Select at least one enabled employer portal before saving this search."); return; }
+    if (!selectedPortalIds.length) { setError("Select at least one connected employer portal before saving this search."); return; }
     try {
-      await createSavedSearch({ name: savedSearchName.trim() || "My job search", roles, country: jobCountry, city: jobCity, work_mode: workMode, sources: selectedSources, frequency: alertFrequency });
+      await createSavedSearch({ name: savedSearchName.trim() || "My job search", roles, country: jobCountry, city: jobCity, work_mode: workMode, sources: selectedSources, portal_ids: selectedPortalIds, frequency: alertFrequency });
       await refreshSavedSearches();
       setNotice("Search saved locally. Use Check new jobs to compare it with the latest results.");
     } catch (e) { setError(e instanceof Error ? e.message : "Could not save search."); }
@@ -1513,16 +1041,16 @@ function App() {
 
   async function handleCheckSavedSearch(id: string) {
     const savedSearch = savedSearches.find((item) => item.id === id);
-    const portalSourceIds = SOURCE_OPTIONS.map((source) => source.id);
-    const legacySources = savedSearch?.sources.filter((source) => !portalSourceIds.includes(source as keyof JobSourceConfiguration)) ?? [];
-    if (legacySources.length) {
-      setError(`This saved search still uses legacy sources (${legacySources.join(", ")}). Delete it and save a new search using your configured employer portals.`);
+    const savedPortalIds = savedSearch?.portal_ids ?? [];
+    if (!savedSearch || savedPortalIds.length === 0) {
+      setError("This saved search was created before company-level portal selection. Save it again from Explore and choose the employer portals to monitor.");
       setNotice("");
       return;
     }
-    const activePortalSources = enabledPortalSourceIds(sourceConfig, jobSources);
-    if (savedSearch && !savedSearch.sources.some((source) => activePortalSources.includes(source))) {
-      setError("None of this saved search's employer portals is currently enabled. Update Portals or recreate the search.");
+    const activePortalIds = enabledEmployerPortalIds(sourceConfig, jobSources);
+    const hasEnabledSavedPortal = savedPortalIds.some((portalId) => activePortalIds.includes(portalId));
+    if (!hasEnabledSavedPortal) {
+      setError("None of this saved search's company portals is currently enabled. Update Portals or recreate the search.");
       setNotice("");
       return;
     }
@@ -1538,9 +1066,10 @@ function App() {
     finally { setCheckingAlertId(null); }
   }
 
-  async function handleTailorCvForSelectedJob() {
-    if (!selectedJob) return;
-    const description = selectedJob.description?.trim() ?? "";
+  async function handleTailorCvForSelectedJob(jobOverride?: JobResult | null) {
+    const targetJob = jobOverride ?? selectedJob;
+    if (!targetJob) return;
+    const description = targetJob.description?.trim() ?? "";
     if (description.length < 100) {
       setCvTailorError("Fetch the full job description first. CareerMate needs the actual requirements to tailor your CV.");
       return;
@@ -1548,9 +1077,9 @@ function App() {
     setTailoringCv(true); setCvTailorError(""); setTailoredCv(null);
     try {
       setTailoredCv(await tailorCvForJob(description, cvTemplate, {
-        job_title: selectedJob.title,
-        company: selectedJob.company,
-        job_id: selectedJob.id,
+        job_title: targetJob.title,
+        company: targetJob.company,
+        job_id: targetJob.id,
       }));
       const versions = await getTailoredCvVersions();
       setTailoredCvVersions(versions.versions);
@@ -1585,8 +1114,8 @@ function App() {
       return;
     }
 
-    if (selectedSources.length === 0) {
-      setError("No employer portals are enabled for Explore. Open Portals, add or enable a company career board, then search again.");
+    if (selectedPortalIds.length === 0) {
+      setError("No company portals are selected. Open Portals, connect a company career board, then select it here.");
       setNotice("");
       return;
     }
@@ -1597,6 +1126,7 @@ function App() {
       city: jobCity.trim(),
       work_mode: workMode,
       sources: selectedSources,
+      portal_ids: selectedPortalIds,
       limit: pageSize,
       ...(minimumSalary.trim() ? { min_salary: Number(minimumSalary) } : {}),
       ...(maximumSalary.trim() ? { max_salary: Number(maximumSalary) } : {}),
@@ -1604,14 +1134,15 @@ function App() {
       ...(excludedCompaniesText.trim() ? { excluded_companies: excludedCompaniesText.split(",").map((x) => x.trim()).filter(Boolean) } : {}),
     };
 
-    await executeJobSearch(criteria, 0);
+    await executeJobSearch(criteria);
   }
 
-  async function changeSearchPage(direction: -1 | 1) {
+  function changeSearchPage(direction: -1 | 1) {
     if (!activeSearch || jobLoading) return;
-    const nextOffset = searchOffset + direction * activeSearch.limit;
-    if (nextOffset < 0 || nextOffset > 2000) return;
-    await executeJobSearch(activeSearch, nextOffset);
+    const pageLength = activeSearch.limit;
+    const nextOffset = searchOffset + direction * pageLength;
+    if (nextOffset < 0 || nextOffset >= searchTotalReported) return;
+    setSearchOffset(nextOffset);
   }
 
 
@@ -1996,6 +1527,7 @@ function App() {
       setWorkMode("any");
       setPageSize(20);
       setSelectedSources([]);
+      setSelectedPortalIds([]);
       setJobFilter("");
       setFile(null);
       setBrowserSession(null);
@@ -2597,14 +2129,51 @@ function App() {
   // Hide legacy/global-feed records from Explore. This view is intentionally
   // limited to active employer boards configured in Portals and selected for
   // the current search; legacy records remain preserved in local storage.
-  const explorePortalJobs = jobs.filter((job) => isJobFromEnabledPortal(job, sourceConfig, selectedSources));
+  // A completed search response is already scoped by FastAPI to selected,
+  // enabled portal IDs. Trust that server-side decision: filtering it again in
+  // the browser caused valid coverage matches to disappear from the result list.
+  // Before a search (initial workspace load), keep filtering saved records locally.
+  const explorePortalJobs = activeSearch
+    ? jobs
+    : jobs.filter((job) => isJobFromEnabledPortal(job, sourceConfig, selectedPortalIds));
   const filteredJobs = explorePortalJobs.filter((job) => {
     const needle = jobFilter.trim().toLocaleLowerCase();
     if (!needle) return true;
     return [job.title, job.company, job.location, job.description, ...(job.search_roles ?? [])]
       .some((value) => (value ?? "").toLocaleLowerCase().includes(needle));
   });
+  const selectedExploreJobs = filteredJobs.filter((job) =>
+    workflowInboxData?.items.some((item) => item.job.id === job.id && item.triage.stage === "shortlisted"),
+  );
+  const appliedExploreJobs = filteredJobs.filter((job) => hasAppliedToJob(job.id));
+  const exploreTabJobs = exploreResultTab === "selected"
+    ? selectedExploreJobs
+    : exploreResultTab === "applied" ? appliedExploreJobs : filteredJobs;
+  const sortedExploreJobs = [...exploreTabJobs].sort((first, second) => {
+    if (exploreSort === "company") return first.company.localeCompare(second.company);
+    if (exploreSort === "newest") {
+      const firstDate = Date.parse(first.published_at || "") || 0;
+      const secondDate = Date.parse(second.published_at || "") || 0;
+      return secondDate - firstDate || first.company.localeCompare(second.company);
+    }
+    return 0;
+  });
+  const explorePageSize = activeSearch?.limit ?? pageSize;
+  const explorePageCount = Math.max(1, Math.ceil(sortedExploreJobs.length / explorePageSize));
+  const exploreCurrentPage = Math.min(Math.floor(searchOffset / explorePageSize) + 1, explorePageCount);
+  const explorePageStart = (exploreCurrentPage - 1) * explorePageSize;
+  const visibleExploreJobs = exploreResultTab === "results"
+    ? sortedExploreJobs.slice(explorePageStart, explorePageStart + explorePageSize)
+    : sortedExploreJobs;
+  const portalMatchesFilteredByAdvancedFilters = portalCoverage.some((portal) => portal.eligible_matches > 0)
+    && portalCoverage.every((portal) => portal.returned_count === 0);
   const selectedApplication = applications.find((application) => application.id === selectedApplicationId) ?? null;
+  const exploreTailorJob = selectedJob ?? sortedExploreJobs[0] ?? null;
+  const exploreBrowserFields = selectedApplication && browserSession?.application_id === selectedApplication.id
+    ? browserFieldDrafts
+    : [];
+  const exploreAnsweredFields = exploreBrowserFields.filter((field) => !browserFieldNeedsUserInput(field)).length;
+  const exploreRequiredFields = exploreBrowserFields.filter(browserFieldNeedsUserInput).length;
   const activeApplicationCount = applications.filter((application) => !["rejected", "withdrawn", "offer"].includes(application.status)).length;
   const submittedApplicationCount = applications.filter((application) => ["applied", "interview", "offer", "rejected", "withdrawn"].includes(application.status)).length;
   const visibleApplications = applications.filter((application) => {
@@ -2653,13 +2222,13 @@ function App() {
       description: "A focused view of new opportunities, next actions, application progress and recent activity.",
     },
     discover: {
-      title: "Find your next opportunity",
-      eyebrow: "JOB DISCOVERY",
-      description: "Choose your roles, location, and sources. Keep advanced filters out of the way until you need them.",
+      title: "Explore Opportunities",
+      eyebrow: "EXPLORE OPPORTUNITIES",
+      description: "Find new roles from your configured portals. Results are fetched only from the companies you monitor.",
     },
     platforms: {
       title: "Portals",
-      eyebrow: "EMPLOYER SOURCES",
+      eyebrow: "EMPLOYER PORTALS",
       description: "Monitor the employer career pages you follow and keep supported job boards healthy.",
     },
     matches: {
@@ -2715,12 +2284,12 @@ function App() {
     settings: {
       title: "Config",
       eyebrow: "WORKSPACE PREFERENCES",
-      description: "Configure your existing AI provider, source integrations, privacy and local workspace data.",
+      description: "Configure your AI provider, connected employer portals, privacy and local workspace data.",
     },
   };
   const currentMeta = pageMeta[activeView];
   const currentActivity = jobLoading
-    ? "Searching the selected job sources…"
+    ? "Searching your selected employer portals…"
     : matchLoading
       ? "Comparing job requirements with your profile…"
       : cvLoading
@@ -2750,18 +2319,18 @@ function App() {
   };
   const workModeLabel = (mode?: string) => mode === "remote" ? "Remote" : mode === "hybrid" ? "Hybrid" : mode === "on_site" ? "On-site" : "Work mode unknown";
   const renderJobRow = (job: JobResult, compact = false) => {
-    const sourceUrl = safeExternalUrl(job.source_url || job.apply_url);
+    const sourceUrl = safeExternalUrl(job.apply_url || job.source_url);
     const match = matches.find((item) => item.id === job.id);
+    const tracked = Boolean(applicationForJob(job.id));
     return (
-      <article className={`job-row${compact ? " job-row-compact" : ""}`} key={job.id}>
-        <div className="company-avatar">{(job.company || "?").trim().charAt(0).toUpperCase()}</div>
+      <article className={`job-row${compact ? " job-row-compact" : ""}`} data-company={job.company.trim().toLocaleLowerCase()} key={job.id}>
+        <div className="company-avatar" aria-hidden="true">{(job.company || "?").trim().slice(0, 1).toUpperCase()}</div>
         <div className="job-row-main">
           <button className="job-title-button" type="button" onClick={() => setSelectedJob(job)}>{job.title}</button>
-          <div className="job-row-meta"><span>{job.company || "Company not listed"}</span><i aria-hidden="true">·</i><span>{job.location || "Location not listed"}</span></div>
+          <div className="job-row-meta"><strong>{job.company || "Company not listed"}</strong><i aria-hidden="true">·</i><span>{sourceLabel(job.source)}</span><i aria-hidden="true">·</i><span>{job.location || "Location not listed"}</span></div>
           <div className="job-badges">
             <span className={`job-mode-badge mode-${job.work_mode ?? "unknown"}`}>{workModeLabel(job.work_mode)}</span>
             {job.salary_min != null && job.salary_max != null && <span className="job-role-badge">{job.salary_currency || ""} {job.salary_min.toLocaleString()}–{job.salary_max.toLocaleString()}</span>}
-            <span className="source-chip"><SourceMark source={job.source} sourceUrl={job.source_url || job.apply_url} /><span>{sourceLabel(job.source)}</span></span>
             {(job.search_roles ?? []).slice(0, 2).map((role) => <span className="job-role-badge" key={role}>{role}</span>)}
             {match?.match_score !== undefined && match.match_score !== null && <span className="match-chip">{match.match_score}% CV match</span>}
             {hasAppliedToJob(job.id) && <span className="job-history-pill">Already applied{applicationForJob(job.id)?.status === "offer" ? " · Offer" : ""}</span>}
@@ -2769,9 +2338,10 @@ function App() {
           {!compact && job.description && <p className="job-row-description">{job.description}</p>}
         </div>
         <div className="job-row-actions">
-          {job.published_at && <span className="job-date">{job.published_at}</span>}
-          <button className="button button-secondary button-small" type="button" onClick={() => setSelectedJob(job)}>Details</button>
-          {sourceUrl && <a className="icon-link" href={sourceUrl} target="_blank" rel="noopener noreferrer" aria-label={`Open ${job.title} at source`}><Icon name="arrow" /></a>}
+          {match?.match_score !== undefined && match.match_score !== null && <span className="job-match-score">{Math.round(match.match_score)}<small>/100</small></span>}
+          <button className="button button-secondary button-small" type="button" onClick={() => { if (match) openExistingInsight(job.id); else setSelectedJob(job); }}><Icon name="eye" /> {match ? "View insight" : "View details"}</button>
+          <button className="job-track-button" type="button" disabled={tracked} onClick={() => void handleTrackJob(job.id)} aria-label={tracked ? "Already in pipeline" : `Add ${job.title} to pipeline`} title={tracked ? "Already in pipeline" : "Add to pipeline"}><Icon name={tracked ? "check" : "bookmark"} /></button>
+          {sourceUrl && <a className="button button-primary button-small job-apply-button" href={sourceUrl} target="_blank" rel="noopener noreferrer">Apply <Icon name="arrow-up-right" /></a>}
         </div>
       </article>
     );
@@ -2785,10 +2355,9 @@ function App() {
       activity={currentActivity}
       status={profile && !profileSaved ? "Profile has unsaved edits" : "Local workspace ready"}
       avatar={profile?.personal?.name?.trim()?.charAt(0)?.toUpperCase() || "C"}
-      providerLabel={aiSettings?.providers[aiSettings.provider]?.label ?? "Loading AI provider"}
+      candidateName={profile?.personal?.name?.trim() || "Complete your profile"}
+      profileProgress={profileCompletion}
       hostedAi={Boolean(aiSettings?.provider && aiSettings.provider !== "ollama")}
-      cvUploaded={cvStatus.uploaded}
-      profileSaved={profileSaved}
       matchCount={matches.length}
       jobCount={jobs.length}
       applicationCount={applications.length}
@@ -2888,59 +2457,172 @@ function App() {
           )}
 
           {activeView === "discover" && (
-            <div className="view-stack">
-              <div className="discover-layout">
-                <section className="panel search-filters-panel">
-                  <div className="panel-titlebar filter-titlebar"><div><p className="eyebrow">SEARCH SETTINGS</p><h2>Shape your search</h2></div><span className="filter-icon"><Icon name="sliders" /></span></div>
-                  <p className="panel-description">Search up to five job titles or keywords. One title per line.</p>
-                  <form onSubmit={handleSearchJobs}>
-                    <TextAreaField label="Job titles or keywords" value={jobRoles} onChange={setJobRoles} placeholder={"Platform Engineer\nDevOps Engineer\nSite Reliability Engineer"} rows={4} />
-                    <label className="field"><span>Country</span><input list="careermate-country-options" value={jobCountry} onChange={(event) => setJobCountry(event.target.value)} placeholder="Type any country or choose a suggestion" maxLength={100} required /></label>
-                    <datalist id="careermate-country-options"><option value="Sweden" /><option value="Norway" /><option value="Denmark" /><option value="Finland" /><option value="Germany" /><option value="Netherlands" /><option value="United Kingdom" /><option value="United States" /><option value="Canada" /><option value="France" /><option value="Switzerland" /><option value="Ireland" /><option value="Spain" /><option value="Italy" /><option value="Poland" /><option value="Australia" /><option value="India" /><option value="Singapore" /><option value="Japan" /><option value="Any country" /></datalist>
-                    <Field label="City or location" value={jobCity} onChange={setJobCity} placeholder="e.g. Stockholm" />
+            <div className="view-stack explore-workspace">
+              <div className="discover-layout explore-layout">
+                <section className="panel search-filters-panel explore-search-panel">
+                  <div className="explore-panel-heading">
+                    <div><span className="explore-mini-label">SEARCH SETUP</span><h2>Find the right role</h2></div>
+                    <span className="explore-panel-icon"><Icon name="sliders" /></span>
+                  </div>
+                  <form onSubmit={handleSearchJobs} className="explore-search-form">
+                    <label className="field explore-role-field"><span>Search roles</span><div className="explore-role-input"><input value={jobRoles.replace(/\s*\n\s*/g, ", ")} onChange={(event) => setJobRoles(event.target.value.replace(/,\s*/g, "\n"))} placeholder="Software Engineer" aria-label="Search roles" /><Icon name="search" /></div></label>
+                    <label className="field explore-location-field"><span>Location</span><div className="explore-location-input"><input value={[jobCity, jobCountry].filter(Boolean).join(", ")} onChange={(event) => { const parts = event.target.value.split(",").map((part) => part.trim()); if (parts.length > 1) { setJobCity(parts.slice(0, -1).join(", ")); setJobCountry(parts[parts.length - 1]); } else { setJobCity(event.target.value); } }} placeholder="e.g. Stockholm, Sweden" aria-label="Location" /><Icon name="chevron-down" /></div></label>
                     <label className="field"><span>Work arrangement</span><FloatingSelect ariaLabel="Work arrangement" value={workMode} onChange={(value) => setWorkMode(value as WorkMode)} options={[{ value: "any", label: "Any / not specified" }, { value: "remote", label: "Remote" }, { value: "hybrid", label: "Hybrid" }, { value: "on_site", label: "On-site" }]} /></label>
-                    <label className="field"><span>Results per page</span><FloatingSelect ariaLabel="Results per page" value={String(pageSize)} onChange={(value) => setPageSize(Number(value))} options={[{ value: "10", label: "10 jobs" }, { value: "20", label: "20 jobs" }, { value: "40", label: "40 jobs" }]} /></label>
-                    <details className="source-settings"><summary><span><Icon name="filter" /> Advanced filters</span><span className="source-settings-count">Salary · freshness · exclusions</span></summary>
+
+                    <details className="source-settings explore-advanced-filters">
+                      <summary><span><Icon name="filter" /> Advanced filters</span><span className="source-settings-count">Salary · freshness · exclusions</span></summary>
                       <div className="platform-form-grid">
-                        <label className="field"><span>Minimum salary</span><input type="number" min="0" value={minimumSalary} onChange={(e)=>setMinimumSalary(e.target.value)} placeholder="e.g. 40000" /></label>
-                        <label className="field"><span>Maximum salary</span><input type="number" min="0" value={maximumSalary} onChange={(e)=>setMaximumSalary(e.target.value)} placeholder="e.g. 65000" /></label>
+                        <label className="field"><span>Results per page</span><FloatingSelect ariaLabel="Results per page" value={String(pageSize)} onChange={(value) => { const nextSize = Number(value); setPageSize(nextSize); setSearchOffset(0); setActiveSearch((current) => current ? { ...current, limit: nextSize } : current); }} options={[{ value: "10", label: "10 jobs" }, { value: "20", label: "20 jobs" }, { value: "40", label: "40 jobs" }]} /></label>
+                        <label className="field"><span>Country</span><input list="careermate-country-options" value={jobCountry} onChange={(event) => setJobCountry(event.target.value)} placeholder="Choose a country" maxLength={100} required /></label>
+                        <datalist id="careermate-country-options"><option value="Sweden" /><option value="Norway" /><option value="Denmark" /><option value="Finland" /><option value="Germany" /><option value="Netherlands" /><option value="United Kingdom" /><option value="United States" /><option value="Canada" /><option value="France" /><option value="Switzerland" /><option value="Ireland" /><option value="Spain" /><option value="Italy" /><option value="Poland" /><option value="Australia" /><option value="India" /><option value="Singapore" /><option value="Japan" /><option value="Any country" /></datalist>
+                        <label className="field"><span>Minimum salary</span><input type="number" min="0" value={minimumSalary} onChange={(event) => setMinimumSalary(event.target.value)} placeholder="e.g. 40000" /></label>
+                        <label className="field"><span>Maximum salary</span><input type="number" min="0" value={maximumSalary} onChange={(event) => setMaximumSalary(event.target.value)} placeholder="e.g. 65000" /></label>
                         <label className="field"><span>Posted within</span><FloatingSelect ariaLabel="Posted within" value={freshnessDays} onChange={setFreshnessDays} options={[{ value: "7", label: "7 days" }, { value: "14", label: "14 days" }, { value: "30", label: "30 days" }, { value: "90", label: "90 days" }, { value: "any", label: "Any date" }]} /></label>
-                        <label className="field"><span>Exclude companies</span><input value={excludedCompaniesText} onChange={(e)=>setExcludedCompaniesText(e.target.value)} placeholder="Comma separated company names" /></label>
+                        <label className="field"><span>Exclude companies</span><input value={excludedCompaniesText} onChange={(event) => setExcludedCompaniesText(event.target.value)} placeholder="Company names, separated by commas" /></label>
                       </div>
-                      <p className="helper-text">Salary filters include only adverts with a recognised salary range. Freshness filters exclude listings without a parseable publication date.</p>
+                      <p className="helper-text">Salary and freshness filters apply only when the original listing provides usable data.</p>
                     </details>
-                    <details className="source-settings"><summary><span><Icon name="layers" /> Job sources</span><span className="source-settings-count">{selectedSources.length} selected</span></summary>
-                      <fieldset className="source-picker" disabled={jobLoading}>
-                        <div className="source-option-grid">
-                          {SOURCE_OPTIONS.map((source) => {
-                            const status = jobSources[source.id];
-                            const activeBoards = sourceConfig[source.id].filter((board) => board.enabled).length;
-                            const selectable = canSelectSource(source.id, status) && activeBoards > 0;
-                            const countLabel = source.id === "teamtailor" && !status.credentials_ready
-                              ? "API key missing"
-                              : `${activeBoards} active employer board${activeBoards === 1 ? "" : "s"}`;
-                            return <label className={`source-option${selectable ? "" : " source-option-disabled"}`} key={source.id}><input type="checkbox" checked={selectedSources.includes(source.id)} disabled={!selectable} onChange={(event) => toggleJobSource(source.id, event.target.checked)} /><span className="source-option-copy"><strong>{source.title}</strong><small>{countLabel}</small></span></label>;
+
+                    <section className="explore-portals-section" aria-labelledby="explore-portals-title">
+                      <div className="explore-portals-heading">
+                        <div><strong id="explore-portals-title">Portals ({enabledPortalCount})</strong><span>{selectedPortalIds.length} selected</span></div>
+                        <small>{enabledPortalCount} connected</small>
+                      </div>
+                      {configuredEmployerPortals.length === 0 ? (
+                        <div className="explore-portals-empty"><Icon name="radar" /><span>No company portals connected yet.</span><button type="button" onClick={() => setActiveView("platforms")}>Connect portals <Icon name="arrow-up-right" /></button></div>
+                      ) : (
+                        <div className="explore-portal-picker">
+                          {sortedEmployerPortals.filter(({ board }) => board.enabled).map(({ provider, board, id }) => {
+                            const selectable = canSelectSource(provider, jobSources[provider]);
+                            const companyName = board.company || employerBoardIdentifier(provider, board) || BOARD_PROVIDER_LABELS[provider];
+                            return (
+                              <label className={`explore-portal-option${selectable ? "" : " is-unavailable"}`} key={id}>
+                                <input type="checkbox" checked={selectedPortalIds.includes(id)} disabled={!selectable || jobLoading} onChange={(event) => toggleEmployerPortal(id, event.target.checked)} />
+                                <span className={`explore-company-mark explore-mark-${provider}`} data-company={companyName.trim().toLocaleLowerCase()}>{companyName.trim().slice(0, 1).toUpperCase()}</span>
+                                <span className="explore-portal-copy"><strong>{companyName}</strong><small>{BOARD_PROVIDER_LABELS[provider]}</small></span>
+                                {!selectable && <span className="explore-portal-warning">Setup needed</span>}
+                              </label>
+                            );
                           })}
                         </div>
-                        <p className="helper-text">Explore searches only enabled employer portals configured in Portals. Every returned job is associated with one of your monitored companies.</p>
-                      </fieldset>
-                      <p className="helper-text">Need more companies? Add their supported career pages in Portals. Explore does not include external job aggregators.</p>
-                    </details>
-                    {selectedSources.length === 0 && <div className="portal-search-empty-hint"><Icon name="radar" /><div><strong>No active employer portals selected</strong><p>Add or enable at least one supported employer career board before searching. CareerMate will only query companies in your Portals directory.</p><button type="button" className="text-action" onClick={() => setActiveView("platforms")}>Manage employer portals <Icon name="arrow" /></button></div></div>}
-                    <button className="button button-primary button-full search-submit" disabled={jobLoading || selectedSources.length === 0} type="submit">{jobLoading ? <><span className="spinner spinner-light" /> Searching jobs…</> : <><Icon name="search" /> Search opportunities</>}</button>
+                      )}
+                      <button type="button" className="explore-manage-portals" onClick={() => setActiveView("platforms")}>Manage portals <Icon name="arrow-up-right" /></button>
+                    </section>
+
+                    <button className="button button-primary button-full search-submit explore-search-submit" disabled={jobLoading || selectedPortalIds.length === 0} type="submit">
+                      {jobLoading ? <><span className="spinner spinner-light" /> Searching portals…</> : <><Icon name="search" /> Search from my portals</>}
+                    </button>
                   </form>
-                  <div className="saved-search-controls"><FloatingSelect ariaLabel="Saved search alert frequency" value={alertFrequency} onChange={(value) => setAlertFrequency(value as "manual" | "daily" | "weekly")} options={[{ value: "manual", label: "Manual checks" }, { value: "daily", label: "Daily alerts" }, { value: "weekly", label: "Weekly alerts" }]} /><input value={savedSearchName} onChange={(e)=>setSavedSearchName(e.target.value)} aria-label="Saved search name" placeholder="Name this search" /><button type="button" className="button button-secondary button-small" disabled={!selectedSources.length} onClick={()=>void handleSaveCurrentSearch()}>Save search</button></div>
-                  {savedSearches.length>0 && <section className="saved-search-list"><h3>Saved searches</h3>{savedSearches.map((item)=><div className="saved-search-row" key={item.id}><span><strong>{item.name}</strong><small>{item.roles.join(", ")} · {item.city}, {item.country}</small></span><button type="button" className="text-action" disabled={checkingAlertId===item.id} onClick={()=>void handleCheckSavedSearch(item.id)}>{checkingAlertId===item.id?"Checking…":"Check new jobs"}</button><button type="button" className="text-action" onClick={async()=>{await deleteSavedSearch(item.id); await refreshSavedSearches();}}>Delete</button></div>)}</section>}
-                  {jobAlerts.length>0 && <section className="saved-search-list"><h3>New job alerts</h3>{jobAlerts.slice(0,8).map((alert)=><div className="saved-search-row" key={alert.id}><span><strong>{alert.title}</strong><small>{alert.company} · {alert.location} · {alert.search_name}</small></span>{alert.url && <a className="text-action" href={alert.url} target="_blank" rel="noreferrer">Open job</a>}{!alert.read && <button type="button" className="text-action" onClick={async()=>{await markJobAlertRead(alert.id); await refreshSavedSearches();}}>Mark read</button>}</div>)}</section>}
-                  <div className="filter-footnote"><Icon name="shield" /><span>Searches are user-initiated. Results are stored in local JSON files.</span></div>
+
+                  <div className="saved-search-controls explore-saved-search-controls">
+                    <FloatingSelect ariaLabel="Saved search alert frequency" value={alertFrequency} onChange={(value) => setAlertFrequency(value as "manual" | "daily" | "weekly")} options={[{ value: "manual", label: "Manual checks" }, { value: "daily", label: "Daily alerts" }, { value: "weekly", label: "Weekly alerts" }]} />
+                    <input value={savedSearchName} onChange={(event) => setSavedSearchName(event.target.value)} aria-label="Saved search name" placeholder="Name this search" />
+                    <button type="button" className="button button-secondary button-small" disabled={!selectedPortalIds.length} onClick={() => void handleSaveCurrentSearch()}>Save search</button>
+                  </div>
+                  {savedSearches.length > 0 && <section className="saved-search-list explore-saved-search-list"><h3>Saved searches</h3>{savedSearches.map((item) => <div className="saved-search-row" key={item.id}><span><strong>{item.name}</strong><small>{item.roles.join(", ")} · {item.city}, {item.country} · {(item.portal_ids?.length ?? 0) || item.sources.length} portal(s)</small></span><button type="button" className="text-action" disabled={checkingAlertId === item.id} onClick={() => void handleCheckSavedSearch(item.id)}>{checkingAlertId === item.id ? "Checking…" : "Check new jobs"}</button><button type="button" className="text-action" onClick={async () => { await deleteSavedSearch(item.id); await refreshSavedSearches(); }}>Delete</button></div>)}</section>}
+                  {jobAlerts.length > 0 && <section className="saved-search-list"><h3>New job alerts</h3>{jobAlerts.slice(0, 8).map((alert) => <div className="saved-search-row" key={alert.id}><span><strong>{alert.title}</strong><small>{alert.company} · {alert.location} · {alert.search_name}</small></span>{alert.url && <a className="text-action" href={alert.url} target="_blank" rel="noreferrer">Open job</a>}{!alert.read && <button type="button" className="text-action" onClick={async () => { await markJobAlertRead(alert.id); await refreshSavedSearches(); }}>Mark read</button>}</div>)}</section>}
+                  <div className="filter-footnote"><Icon name="shield" /><span>Searches are user-initiated. Normal searches reuse a short 2-minute cache; use Refresh portals to bypass it and check the connected boards live.</span></div>
                 </section>
 
-                <section className="panel results-panel">
-                  <div className="results-heading"><div><p className="eyebrow">OPPORTUNITIES</p><h2>Job results <span className="count-pill">{explorePortalJobs.length}</span></h2><p className="panel-description">Select a role to review its details. Apply links open the employer’s own website.</p></div><div className="results-state"><span className="status-live-dot" /> Saved locally</div></div>
-                  <div className="results-toolbar"><label className="result-search"><Icon name="search" /><input type="search" value={jobFilter} onChange={(event) => setJobFilter(event.target.value)} placeholder="Filter by role, company or keyword" aria-label="Filter job results" /><kbd>⌕</kbd></label><span className="results-summary">{filteredJobs.length} of {explorePortalJobs.length} shown</span></div>
-                  {jobLoading && <div className="inline-progress"><span className="spinner" /><div><strong>Searching job sources</strong><p>Collecting listings, normalizing fields, and removing duplicates.</p></div></div>}
-                  {!jobLoading && filteredJobs.length === 0 ? <div className="empty-state results-empty"><span className="empty-icon"><Icon name="search" /></span><h3>{explorePortalJobs.length ? "No jobs match that filter" : "No portal opportunities yet"}</h3><p>{explorePortalJobs.length ? "Try a different title, employer, or keyword." : "Explore only displays jobs from enabled employer portals. Configure your companies in Portals, then run a search."}</p>{explorePortalJobs.length ? <button className="button button-secondary" type="button" onClick={() => setJobFilter("")}>Clear filter</button> : <button className="button button-primary" type="button" onClick={() => setActiveView("platforms")}>Configure portals</button>}</div> : <div className="job-results-list">{filteredJobs.map((job) => renderJobRow(job))}</div>}
-                  {activeSearch && <><div className="search-pagination"><div><strong>Page {Math.floor(searchOffset / activeSearch.limit) + 1}</strong><span className="helper-text">{`${searchTotalReported.toLocaleString()} raw source matches before local filtering${searchTotalApproximate ? " (approximate when multiple roles or work-mode filters are used)" : ""}`}</span></div><div className="button-row pagination-buttons"><button className="button button-secondary" type="button" onClick={() => void changeSearchPage(-1)} disabled={jobLoading || searchOffset === 0}>Previous</button><button className="button button-secondary" type="button" onClick={() => void changeSearchPage(1)} disabled={jobLoading || !searchHasMore || searchOffset >= 2000}>Next page</button></div></div>{searchFilterNote && <p className="search-filter-note">{searchFilterNote}</p>}</>}
+                <section className="panel results-panel explore-results-panel">
+                  <div className="explore-results-toolbar">
+                    <div className="explore-results-tabs" role="tablist" aria-label="Explore result categories">
+                      <button type="button" role="tab" aria-selected={exploreResultTab === "results"} className={exploreResultTab === "results" ? "is-active" : ""} onClick={() => setExploreResultTab("results")}>Results <span>{explorePortalJobs.length}</span></button>
+                      <button type="button" role="tab" aria-selected={exploreResultTab === "selected"} className={exploreResultTab === "selected" ? "is-active" : ""} onClick={() => setExploreResultTab("selected")}>Selected <span>{selectedExploreJobs.length}</span></button>
+                      <button type="button" role="tab" aria-selected={exploreResultTab === "applied"} className={exploreResultTab === "applied" ? "is-active" : ""} onClick={() => setExploreResultTab("applied")}>Applied <span>{appliedExploreJobs.length}</span></button>
+                    </div>
+                    <div className="explore-results-actions">
+                      <button type="button" className="button button-secondary button-small explore-refresh-portals" disabled={jobLoading || !activeSearch || selectedPortalIds.length === 0} onClick={() => activeSearch && void executeJobSearch(activeSearch, true)} title="Bypass the short portal cache and fetch the latest published jobs" aria-label="Refresh connected portals now">
+                        <Icon name="refresh" /> <span>Refresh portals</span>
+                      </button>
+                      <FloatingSelect ariaLabel="Sort job results" value={exploreSort} onChange={(value) => { setExploreSort(value as "relevance" | "newest" | "company"); setSearchOffset(0); }} options={[{ value: "relevance", label: "Sort: Relevance" }, { value: "newest", label: "Sort: Newest" }, { value: "company", label: "Sort: Company" }]} />
+                      <div className="explore-view-switch" role="group" aria-label="Result layout">
+                        <button type="button" className={exploreViewMode === "list" ? "is-active" : ""} onClick={() => setExploreViewMode("list")} aria-label="List view"><Icon name="files" /></button>
+                        <button type="button" className={exploreViewMode === "grid" ? "is-active" : ""} onClick={() => setExploreViewMode("grid")} aria-label="Grid view"><Icon name="grid" /></button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="results-heading explore-results-heading"><div><p className="eyebrow">MATCHING EMPLOYER LISTINGS</p><h2>{exploreResultTab === "applied" ? "Applied opportunities" : exploreResultTab === "selected" ? "Shortlisted opportunities" : "Job results"} <span className="count-pill">{exploreResultTab === "applied" ? appliedExploreJobs.length : exploreResultTab === "selected" ? selectedExploreJobs.length : explorePortalJobs.length}</span></h2><p className="panel-description">Search results from the company portals you selected. Open a listing to review its details before applying.</p></div><div className="results-state"><span className="status-live-dot" /> {selectedPortalIds.length} portals selected</div></div>
+                  {portalCoverage.length > 0 && exploreResultTab === "results" && <section className="explore-portal-coverage" aria-label="Portal search coverage">
+                    <div className="explore-portal-coverage-heading"><strong>Portal coverage</strong><span>Each selected company board is checked independently</span></div>
+                    <div className="explore-portal-coverage-grid">
+                      {portalCoverage.map((portal) => <article className={`explore-coverage-card is-${portal.status.replace(/[^a-z0-9_-]/gi, "-")}`} key={portal.portal_id}>
+                        <div className="explore-coverage-top"><strong>{portal.company}</strong><span>{portal.provider}</span></div>
+                        <div className="explore-coverage-metrics"><span><b>{portal.fetched_count.toLocaleString()}</b><small>fetched</small></span><span><b>{portal.role_matches.toLocaleString()}</b><small>title matches</small></span><span><b>{portal.eligible_matches.toLocaleString()}</b><small>after location</small></span><span><b>{portal.returned_count.toLocaleString()}</b><small>in Explore</small></span></div>
+                        <p>{portal.age_seconds != null ? `Updated ${portal.age_seconds < 60 ? `${portal.age_seconds}s` : `${Math.floor(portal.age_seconds / 60)}m`} ago. ` : "Freshness timestamp unavailable. "}{portal.warning || (portal.status === "matched" ? "Board retrieved and filtered successfully." : portal.status === "empty" ? "The provider returned no published listings." : portal.status === "no_role_matches" ? "No job titles matched the requested role." : portal.status === "filtered_by_location" ? "Role titles matched, but location/work-mode filters excluded them." : portal.status === "partial" ? "Only part of this board was retrieved. Review the warning." : portal.status === "stale" ? "Showing a previously saved snapshot. Live refresh failed." : portal.status === "error" ? "The board could not be refreshed." : "No confirmed matching listings yet.")}</p>
+                      </article>)}
+                    </div>
+                  </section>}
+                  <div className="results-toolbar"><label className="result-search"><Icon name="search" /><input type="search" value={jobFilter} onChange={(event) => { setJobFilter(event.target.value); setSearchOffset(0); }} placeholder="Filter by role, company or keyword" aria-label="Filter job results" /><kbd>⌕</kbd></label><span className="results-summary">{exploreTabJobs.length === 0 ? "0 jobs" : exploreResultTab === "results" ? `Showing ${explorePageStart + 1}–${Math.min(explorePageStart + explorePageSize, sortedExploreJobs.length)} of ${sortedExploreJobs.length}` : `${exploreTabJobs.length} shown`}</span></div>
+                  {jobLoading && <div className="inline-progress"><span className="spinner" /><div><strong>Searching your company portals</strong><p>Fetching listings from each selected employer board and removing duplicates.</p></div></div>}
+                  {!jobLoading && sortedExploreJobs.length === 0 ? <div className="empty-state results-empty"><span className="empty-icon"><Icon name="search" /></span><h3>{exploreResultTab === "applied" ? "No applied roles in these results" : exploreResultTab === "selected" ? "No shortlisted roles yet" : explorePortalJobs.length ? "No jobs match that filter" : portalMatchesFilteredByAdvancedFilters ? "Portal matches were excluded by advanced filters" : "No portal opportunities yet"}</h3><p>{exploreResultTab === "applied" ? "Roles you have applied to from your selected portals will appear here." : exploreResultTab === "selected" ? "Shortlist opportunities in your Inbox to keep them easy to find here." : explorePortalJobs.length ? "Try a different title, employer or keyword." : portalMatchesFilteredByAdvancedFilters ? "The selected portals found jobs matching your title and location, but the final advanced filters removed them. Review salary, freshness and company exclusions, then search again." : "Connect company career pages in Portals, select the companies you want to monitor, then search."}</p>{explorePortalJobs.length ? <button className="button button-secondary" type="button" onClick={() => { setJobFilter(""); setSearchOffset(0); setExploreResultTab("results"); }}>Clear filters</button> : portalMatchesFilteredByAdvancedFilters ? <button className="button button-secondary" type="button" onClick={() => { setMinimumSalary(""); setMaximumSalary(""); setFreshnessDays("any"); setExcludedCompaniesText(""); setJobFilter(""); setSearchOffset(0); if (activeSearch) void executeJobSearch({ ...activeSearch, min_salary: undefined, max_salary: undefined, posted_within_days: undefined, excluded_companies: [] }); }}>Clear advanced exclusions and search again</button> : <button className="button button-primary" type="button" onClick={() => setActiveView("platforms")}>Connect portals</button>}</div> : <div className={`job-results-list explore-job-results${exploreViewMode === "grid" ? " is-grid" : ""}`}>{visibleExploreJobs.map((job) => renderJobRow(job))}</div>}
+                  {activeSearch && exploreResultTab === "results" && <><div className="search-pagination"><div><strong>Page {exploreCurrentPage} of {explorePageCount}</strong><span className="helper-text">{`${sortedExploreJobs.length.toLocaleString()} unique jobs after role, location and advanced filters. Sorting and keyword filtering apply to the complete returned inventory.`}</span></div><div className="button-row pagination-buttons"><button className="button button-secondary" type="button" onClick={() => changeSearchPage(-1)} disabled={jobLoading || searchOffset === 0}>Previous</button><button className="button button-secondary" type="button" onClick={() => changeSearchPage(1)} disabled={jobLoading || explorePageStart + explorePageSize >= sortedExploreJobs.length}>Next page</button></div></div>{searchFilterNote && <p className="search-filter-note">{searchFilterNote}</p>}</>}
+                </section>
+              </div>
+              <div className="explore-lower-grid">
+                <section className="panel explore-tailor-panel" aria-labelledby="explore-tailor-title">
+                  <div className="explore-lower-heading">
+                    <span className="explore-lower-icon"><Icon name="file" /></span>
+                    <div>
+                      <h2 id="explore-tailor-title">Tailor your CV for this role</h2>
+                      <p>Generate a role-specific CV using your verified profile and the employer's job description.</p>
+                    </div>
+                  </div>
+                  <div className="explore-tailor-body">
+                    <div className="explore-tailor-controls">
+                      <div className="explore-tailor-target">
+                        <span>ROLE TO TARGET</span>
+                        <strong>{exploreTailorJob?.title || "Choose a job from the results"}</strong>
+                        <small>{exploreTailorJob ? `${exploreTailorJob.company || "Company not listed"} · ${exploreTailorJob.location || "Location not listed"}` : "Search your portals to choose a role."}</small>
+                      </div>
+                      <label className="field"><span>CV template</span><FloatingSelect ariaLabel="Explore CV template" value={cvTemplate} onChange={(value) => setCvTemplate(value as "classic" | "modern" | "compact" | "sectioned")} options={[{ value: "classic", label: "Classic ATS" }, { value: "modern", label: "Modern professional" }, { value: "compact", label: "Compact ATS" }, { value: "sectioned", label: "Sectioned professional · Recommended" }]} /></label>
+                      <button className="button button-primary button-full explore-tailor-submit" type="button" disabled={!exploreTailorJob || !profile || tailoringCv} onClick={() => void handleTailorCvForSelectedJob(exploreTailorJob)}>
+                        {tailoringCv ? <><span className="spinner spinner-light" /> Creating tailored CV…</> : <><Icon name="sparkles" /> Generate tailored CV and ATS score</>}
+                      </button>
+                      {cvTailorError && <p className="explore-tailor-error" role="alert">{cvTailorError}</p>}
+                      {tailoredCv && <p className="explore-tailor-success" role="status"><Icon name="check" /> Tailored CV generated. Find it in Documents.</p>}
+                    </div>
+                    <div className="explore-cv-preview" aria-hidden="true">
+                      <div className="explore-cv-paper">
+                        <span className="explore-cv-name" />
+                        <span className="explore-cv-headline" />
+                        <span className="explore-cv-rule" />
+                        {Array.from({ length: 3 }, (_, index) => <span className="explore-cv-section" key={index}><b /><i /><i /><i /></span>)}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="panel explore-questions-panel" aria-labelledby="explore-questions-title">
+                  <div className="explore-lower-heading explore-questions-heading">
+                    <span className="explore-lower-icon"><Icon name="file" /></span>
+                    <div>
+                      <h2 id="explore-questions-title">Application questions</h2>
+                      <p>{selectedApplication ? `${selectedApplication.company || "Selected employer"} · ${selectedApplication.title}` : "Review employer questions and prepared answers before submitting."}</p>
+                    </div>
+                    {exploreBrowserFields.length > 0 && <div className="explore-question-counts"><span>{exploreBrowserFields.length} questions</span><span className="is-complete">{exploreAnsweredFields} filled</span><span className="is-pending">{exploreRequiredFields} need input</span></div>}
+                  </div>
+                  {exploreBrowserFields.length > 0 ? (
+                    <div className="explore-question-list">
+                      {exploreBrowserFields.slice(0, 3).map((field) => {
+                        const needsInput = browserFieldNeedsUserInput(field);
+                        const answer = browserFieldDisplayValue(field, tailoredCvVersions);
+                        return <div className={`explore-question-row${needsInput ? " is-pending" : " is-complete"}`} key={field.field_id}>
+                          <span className="explore-question-status"><Icon name={needsInput ? "clock" : "check"} /></span>
+                          <strong>{field.label}</strong>
+                          <span className="explore-question-answer">{answer || (needsInput ? "Your input is required" : "Reviewed")}</span>
+                          <span className={`explore-question-state${needsInput ? " is-pending" : " is-complete"}`}>{needsInput ? "Required" : "Reviewed"}</span>
+                        </div>;
+                      })}
+                      {exploreBrowserFields.length > 3 && <p className="explore-question-more">+ {exploreBrowserFields.length - 3} more fields in the application assistant</p>}
+                      <div className="explore-questions-footer"><span><Icon name="shield" /> Answers remain in your local workspace until you approve submission.</span><button type="button" className="text-action" onClick={() => setActiveView("applications")}>Review application <Icon name="arrow-up-right" /></button></div>
+                    </div>
+                  ) : (
+                    <div className="explore-questions-empty">
+                      <div><strong>{selectedApplication ? "No employer form is open" : "No application form is open"}</strong><p>{selectedApplication ? "Open the application assistant to scan the current employer step and review supported questions." : "Track a role and open its application form to prepare employer questions and answers here."}</p></div>
+                      <button type="button" className="button button-secondary button-small" onClick={() => setActiveView("applications")}>Open Pipeline <Icon name="arrow-up-right" /></button>
+                    </div>
+                  )}
                 </section>
               </div>
             </div>
@@ -3083,40 +2765,6 @@ function App() {
                 </div>
               </details>
 
-              <details className="panel portal-discovery-panel">
-                <summary className="portal-secondary-summary"><span><Icon name="layers" /><span><strong>Discovery sources</strong><small>Choose public feeds and ATS providers used when you search for jobs.</small></span></span><Icon name="chevron-down" /></summary>
-                <div className="portal-discovery-content">
-                  <div className="portal-source-list">
-                    {SOURCE_OPTIONS.map((source) => {
-                      const status = jobSources[source.id];
-                      const selectable = canSelectSource(source.id, status);
-                      const description = `${status.employers ?? 0} employer board(s) configured`;
-                      return <label className={`portal-source-row${selectable ? "" : " is-unavailable"}`} key={source.id}>
-                        <input type="checkbox" checked={selectedSources.includes(source.id)} disabled={!selectable} onChange={(event) => toggleJobSource(source.id, event.target.checked)} />
-                        <SourceMark source={source.id} />
-                        <span className="portal-source-copy"><strong>{source.title}</strong><small>{description}</small></span>
-                        <span className={`portal-source-availability${selectable ? " is-ready" : " is-setup"}`}>{selectable ? "Available" : "Set up"}</span>
-                      </label>;
-                    })}
-                  </div>
-                  <p className="helper-text">Employer portals are configured above. Global feeds such as JobTech, Remote OK and Arbeitnow are selected here. Credentials remain in your private environment file.</p>
-                  <details className="portal-shortcut-details">
-                    <summary>External search shortcuts <span>{platformShortcuts.filter((platform) => platform.enabled).length} enabled</span></summary>
-                    <label className="field"><span>Filter shortcuts</span><input type="search" value={platformFilter} onChange={(event) => setPlatformFilter(event.target.value)} placeholder="Search LinkedIn, Indeed, Glassdoor or custom sites" /></label>
-                    <div className="portal-shortcut-list">
-                      {platformShortcuts.filter((platform) => platform.name.toLowerCase().includes(platformFilter.toLowerCase()) || platform.description?.toLowerCase().includes(platformFilter.toLowerCase()) || platform.category?.toLowerCase().includes(platformFilter.toLowerCase())).map((platform) => {
-                        const href = platformSearchUrl(platform);
-                        return <div className="portal-shortcut-row" key={platform.id}>
-                          <label><input type="checkbox" checked={platform.enabled} onChange={(event) => setPlatformShortcuts((items) => items.map((item) => item.id === platform.id ? { ...item, enabled: event.target.checked } : item))} /><SourceMark source={platform.id} sourceUrl={platform.url} /><span><strong>{platform.name}</strong><small>{platform.description || platform.url}</small></span></label>
-                          <div>{platform.enabled && href && <a className="text-action" href={href} target="_blank" rel="noopener noreferrer">Open search ↗</a>}{platform.id.startsWith("custom-") && <button className="text-action" type="button" onClick={() => setPlatformShortcuts((items) => items.filter((item) => item.id !== platform.id))}>Remove</button>}</div>
-                        </div>;
-                      })}
-                    </div>
-                    <div className="portal-custom-shortcut-form"><input value={customPlatformName} onChange={(event) => setCustomPlatformName(event.target.value)} maxLength={80} placeholder="Platform name" aria-label="Custom platform name" /><input value={customPlatformUrl} onChange={(event) => setCustomPlatformUrl(event.target.value)} maxLength={1000} placeholder="https://example.com/jobs?query={query}" aria-label="Custom platform HTTPS URL" /><button className="button button-secondary button-small" type="button" onClick={addCustomPlatformShortcut}>Add shortcut</button></div>
-                    <p className="helper-text">External sites open in a separate tab; their pages are not scraped or automatically imported. Use a supported public feed or import an individual job URL instead.</p>
-                  </details>
-                </div>
-              </details>
             </div>
           )}
 
@@ -3313,7 +2961,7 @@ function App() {
             <div className="view-stack settings-hub">
               <div className="settings-hub-grid">
                 <button type="button" className="settings-hub-card" onClick={() => setActiveView("ai")}><span className="settings-hub-icon"><Icon name="cpu" /></span><strong>AI provider</strong><small>Choose Ollama, OpenAI, or a compatible endpoint. Test your model and review data-sharing settings.</small><span className="settings-hub-action">Configure AI <Icon name="arrow" /></span></button>
-                <button type="button" className="settings-hub-card" onClick={() => setActiveView("platforms")}><span className="settings-hub-icon"><Icon name="layers" /></span><strong>Job sources</strong><small>Configure supported feeds, employer ATS boards, and external search shortcuts.</small><span className="settings-hub-action">Configure sources <Icon name="arrow" /></span></button>
+                <button type="button" className="settings-hub-card" onClick={() => setActiveView("platforms")}><span className="settings-hub-icon"><Icon name="layers" /></span><strong>Employer portals</strong><small>Connect company career pages, manage board settings and check portal health.</small><span className="settings-hub-action">Manage portals <Icon name="arrow" /></span></button>
                 <button type="button" className="settings-hub-card" onClick={() => setActiveView("profile")}><span className="settings-hub-icon"><Icon name="file" /></span><strong>CV extraction and profile</strong><small>Upload a source CV, extract its content, review every field, and save your profile.</small><span className="settings-hub-action">Open CV Studio <Icon name="arrow" /></span></button>
                 <button type="button" className="settings-hub-card" onClick={() => { setActiveView("data"); void refreshDataSummary(); }}><span className="settings-hub-icon"><Icon name="shield" /></span><strong>Local data and privacy</strong><small>Review stored files, cache controls, and workspace reset options.</small><span className="settings-hub-action">Manage data <Icon name="arrow" /></span></button>
               </div>

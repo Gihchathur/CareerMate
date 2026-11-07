@@ -92,3 +92,82 @@ def test_jobtech_search_accepts_nested_hits_shape(monkeypatch):
     assert len(jobs) == 1
     assert jobs[0].title == 'Software Engineer'
     assert jobs[0].city == 'Stockholm'
+
+
+def test_selected_portal_ids_limit_fetch_to_specific_company_boards(monkeypatch):
+    from app.services import job_search
+
+    config = {
+        "greenhouse": [
+            {"enabled": True, "board_token": "spotify-board", "company": "Spotify"},
+            {"enabled": True, "board_token": "vercel-board", "company": "Vercel"},
+            {"enabled": False, "board_token": "paused-board", "company": "Paused Co"},
+        ],
+        "lever": [
+            {"enabled": True, "site": "lovable", "company": "Lovable"},
+        ],
+        "teamtailor": [],
+        "ashby": [],
+        "smartrecruiters": [],
+        "workable": [],
+        "recruitee": [],
+        "breezy": [],
+        "personio": [],
+        "workday": [],
+    }
+    fetched = []
+    monkeypatch.setattr(job_search, "load_source_config", lambda: config)
+    monkeypatch.setattr(
+        job_search,
+        "fetch_board_jobs",
+        lambda token, **kwargs: fetched.append(("greenhouse", token)) or [],
+    )
+    monkeypatch.setattr(
+        job_search,
+        "fetch_site_jobs",
+        lambda site, **kwargs: fetched.append(("lever", site)) or [],
+    )
+
+    _, warnings, configured = job_search.fetch_configured_jobs(
+        ["greenhouse", "lever"],
+        selected_portal_ids=["GREENHOUSE:SPOTIFY-BOARD", "lever:lovable"],
+    )
+
+    assert fetched == [("greenhouse", "spotify-board"), ("lever", "lovable")]
+    assert configured == 2
+    assert warnings == []
+
+
+def test_selected_portal_ids_do_not_fetch_other_companies_on_same_provider(monkeypatch):
+    from app.services import job_search
+
+    config = {
+        "greenhouse": [
+            {"enabled": True, "board_token": "spotify", "company": "Spotify"},
+            {"enabled": True, "board_token": "vercel", "company": "Vercel"},
+        ],
+        "lever": [],
+        "teamtailor": [],
+        "ashby": [],
+        "smartrecruiters": [],
+        "workable": [],
+        "recruitee": [],
+        "breezy": [],
+        "personio": [],
+        "workday": [],
+    }
+    fetched = []
+    monkeypatch.setattr(job_search, "load_source_config", lambda: config)
+    monkeypatch.setattr(
+        job_search,
+        "fetch_board_jobs",
+        lambda token, **kwargs: fetched.append(token) or [],
+    )
+
+    _, warnings, configured = job_search.fetch_configured_jobs(
+        ["greenhouse"], selected_portal_ids=["greenhouse:spotify"]
+    )
+
+    assert fetched == ["spotify"]
+    assert configured == 1
+    assert warnings == []

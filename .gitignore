@@ -62,3 +62,6 @@ data/workflow/*
 
 # Portal health cache is local operational data
 data/portal_health.json
+# Keep backend model source files in source archives and Git exports.
+!backend/app/models/
+!backend/app/models/*.py

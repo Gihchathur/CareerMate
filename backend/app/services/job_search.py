@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 import os
 import re
@@ -10,7 +11,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from app.models.job import JobPosting
-from app.services.job_sources.base import JobSourceError
+from app.services.job_sources.base import JobSourceError, JobSourceIncompleteError, JobSourceStaleCacheError
 from app.services.job_sources.greenhouse import fetch_board_jobs
 from app.services.job_sources.lever import fetch_site_jobs
 from app.services.job_sources.teamtailor import fetch_company_jobs
@@ -123,6 +124,12 @@ def _board_identity(provider: str, board: dict[str, Any]) -> str:
     else:
         identifier = board.get("slug", "")
     return str(identifier).strip().casefold()
+
+
+def _portal_id(provider: str, board: dict[str, Any]) -> str:
+    """Return the stable, non-secret identifier used by Explore for one company board."""
+    identity = _board_identity(provider, board)
+    return f"{provider}:{identity}" if identity else ""
 
 
 def _write_source_config(normalized: dict[str, Any]) -> None:
@@ -243,6 +250,7 @@ def source_status() -> dict[str, object]:
         item for item in teamtailor
         if not os.getenv(str(item.get("api_key_env", "")).strip(), "")
     ]
+    ready_teamtailor = [item for item in teamtailor if item not in missing_teamtailor_keys]
     return {
         "jobtech_links": {"configured": True, "employers": None, "requires_api_key": False},
         "remoteok": {"configured": True, "employers": None, "requires_api_key": False},
@@ -253,7 +261,10 @@ def source_status() -> dict[str, object]:
             "configured": bool(teamtailor),
             "employers": len(teamtailor),
             "requires_api_key": True,
-            "credentials_ready": bool(teamtailor) and not missing_teamtailor_keys,
+            # One configured board with a key is enough to make the provider
+            # selectable; other company boards are still reported individually
+            # as needing setup and will be skipped by the adapter.
+            "credentials_ready": bool(ready_teamtailor),
             "missing_credentials": len(missing_teamtailor_keys),
         },
         **{source: {"configured": any(x.get("enabled") and x.get("slug") for x in config.get(source, [])),
@@ -262,18 +273,82 @@ def source_status() -> dict[str, object]:
     }
 
 
+def list_configured_portals(selected_portal_ids: set[str] | list[str] | None = None) -> list[dict[str, str]]:
+    """Return safe, selected company-board metadata for search coverage reporting."""
+    config = load_source_config()
+    selected = (
+        {str(item).strip().casefold() for item in selected_portal_ids if str(item).strip()}
+        if selected_portal_ids is not None else None
+    )
+    portals: list[dict[str, str]] = []
+    for provider in SUPPORTED_ATS:
+        for board in config.get(provider, []):
+            if board.get("enabled") is not True:
+                continue
+            portal_id = _portal_id(provider, board)
+            if not portal_id or (selected is not None and portal_id not in selected):
+                continue
+            portals.append({
+                "id": portal_id,
+                "provider": provider,
+                "company": str(board.get("company") or _board_identity(provider, board)).strip(),
+            })
+    return portals
+
+
+def _append_board_jobs(
+    jobs: list[JobPosting],
+    warnings: list[str],
+    provider: str,
+    board: dict[str, Any],
+    fetcher,
+) -> None:
+    """Append complete or usable partial board results with stable portal identity."""
+    label = str(board.get("company") or _board_identity(provider, board)).strip() or provider.title()
+    portal_id = _portal_id(provider, board)
+    try:
+        fetched = fetcher()
+    except JobSourceIncompleteError as exc:
+        fetched = exc.partial_jobs
+        warnings.append(f"{provider.title()} ({label}): {exc}")
+    except JobSourceStaleCacheError as exc:
+        fetched = exc.cached_jobs
+        warnings.append(f"{provider.title()} ({label}): {exc}")
+    except JobSourceError as exc:
+        warnings.append(f"{provider.title()} ({label}): {exc}")
+        return
+
+    fetched_at = datetime.now(timezone.utc).isoformat()
+    for job in fetched:
+        jobs.append(job.model_copy(update={
+            "portal_id": portal_id,
+            "portal_name": label,
+            "source_fetched_at": job.source_fetched_at or fetched_at,
+        }))
+
+
 def fetch_configured_jobs(
     selected_sources: set[str] | list[str] | None = None,
+    selected_portal_ids: set[str] | list[str] | None = None,
+    *,
+    force_refresh: bool = False,
 ) -> tuple[list[JobPosting], list[str], int]:
-    """Fetch jobs from selected, enabled employer ATS boards.
+    """Fetch the complete published inventory from selected enabled employer boards.
 
-    If `selected_sources` is omitted, all optional ATS sources are considered.
-    Returns normalized jobs, warnings from failed individual boards, and the
-    number of enabled board definitions. Each source is fault-tolerant, so an
-    unavailable employer board does not block successful results elsewhere.
+    Every board is isolated: one provider outage does not discard other companies'
+    results. Partial pagination and stale-cache use are returned as visible warnings
+    while preserving the jobs we were still able to retrieve.
     """
     config = load_source_config()
     selected = set(selected_sources) if selected_sources is not None else set(SUPPORTED_ATS)
+    selected_portals = (
+        {str(item).strip().casefold() for item in selected_portal_ids if str(item).strip()}
+        if selected_portal_ids is not None else None
+    )
+
+    def portal_is_selected(provider: str, board: dict[str, Any]) -> bool:
+        return selected_portals is None or _portal_id(provider, board) in selected_portals
+
     jobs: list[JobPosting] = []
     warnings: list[str] = []
     configured_count = 0
@@ -281,6 +356,7 @@ def fetch_configured_jobs(
         source: sum(
             1 for item in config.get(source, [])
             if item.get("enabled") is True
+            and portal_is_selected(source, item)
             and (
                 bool(str(item.get("board_token", "")).strip()) if source == "greenhouse"
                 else bool(str(item.get("site", "")).strip()) if source == "lever"
@@ -291,40 +367,33 @@ def fetch_configured_jobs(
     }
     for source in sorted(selected.intersection(SUPPORTED_ATS)):
         if source not in PUBLIC_ATS and initial_counts[source] == 0:
-            warnings.append(f"No enabled {source.title()} employer boards are configured in data/sources.json.")
+            suffix = "selected " if selected_portals is not None else ""
+            warnings.append(f"No {suffix}enabled {source.title()} employer portals are configured in data/sources.json.")
 
     if "greenhouse" in selected:
         for item in config.get("greenhouse", []):
-            if item.get("enabled") is not True or not str(item.get("board_token", "")).strip():
+            if item.get("enabled") is not True or not str(item.get("board_token", "")).strip() or not portal_is_selected("greenhouse", item):
                 continue
             configured_count += 1
             token = str(item["board_token"]).strip()
-            try:
-                jobs.extend(fetch_board_jobs(
-                    token,
-                    company_name=str(item.get("company", "")),
-                    default_country=str(item.get("country", "")),
-                ))
-            except JobSourceError as exc:
-                warnings.append(f"Greenhouse ({item.get('company') or token}): {exc}")
+            _append_board_jobs(jobs, warnings, "greenhouse", item, lambda token=token, item=item: fetch_board_jobs(
+                token, company_name=str(item.get("company", "")), default_country=str(item.get("country", "")),
+            ))
+
     if "lever" in selected:
         for item in config.get("lever", []):
-            if item.get("enabled") is not True or not str(item.get("site", "")).strip():
+            if item.get("enabled") is not True or not str(item.get("site", "")).strip() or not portal_is_selected("lever", item):
                 continue
             configured_count += 1
             site = str(item["site"]).strip()
-            try:
-                jobs.extend(fetch_site_jobs(
-                    site,
-                    company_name=str(item.get("company", "")),
-                    region=str(item.get("region", "global")),
-                    default_country=str(item.get("country", "")),
-                ))
-            except JobSourceError as exc:
-                warnings.append(f"Lever ({item.get('company') or site}): {exc}")
+            _append_board_jobs(jobs, warnings, "lever", item, lambda site=site, item=item: fetch_site_jobs(
+                site, company_name=str(item.get("company", "")), region=str(item.get("region", "global")),
+                default_country=str(item.get("country", "")),
+            ))
+
     if "teamtailor" in selected:
         for item in config.get("teamtailor", []):
-            if item.get("enabled") is not True or not str(item.get("api_key_env", "")).strip():
+            if item.get("enabled") is not True or not str(item.get("api_key_env", "")).strip() or not portal_is_selected("teamtailor", item):
                 continue
             configured_count += 1
             company = str(item.get("company", "")).strip()
@@ -333,25 +402,26 @@ def fetch_configured_jobs(
             if not api_key:
                 warnings.append(f"Teamtailor ({company or key_env}): environment variable {key_env} is not set.")
                 continue
-            try:
-                jobs.extend(fetch_company_jobs(
-                    api_key=api_key,
-                    company_name=company,
-                    region=str(item.get("region", "eu")),
-                    default_country=str(item.get("country", "")),
-                ))
-            except JobSourceError as exc:
-                warnings.append(f"Teamtailor ({company or key_env}): {exc}")
+            _append_board_jobs(jobs, warnings, "teamtailor", item, lambda item=item, api_key=api_key, company=company: fetch_company_jobs(
+                api_key=api_key, company_name=company, region=str(item.get("region", "eu")),
+                default_country=str(item.get("country", "")),
+            ))
+
     for source in PUBLIC_ATS:
         if source not in selected:
             continue
-        boards = [x for x in config.get(source, []) if x.get("enabled") is True and x.get("slug")]
+        boards = [
+            item for item in config.get(source, [])
+            if item.get("enabled") is True and item.get("slug") and portal_is_selected(source, item)
+        ]
         if not boards:
-            warnings.append(f"No enabled {source.title()} employer boards are configured in data/sources.json.")
+            suffix = "selected " if selected_portals is not None else ""
+            warnings.append(f"No {suffix}enabled {source.title()} employer portals are configured in data/sources.json.")
         for item in boards:
             configured_count += 1
-            try:
-                jobs.extend(fetch_public_board(source, item))
-            except JobSourceError as exc:
-                warnings.append(f"{source.title()} ({item.get('company') or item.get('slug')}): {exc}")
+            _append_board_jobs(
+                jobs, warnings, source, item,
+                lambda source=source, item=item: fetch_public_board(source, item, force_refresh=force_refresh),
+            )
+
     return jobs, warnings, configured_count

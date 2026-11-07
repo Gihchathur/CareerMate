@@ -1,4 +1,4 @@
-# CareerMate 3.7.0
+# CareerMate 3.8.0
 
 > A redesigned, local-first career operating system for finding opportunities, evaluating fit, preparing applications and tracking outcomes.
 
@@ -17,17 +17,21 @@
   <img src="https://img.shields.io/badge/status-community%20project-596579" alt="Community project" />
 </p>
 
-CareerMate 3.7.0 runs on your computer. Candidate profiles, candidate evidence, job records, application drafts and caches are stored in local JSON files. You can use local Ollama inference or configure an online AI API. Hosted AI sends the task content needed for the operation to that provider, and CareerMate requires explicit consent before using a hosted provider.
+CareerMate 3.8.0 runs on your computer. Candidate profiles, candidate evidence, job records, application drafts and caches are stored in local JSON files. You can use local Ollama inference or configure an online AI API. Hosted AI sends the task content needed for the operation to that provider, and CareerMate requires explicit consent before using a hosted provider.
 
-## CareerMate 3.7.0 workspace
+## CareerMate 3.8.0 workspace
 
-The workflow-first workspace introduces Today, Explore, Inbox, Match intelligence, Scheduled scans, Pipeline, Follow-ups, Portals, Analytics, CV, Documents and Config. All application dropdowns use a shared portalled select that stays above page panels and the hover navigation rail. The desktop navigation is a compact 60px icon rail with no internal scrollbar; spacing adapts to shorter laptop viewports so every destination remains visible. Discovered jobs flow into a dedicated triage Inbox before being promoted into the application Pipeline. The existing AI provider configuration, CV studio, candidate evidence vault and local-first storage remain in place. Analytics are calculated from recorded workspace data; historical trends and time-saved metrics are not invented.
+The workflow-first workspace introduces Today, Explore, Inbox, Match intelligence, Scheduled scans, Pipeline, Follow-ups, Portals, Analytics, CV, Documents and Config. Workspace pages share an icon-led heading system and a consistent visual language. The desktop navigation is a full-height left rail that expands to show labels; spacing adapts to shorter laptop viewports so destinations remain visible. Discovered jobs flow into a dedicated triage Inbox before being promoted into the application Pipeline. The existing AI provider configuration, CV studio, candidate evidence vault and local-first storage remain in place. Analytics are calculated from recorded workspace data; historical trends and time-saved metrics are not invented.
 
-## CareerMate 3.7.0 workflow
+## CareerMate 3.8.0 workflow
 
 The workflow foundation adds a dedicated discovery Inbox, triage stages, a Pipeline board, a Today action dashboard, Follow-ups and a Documents library. The Portal directory is seeded with five employer examples (Spotify, Vercel, Lovable, Legora and Temporal) on first launch and during the one-time 3.3/3.4 upgrade. A local workflow event ledger records job discovery, triage and application-stage changes. See [`docs/CAREERMATE_3.0_WORKFLOW.md`](docs/CAREERMATE_3.0_WORKFLOW.md) for the workflow rules, API endpoints, storage paths and remaining roadmap.
 
 The workflow is intentionally human-approved: Explore queries configured employer ATS portals only, and applications are never submitted automatically. External shortcuts, where retained for reference, are not job-ingestion sources. Existing AI provider configuration and local-first data storage are retained.
+
+## Reliable employer-portal discovery
+
+CareerMate 3.8 fetches complete published inventories from selected employer boards where their public ATS endpoints provide them, paginates to the provider-reported end, retains all locally eligible matches in the Inbox, and displays per-company retrieval, title-match, location-match and freshness diagnostics. Explore role matching uses job titles rather than description mentions. Public ATS snapshots are cached for two minutes by default; use **Refresh portals** to bypass that cache and request a live refresh. Provider outages and safety-limit truncation are reported rather than presented as a complete empty result. See [`docs/PORTAL-DISCOVERY-RELIABILITY.md`](docs/PORTAL-DISCOVERY-RELIABILITY.md) for connector behavior and known limits.
 
 ## Frontend experience architecture
 
@@ -44,7 +48,7 @@ The interface uses a shared component system and a dedicated CareerMate 3.5 work
 - `frontend/src/styles/pages/` contains the existing workflow stylesheets and responsive refinements.
 - `frontend/src/careermate-v2.css` provides the new shell, motion, analytics, automation and evidence-vault presentation while the existing workflow logic is progressively migrated into smaller page components.
 
-The document is the page-level vertical scroll container. Navigation does not create a competing page scroll area. On desktop, a compact icon rail automatically expands horizontally when the pointer enters it and collapses back to icons when the pointer leaves the navigation surface. The workspace grid reserves the wider panel space during expansion, so navigation never obscures page content. There is no desktop collapse/reopen button. Keyboard focus also expands the rail; phones use a bottom bar and an all-sections sheet because touch has no hover state. The command palette supports filtered search, arrow-key navigation and Enter to open a destination. Dialogs render through React portals at the document body level; the job and match dialogs use one shared keyboard and scroll-lock lifecycle, including Escape-to-close, focus containment, and focus restoration.
+The document is the page-level vertical scroll container. Navigation does not create a competing page scroll area. On desktop, the full-height left sidebar keeps its expanded labels visible and reserves its width in the workspace grid, so navigation never obscures page content. All destinations remain available without a nested sidebar scrollbar. Phones use a bottom bar and an all-sections sheet. Every workspace destination uses the same icon-led page heading as Explore, while its page body remains tailored to the task. The command palette supports filtered search, arrow-key navigation and Enter to open a destination. Dialogs render through React portals at the document body level; the job and match dialogs use one shared keyboard and scroll-lock lifecycle, including Escape-to-close, focus containment, and focus restoration.
 
 ## Features
 
@@ -213,7 +217,7 @@ The 0.9 work adds a searchable 58-platform directory, additional public employer
 
 See [docs/FEATURE-EXPANSION.md](docs/FEATURE-EXPANSION.md) for setup instructions, capability distinctions and limitations. External job-board shortcuts are not automatic integrations; only configured direct-feed adapters retrieve listings.
 
-## CareerMate 3.7.0 workflow-first navigation and UX
+## CareerMate 3.8.0 workflow-first navigation and UX
 
 - Desktop has no sidebar toggle button: move the pointer into the 76px SVG icon rail and it expands horizontally; move into the page canvas and it collapses back to icons.
 - The expanded width responds to the viewport (238–286px) and the canvas shifts to reserve space rather than being covered.

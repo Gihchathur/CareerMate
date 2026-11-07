@@ -1,5 +1,7 @@
 """Multi-source job discovery with explicit country/source limitations."""
 
+from datetime import datetime, timezone
+import re
 from typing import Literal
 from urllib.parse import urlparse, urlunparse
 
@@ -8,7 +10,7 @@ from app.services.job_sources.base import JobSourceError
 from app.services.job_sources.arbeitnow import fetch_jobs as fetch_arbeitnow_jobs
 from app.services.job_sources.jobtech_links import search_jobs
 from app.services.job_sources.remoteok import fetch_remote_jobs
-from app.services.job_search import fetch_configured_jobs
+from app.services.job_search import fetch_configured_jobs, list_configured_portals
 
 WorkModePreference = Literal["any", "remote", "hybrid", "on_site"]
 
@@ -63,16 +65,22 @@ def normalize_roles(roles: list[str]) -> list[str]:
 
 
 def _role_matches(role: str, job: JobPosting) -> bool:
-    """Match a career-board result to a free-text role conservatively."""
+    """Match role keywords against the actual job title only.
+
+    A description can mention an engineering team, products or customers without
+    making the vacancy a software-engineering role. CareerMate therefore uses a
+    conservative title match and leaves broader skills/experience fit to Match
+    Intelligence after the genuine vacancy has been discovered.
+    """
     needle = _normalize(role)
     title = _normalize(job.title)
-    full_text = _normalize(f"{job.title} {job.description}")
-    if needle in title:
-        return True
-    tokens = [token for token in needle.split() if len(token) >= 3]
-    if tokens and all(token in title for token in tokens):
-        return True
-    return needle in full_text or (len(tokens) >= 2 and all(token in full_text for token in tokens))
+    if not needle or not title:
+        return False
+    tokens = [token for token in needle.split() if len(token) >= 2]
+    if not tokens:
+        return False
+    # Whole-token boundaries avoid matching "engineer" inside "engineering".
+    return all(re.search(rf"(?<![a-z0-9]){re.escape(token)}(?![a-z0-9])", title) for token in tokens)
 
 
 def _is_any_country(country: str) -> bool:
@@ -199,6 +207,8 @@ def search_multiple_roles(
     limit: int,
     offset: int,
     sources: list[str] | None = None,
+    portal_ids: list[str] | None = None,
+    force_portal_refresh: bool = False,
 ) -> dict[str, object]:
     """Search the requested source set and combine normalized listings.
 
@@ -218,6 +228,8 @@ def search_multiple_roles(
         raise JobDiscoveryError(f"Unsupported job source(s): {', '.join(unknown_sources)}.")
     if not selected_sources:
         raise JobDiscoveryError("Select at least one job source.")
+    if portal_ids is not None and not any(str(item).strip() for item in portal_ids):
+        raise JobDiscoveryError("Select at least one connected company portal.")
     country = " ".join(str(country or "").split())
     if not country:
         raise JobDiscoveryError("Enter a country or choose Any country.")
@@ -231,8 +243,8 @@ def search_multiple_roles(
         raise JobDiscoveryError("City must be 100 characters or fewer.")
     if not 1 <= limit <= 40:
         raise JobDiscoveryError("Page size must be between 1 and 40.")
-    if not 0 <= offset <= 2000:
-        raise JobDiscoveryError("Offset must be between 0 and 2000.")
+    if not 0 <= offset <= 50000:
+        raise JobDiscoveryError("Offset must be between 0 and 50000.")
     if work_mode not in {"any", "remote", "hybrid", "on_site"}:
         raise JobDiscoveryError("Unsupported work-mode preference.")
 
@@ -241,7 +253,16 @@ def search_multiple_roles(
     selected_ats_sources = [source for source in selected_sources if source in {"greenhouse", "lever", "teamtailor", "ashby", "smartrecruiters", "workable", "recruitee", "breezy", "personio", "workday"}]
     if selected_ats_sources:
         try:
-            employer_jobs, employer_warnings, configured_boards = fetch_configured_jobs(selected_ats_sources)
+            if portal_ids is None:
+                employer_jobs, employer_warnings, configured_boards = fetch_configured_jobs(
+                    selected_ats_sources, force_refresh=force_portal_refresh,
+                )
+            else:
+                employer_jobs, employer_warnings, configured_boards = fetch_configured_jobs(
+                    selected_ats_sources,
+                    selected_portal_ids=portal_ids,
+                    force_refresh=force_portal_refresh,
+                )
         except JobSourceError as exc:
             employer_jobs, employer_warnings, configured_boards = [], [str(exc)], 0
         warnings.extend(employer_warnings)
@@ -250,6 +271,8 @@ def search_multiple_roles(
     else:
         # Public-only searches should not depend on the validity of optional ATS config.
         employer_jobs, employer_warnings, configured_boards = [], [], 0
+
+    portal_definitions = list_configured_portals(portal_ids) if selected_ats_sources else []
 
     remote_jobs: list[JobPosting] = []
     if "remoteok" in selected_sources:
@@ -275,6 +298,7 @@ def search_multiple_roles(
         )
 
     page_by_role: list[list[JobPosting]] = []
+    all_matches_by_role: list[list[JobPosting]] = []
     role_totals: list[int] = []
     has_more_by_role: list[bool] = []
     filter_rejected = 0
@@ -354,42 +378,113 @@ def search_multiple_roles(
             or offset + limit < len(employer_filtered)
         )
         page_by_role.append(selected_public_jobs + remote_page + arbeitnow_page + employer_page)
+        # Employer ATS adapters already fetched the complete public board. Keep
+        # the full eligible inventory for persistence even though Explore renders
+        # one UI page at a time. Legacy public feeds remain page-limited where the
+        # provider itself only supports a paginated query.
+        all_matches_by_role.append(selected_public_jobs + remote_filtered + arbeitnow_filtered + employer_filtered)
 
-    all_selected_sources_failed = successful_searches == 0 and not employer_jobs and not remote_jobs and not arbeitnow_jobs and warnings
+    all_selected_sources_failed = (
+        successful_searches == 0 and not employer_jobs and not remote_jobs and not arbeitnow_jobs
+        and warnings and configured_boards == 0
+    )
     if all_selected_sources_failed:
         raise JobSourceError("All selected job-source requests failed. " + " | ".join(warnings))
 
-    combined: list[JobPosting] = []
-    deduped: dict[str, JobPosting] = {}
-    max_length = max((len(items) for items in page_by_role), default=0)
-    for index in range(max_length):
-        for role_jobs in page_by_role:
-            if index >= len(role_jobs):
-                continue
-            job = role_jobs[index]
-            key = _dedupe_key(job)
-            if key in deduped:
-                prior = deduped[key]
-                updated = prior.model_copy(update={"search_roles": list(dict.fromkeys(prior.search_roles + job.search_roles))})
-                deduped[key] = updated
-                for position, existing in enumerate(combined):
-                    if _dedupe_key(existing) == key:
-                        combined[position] = updated
-                        break
-                continue
-            deduped[key] = job
-            combined.append(job)
+    def combine_role_matches(groups: list[list[JobPosting]]) -> list[JobPosting]:
+        combined_jobs: list[JobPosting] = []
+        deduped_jobs: dict[str, JobPosting] = {}
+        max_length = max((len(items) for items in groups), default=0)
+        for index in range(max_length):
+            for role_jobs in groups:
+                if index >= len(role_jobs):
+                    continue
+                job = role_jobs[index]
+                key = _dedupe_key(job)
+                if key in deduped_jobs:
+                    prior = deduped_jobs[key]
+                    updated = prior.model_copy(update={"search_roles": list(dict.fromkeys(prior.search_roles + job.search_roles))})
+                    deduped_jobs[key] = updated
+                    for position, existing in enumerate(combined_jobs):
+                        if _dedupe_key(existing) == key:
+                            combined_jobs[position] = updated
+                            break
+                    continue
+                deduped_jobs[key] = job
+                combined_jobs.append(job)
+        return combined_jobs
+
+    combined = combine_role_matches(page_by_role)
+    all_matches = combine_role_matches(all_matches_by_role)
 
     total_is_approximate = (
         len(cleaned_roles) > 1 or work_mode != "any" or configured_boards > 0
         or any(source != "jobtech_links" for source in selected_sources)
         or _is_any_country(country)
     )
-    if not combined and sum(role_totals) > 0:
+    if not all_matches and sum(role_totals) > 0:
         warnings.append(
             "Sources reported matching listings, but none remained after local filters. "
-            "Some providers omit structured city metadata; try clearing the city or review the location-filter details."
+            "Some providers omit structured city metadata; review the per-portal coverage report and the original employer listing."
         )
+
+    # Per-company coverage makes incomplete portals visible instead of presenting
+    # a low result count as if every board had been searched successfully.
+    portal_results: list[dict[str, object]] = []
+    for portal in portal_definitions:
+        portal_id = portal["id"]
+        portal_jobs = [job for job in employer_jobs if job.portal_id == portal_id]
+        role_matches = [job for job in portal_jobs if any(_role_matches(role, job) for role in cleaned_roles)]
+        location_matches = [
+            job for job in role_matches
+            if _matches_country(job, country)
+            and _matches_city(job, city, country)
+            and (work_mode == "any" or job.work_mode == work_mode)
+        ]
+        eligible_unique: dict[str, JobPosting] = {}
+        for job in location_matches:
+            eligible_unique.setdefault(_dedupe_key(job), job)
+        related_warning = next((
+            warning for warning in warnings
+            if portal["company"].casefold() in warning.casefold()
+            or (portal["provider"].title() in warning and portal["company"].casefold() in warning.casefold())
+        ), "")
+        if related_warning and "last successful" in related_warning.casefold():
+            portal_status = "stale"
+        elif related_warning and "partial" in related_warning.casefold():
+            portal_status = "partial"
+        elif related_warning:
+            portal_status = "error"
+        elif not portal_jobs:
+            portal_status = "empty"
+        elif not role_matches:
+            portal_status = "no_role_matches"
+        elif not eligible_unique:
+            portal_status = "filtered_by_location"
+        else:
+            portal_status = "matched"
+        fetched_timestamps = [job.source_fetched_at for job in portal_jobs if job.source_fetched_at]
+        last_fetched_at = max(fetched_timestamps) if fetched_timestamps else ""
+        age_seconds = None
+        if last_fetched_at:
+            try:
+                fetched_time = datetime.fromisoformat(last_fetched_at.replace("Z", "+00:00"))
+                age_seconds = max(0, int((datetime.now(timezone.utc) - fetched_time).total_seconds()))
+            except (TypeError, ValueError):
+                age_seconds = None
+        portal_results.append({
+            "portal_id": portal_id,
+            "provider": portal["provider"],
+            "company": portal["company"],
+            "fetched_count": len(portal_jobs),
+            "role_matches": len(role_matches),
+            "eligible_matches": len(eligible_unique),
+            "returned_count": sum(1 for job in combined if job.portal_id == portal_id),
+            "last_fetched_at": last_fetched_at,
+            "age_seconds": age_seconds,
+            "status": portal_status,
+            "warning": related_warning,
+        })
 
     filter_notes: list[str] = []
     if city.strip():
@@ -406,6 +501,8 @@ def search_multiple_roles(
         filter_notes.append("Employer ATS boards are configured per employer; local filters use the location and work-mode metadata each board provides.")
     filter_notes.append("Unknown country/work-mode metadata is not always sufficient to reject a listing. A specific work-mode filter excludes listings whose work mode is unknown.")
     if total_is_approximate:
+        filter_notes.append("Employer-board counts are based on the jobs returned by each public ATS endpoint. Check portal coverage below and open the original listing for final verification.")
+    if total_is_approximate:
         filter_notes.append("Totals may be approximate because of local filtering, pagination across feeds, and cross-source duplicates.")
 
     return {
@@ -418,13 +515,18 @@ def search_multiple_roles(
         "offset": offset,
         "limit": limit,
         "returned": min(len(combined), limit),
-        "has_more": any(has_more_by_role) and offset < 2000,
+        "has_more": any(has_more_by_role) and offset + limit <= 50000,
         "filtered_out": filter_rejected,
         "filtered_out_by": rejected_by_filter,
         "role_searches": len(cleaned_roles),
         "sources": selected_sources,
+        "portal_ids": list(dict.fromkeys(str(item).strip().casefold() for item in (portal_ids or []) if str(item).strip())),
         "configured_employer_boards": configured_boards,
+        "portal_results": portal_results,
         "warnings": warnings,
         "filter_note": " ".join(filter_notes),
+        # The UI still paginates, but the API route persists this complete set
+        # from selected employer boards on the first search request.
+        "all_jobs": all_matches,
         "jobs": combined[:limit],
     }

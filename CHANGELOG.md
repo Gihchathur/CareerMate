@@ -1,5 +1,33 @@
 # Changelog
 
+## 3.9.0 — Complete Explore inventory and fixed navigation
+
+- Return the complete unique eligible job inventory from the selected employer portals to Explore, while retaining the page-sized `jobs` field for older API clients.
+- Trust the API's selected-portal scope instead of applying a second client-side provider/portal filter that could hide confirmed results.
+- Apply keyword filtering and sorting to the complete result inventory, then paginate locally so changing pages does not re-fetch or lose jobs.
+- Keep company and newest sorting stable, and reset the local page when the keyword filter or page size changes.
+- Make the left navigation permanently expanded and fixed; remove pointer-enter, pointer-leave and focus-driven collapse behavior.
+- Show per-portal fetched/title/location/Explore counts and distinguish listings excluded by advanced filters from genuinely empty portals.
+- Add an actionable empty state that clears advanced exclusions and reruns the search when portal matches exist but salary/freshness/company filters removed them.
+- Keep the desktop sidebar, workspace grid and top bar aligned at intermediate desktop viewport widths.
+
+# Changelog
+
+## 3.8.0 — Complete employer-board retrieval and discovery diagnostics
+
+- Changed Explore matching to use job titles rather than free-text descriptions or department labels, preventing business/customer roles from appearing only because their descriptions mention software engineers.
+- Added canonical ISO country-code mapping (for example, `SE` to `Sweden`) for public ATS location metadata.
+- Retained exact provider/company portal IDs on every discovered job and used those IDs as the primary frontend attribution filter.
+- Added full eligible ATS inventory persistence on the first search while retaining paginated Explore rendering; scheduled scans and manual alert checks now process the complete eligible inventory rather than only the first page.
+- Removed the former 500-job SmartRecruiters and 400-job Workday caps; both connectors now paginate to the provider-reported end or an explicit 10,000-job safety ceiling.
+- Raised Lever pagination to a 20,000-job safety ceiling and made safety-limit hits visible as partial results. Fixed Teamtailor's documented 30-item page-size cap, follows its JSON:API `links.next` cursor / page metadata, and reports a 6,000-job safety ceiling; the previous request for 100 items could stop after the first 30.
+- Corrected Ashby workplace-mode parsing: the `isRemote` flag covers both Remote and Hybrid, so CareerMate now reads `workplaceType` to distinguish them.
+- Shortened public ATS cache freshness to 120 seconds by default, retained last-successful snapshots after refresh failures, and added per-job retrieval timestamps. Added a **Refresh portals** action that bypasses the short cache for a live check.
+- Added per-company Explore coverage showing fetched jobs, title matches, location/work-mode eligible matches, freshness and source warnings.
+- Added a consistent icon-led page heading across every workspace tab, matching the Explore header pattern.
+- Added regression tests for Legora/Ashby location metadata and workplace type, title-only relevance, all-match persistence, stale snapshots, Teamtailor cursor security and pagination beyond legacy provider limits.
+- Documented provider retrieval behavior, freshness, safety ceilings and the limits of public-board completeness in `docs/PORTAL-DISCOVERY-RELIABILITY.md`.
+
 ## 3.7.0 — Match insights, portal-only Explore, and exact CV attachments
 
 - Fixed Match Intelligence job-row layout by grouping checkbox/content and score/actions into explicit layout regions; the View insight action no longer drops outside its row.

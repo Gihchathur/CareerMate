@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
 from app.models.job import JobPosting
 from app.services.job_sources.base import (
     JobSourceError,
+    JobSourceIncompleteError,
     get_with_retries,
     classify_work_mode,
     clean_html,
@@ -73,10 +75,10 @@ def fetch_company_jobs(
     company_name: str,
     region: str = "eu",
     default_country: str = "",
-    page_size: int = 100,
-    max_pages: int = 10,
+    page_size: int = 30,
+    max_pages: int = 200,
 ) -> list[JobPosting]:
-    """Fetch public published jobs for a company account using a read-only API key."""
+    """Fetch every publicly published job through Teamtailor's JSON:API pages."""
     if not api_key.strip():
         raise JobSourceError(f"Teamtailor API key is missing for '{company_name}'.")
     region_key = region.strip().casefold()
@@ -84,21 +86,29 @@ def fetch_company_jobs(
         raise JobSourceError("Teamtailor region must be 'eu', 'na', or 'apac'.")
     if not company_name.strip():
         raise JobSourceError("A Teamtailor company name is required.")
-    if not 1 <= page_size <= 100 or not 1 <= max_pages <= 20:
-        raise JobSourceError("Invalid Teamtailor pagination settings.")
+    # Teamtailor documents a maximum page[size] of 30. The previous code asked
+    # for 100, then stopped as soon as the API silently returned a 30-row page.
+    if not 1 <= page_size <= 30 or not 1 <= max_pages <= 500:
+        raise JobSourceError("Teamtailor page size must be 1–30 and max_pages must be 1–500.")
 
     jobs: list[JobPosting] = []
-    for page in range(1, max_pages + 1):
+    current_page = 1
+    pages_fetched = 0
+    next_url: str | None = None
+    visited_next_urls: set[str] = set()
+    for _page_index in range(max_pages):
+        request_url = next_url or API_ROOTS[region_key]
+        request_params = None if next_url else {
+            "page[size]": page_size,
+            "page[number]": current_page,
+            "filter[status]": "published",
+            "filter[feed]": "public",
+            "include": "locations",
+        }
         try:
             response = get_with_retries(
-                API_ROOTS[region_key],
-                params={
-                    "page[size]": page_size,
-                    "page[number]": page,
-                    "filter[status]": "published",
-                    "filter[feed]": "public",
-                    "include": "locations",
-                },
+                request_url,
+                params=request_params,
                 headers={
                     "accept": "application/vnd.api+json",
                     "authorization": f"Token token={api_key.strip()}",
@@ -122,6 +132,7 @@ def fetch_company_jobs(
         if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
             raise JobSourceError(f"Teamtailor account '{company_name}' returned an unexpected response format (expected a data array).")
         data = [item for item in payload["data"] if isinstance(item, dict)]
+        pages_fetched += 1
         included = payload.get("included", [])
         location_by_id: dict[str, str] = {}
         if isinstance(included, list):
@@ -136,8 +147,60 @@ def fetch_company_jobs(
             relationships = item.get("relationships") if isinstance(item.get("relationships"), dict) else {}
             loc_rel = relationships.get("locations") if isinstance(relationships.get("locations"), dict) else {}
             loc_data = loc_rel.get("data", [])
-            location_names = [location_by_id[str(loc.get("id"))] for loc in loc_data if isinstance(loc, dict) and str(loc.get("id")) in location_by_id] if isinstance(loc_data, list) else []
-            jobs.append(normalize_job({**item, "_careermate_locations": location_names}, company_name=company_name, default_country=default_country))
-        if len(data) < page_size:
-            break
-    return jobs
+            location_names = [
+                location_by_id[str(loc.get("id"))]
+                for loc in loc_data
+                if isinstance(loc, dict) and str(loc.get("id")) in location_by_id
+            ] if isinstance(loc_data, list) else []
+            jobs.append(normalize_job(
+                {**item, "_careermate_locations": location_names},
+                company_name=company_name,
+                default_country=default_country,
+            ))
+
+        links = payload.get("links") if isinstance(payload.get("links"), dict) else {}
+        candidate_next = links.get("next")
+        if candidate_next:
+            # Follow provider-supplied cursors, but never send the API key to
+            # an unexpected origin returned in a pagination payload.
+            candidate_url = urljoin(request_url, str(candidate_next))
+            parsed_next = urlparse(candidate_url)
+            expected = urlparse(API_ROOTS[region_key])
+            if parsed_next.scheme != "https" or parsed_next.netloc != expected.netloc or parsed_next.path != "/v1/jobs":
+                raise JobSourceError("Teamtailor returned an unexpected pagination URL; the next page was not requested.")
+            if candidate_url in visited_next_urls or candidate_url == request_url:
+                fetched_at = datetime.now(timezone.utc).isoformat()
+                partial_jobs = [job.model_copy(update={"source_fetched_at": fetched_at}) for job in jobs]
+                raise JobSourceIncompleteError(
+                    f"Teamtailor account '{company_name}' returned a repeated pagination cursor; results are partial.",
+                    partial_jobs,
+                )
+            visited_next_urls.add(candidate_url)
+            next_url = candidate_url
+            continue
+
+        meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+        try:
+            page_count = int(meta.get("page-count", 0) or 0)
+        except (TypeError, ValueError):
+            page_count = 0
+        if page_count and pages_fetched < page_count:
+            current_page = pages_fetched + 1
+            next_url = None
+            continue
+        if page_count and pages_fetched >= page_count:
+            return jobs
+        # Some compatible gateways omit links/meta. A full page is the only
+        # safe fallback signal to try the following page.
+        if len(data) >= page_size:
+            current_page = pages_fetched + 1
+            next_url = None
+            continue
+        return jobs
+
+    fetched_at = datetime.now(timezone.utc).isoformat()
+    partial_jobs = [job.model_copy(update={"source_fetched_at": fetched_at}) for job in jobs]
+    raise JobSourceIncompleteError(
+        f"Teamtailor account '{company_name}' reached the {max_pages * page_size:,}-job pagination safety limit; results are partial.",
+        partial_jobs,
+    )

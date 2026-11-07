@@ -21,6 +21,7 @@ import "./ux-readability.css";
 import "./portals-workspace.css";
 import "./navigation-overflow.css";
 import "./quality-fixes.css";
+import "./explore-redesign.css";
 import App from "./App";
 
 createRoot(document.getElementById("root")!).render(

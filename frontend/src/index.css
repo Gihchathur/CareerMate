@@ -253,7 +253,7 @@ code { padding: 2px 5px; border-radius: 4px; color: #495aca; background: #f0f2ff
   .pagination-buttons .button { flex: 1; }
 }
 
-/* Step 10: selectable, locally configured job sources */
+/* Step 10: selectable, locally configured employer portals */
 .source-picker { min-width: 0; margin: 8px 0 18px; padding: 13px; border: 1px solid var(--line); border-radius: 11px; }
 .source-picker legend { padding: 0 6px; color: #424e66; font-size: 12px; font-weight: 800; }
 .source-option-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }

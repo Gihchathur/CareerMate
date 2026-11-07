@@ -18,6 +18,22 @@ class JobSourceError(Exception):
     """Raised when an external job source cannot be queried or parsed."""
 
 
+class JobSourceIncompleteError(JobSourceError):
+    """A provider safety ceiling was reached; keep partial jobs and disclose the gap."""
+
+    def __init__(self, message: str, partial_jobs: list[Any] | None = None) -> None:
+        super().__init__(message)
+        self.partial_jobs = list(partial_jobs or [])
+
+
+class JobSourceStaleCacheError(JobSourceError):
+    """Live refresh failed, but a previously successful snapshot is available."""
+
+    def __init__(self, message: str, cached_jobs: list[Any] | None = None) -> None:
+        super().__init__(message)
+        self.cached_jobs = list(cached_jobs or [])
+
+
 _RETRYABLE_HTTP_STATUS_CODES = {429, 500, 502, 503, 504}
 _DEFAULT_TIMEOUT = httpx.Timeout(20.0, connect=8.0)
 

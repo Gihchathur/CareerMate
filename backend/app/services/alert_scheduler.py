@@ -11,11 +11,18 @@ logger=logging.getLogger(__name__)
 _scheduler=None
 
 def _run_search(item):
+    portal_ids = item.get("portal_ids")
+    if not isinstance(portal_ids, list) or not any(str(value).strip() for value in portal_ids):
+        logger.warning(
+            "Skipping legacy saved search %s because it has no company portal selection; recreate it in Explore.",
+            item.get("name"),
+        )
+        return
     try:
         result=search_multiple_roles(roles=item["roles"],country=item.get("country","Sweden"),
             city=item.get("city",""),work_mode=item.get("work_mode","any"),
-            sources=item.get("sources") or None,limit=40,offset=0)
-        jobs=[x.model_dump() for x in result.get("jobs",[])]
+            sources=item.get("sources") or None,portal_ids=portal_ids,limit=40,offset=0)
+        jobs=[x.model_dump() for x in result.get("all_jobs", result.get("jobs",[]))]
         delta=scan_alerts(item["id"],jobs)
         record_alerts(item["id"],item.get("name","Saved search"),delta["new_jobs"])
         logger.info("Saved search %s found %s new jobs",item.get("name"),delta["new_count"])

@@ -86,6 +86,7 @@ class SavedSearchRequest(BaseModel):
     city: str = Field(default="", max_length=100)
     work_mode: Literal["any", "remote", "hybrid", "on_site"] = "any"
     sources: list[str] = Field(default_factory=list, max_length=20)
+    portal_ids: list[str] = Field(min_length=1, max_length=100)
     frequency: Literal["manual", "daily", "weekly"] = "manual"
 
 
@@ -113,7 +114,7 @@ class JobSourceConfigUpdate(BaseModel):
 app = FastAPI(
     title="CareerMate API",
     description="Local-first job search and application assistant",
-    version="3.7.0",
+    version="3.8.0",
     lifespan=lifespan,
 )
 
@@ -538,11 +539,17 @@ def check_saved_search_alerts(search_id: str):
     item = next((x for x in list_searches() if x.get("id") == search_id), None)
     if not item:
         raise HTTPException(status_code=404, detail="Saved search not found.")
+    portal_ids = item.get("portal_ids")
+    if not isinstance(portal_ids, list) or not any(str(value).strip() for value in portal_ids):
+        raise HTTPException(
+            status_code=409,
+            detail="This saved search predates company-level portal selection. Create a new search and select the employer portals to monitor.",
+        )
     try:
         result = search_multiple_roles(roles=item["roles"], country=item.get("country","Sweden"),
             city=item.get("city",""), work_mode=item.get("work_mode","any"),
-            sources=item.get("sources") or None, limit=40, offset=0)
-        jobs = [x.model_dump() for x in result.get("jobs", [])]
+            sources=item.get("sources") or None, portal_ids=portal_ids, limit=40, offset=0)
+        jobs = [x.model_dump() for x in result.get("all_jobs", result.get("jobs", []))]
         delta = scan_alerts(search_id, jobs)
         record_alerts(search_id, item.get("name","Saved search"), delta["new_jobs"])
         return {"success": True, **delta}
@@ -559,13 +566,15 @@ def search_job_listings(
     location: str = Query(default="", max_length=100),
     work_mode: Literal["any", "remote", "hybrid", "on_site"] = Query(default="any"),
     sources: list[str] | None = Query(default=None),
+    portal_ids: list[str] | None = Query(default=None, max_length=100),
     limit: int = Query(default=20, ge=1, le=40),
-    offset: int = Query(default=0, ge=0, le=2000),
+    offset: int = Query(default=0, ge=0, le=50000),
     min_salary: int | None = Query(default=None, ge=0),
     max_salary: int | None = Query(default=None, ge=0),
     salary_currency: str = Query(default="", max_length=5),
     posted_within_days: int | None = Query(default=None, ge=1, le=365),
     excluded_companies: list[str] = Query(default=[]),
+    refresh_portals: bool = Query(default=False),
 ) -> dict[str, object]:
     """Search one or more roles, apply transparent local filters, and save results."""
     role_values = roles or ([query] if query else [])
@@ -579,16 +588,64 @@ def search_job_listings(
             work_mode=work_mode,
             limit=limit,
             sources=sources,
+            portal_ids=portal_ids,
             offset=offset,
+            force_portal_refresh=refresh_portals,
         )
         jobs = result["jobs"]
-        job_payload = [job.model_dump() for job in jobs]  # type: ignore[union-attr]
-        saved_total = save_jobs(job_payload)
+        page_job_payload = [job.model_dump() for job in jobs]  # type: ignore[union-attr]
+        # The employer-board connectors fetch complete published inventories.
+        # Keep a page-sized slice for backwards-compatible API consumers, but
+        # also return the complete eligible, de-duplicated inventory to Explore.
+        # Explore sorts, filters and paginates this full set locally; otherwise a
+        # page of 20 could hide matches which were counted in portal coverage.
+        all_jobs = result.get("all_jobs", jobs)
+        all_job_payload = [job.model_dump() for job in all_jobs]  # type: ignore[union-attr]
+        pre_advanced_filter_count = len(all_job_payload)
+        from datetime import datetime, timezone, timedelta
+        excluded = {x.casefold().strip() for x in excluded_companies if x.strip()}
+        cutoff = datetime.now(timezone.utc) - timedelta(days=posted_within_days) if posted_within_days else None
+
+        def apply_optional_search_filters(items: list[dict[str, object]]) -> list[dict[str, object]]:
+            eligible: list[dict[str, object]] = []
+            for item in items:
+                item.update(extract_salary(str(item.get("description", ""))))
+                company = str(item.get("company", "")).casefold()
+                if any(blocked in company for blocked in excluded):
+                    continue
+                if salary_currency and item.get("salary_currency") and str(item["salary_currency"]).casefold() != salary_currency.casefold():
+                    continue
+                if min_salary is not None and (item.get("salary_min") is None or int(item["salary_min"]) < min_salary):
+                    continue
+                if max_salary is not None and (item.get("salary_max") is None or int(item["salary_max"]) > max_salary):
+                    continue
+                if cutoff:
+                    published = _parse_published_date(str(item.get("published_at", "")))
+                    if published is None or published < cutoff:
+                        continue
+                eligible.append(item)
+            return eligible
+
+        # Apply the same advanced filters to the complete inventory before it is
+        # persisted, so hidden salary/freshness exclusions do not enter the Inbox.
+        all_job_payload = apply_optional_search_filters(all_job_payload)
+        page_job_payload = apply_optional_search_filters(page_job_payload)
+        # Coverage's returned count reflects the complete inventory that will
+        # be available in Explore after advanced salary/freshness/company filters.
+        portal_coverage = result.get("portal_results", [])
+        if isinstance(portal_coverage, list):
+            for portal_item in portal_coverage:
+                if isinstance(portal_item, dict):
+                    portal_id = str(portal_item.get("portal_id", ""))
+                    portal_item["returned_count"] = sum(
+                        1 for item in all_job_payload if str(item.get("portal_id", "")) == portal_id
+                    )
+        saved_total = save_jobs(all_job_payload)
         # Reuse a previously fetched full description when the same job appears
         # again in a later search and the provider only returns a short teaser.
         saved_by_id = {str(item.get("id", "")): item for item in load_saved_jobs()}
         response_jobs: list[dict[str, object]] = []
-        for item in job_payload:
+        for item in page_job_payload:
             saved = saved_by_id.get(str(item.get("id", "")), {})
             if saved.get("description_source") == "original_listing" and len(str(saved.get("description", ""))) > len(str(item.get("description", ""))):
                 response_jobs.append({**item, **{
@@ -600,44 +657,46 @@ def search_job_listings(
             else:
                 response_jobs.append(item)
 
-        normalized_jobs = []
-        from datetime import datetime, timezone, timedelta
-        excluded = {x.casefold().strip() for x in excluded_companies if x.strip()}
-        cutoff = datetime.now(timezone.utc) - timedelta(days=posted_within_days) if posted_within_days else None
-        for item in response_jobs:
-            item.update(extract_salary(str(item.get("description", ""))))
-            company = str(item.get("company", "")).casefold()
-            if any(blocked in company for blocked in excluded):
-                continue
-            if salary_currency and item.get("salary_currency") and item["salary_currency"].casefold() != salary_currency.casefold():
-                continue
-            if min_salary is not None and (item.get("salary_min") is None or item["salary_min"] < min_salary):
-                continue
-            if max_salary is not None and (item.get("salary_max") is None or item["salary_max"] > max_salary):
-                continue
-            if cutoff:
-                published = _parse_published_date(str(item.get("published_at","")))
-                if published is None or published < cutoff:
-                    continue
-            normalized_jobs.append(item)
+        normalized_jobs = response_jobs
+        # Apply the same saved-description fallback to the complete inventory,
+        # not only the compatibility page. This keeps CV tailoring consistent
+        # no matter which local page or sort order the user opens.
+        response_matching_jobs: list[dict[str, object]] = []
+        for item in all_job_payload:
+            saved = saved_by_id.get(str(item.get("id", "")), {})
+            if saved.get("description_source") == "original_listing" and len(str(saved.get("description", ""))) > len(str(item.get("description", ""))):
+                response_matching_jobs.append({**item, **{
+                    key: saved[key] for key in (
+                        "description", "description_source", "description_fetch_status",
+                        "description_fetched_at", "description_fetch_message",
+                    ) if key in saved
+                }})
+            else:
+                response_matching_jobs.append(item)
+
         _record_workflow_event(
             "discovery_scan",
             "Job discovery completed",
-            f"Received {len(job_payload)} listings; {len(normalized_jobs)} remained after local filters.",
+            f"Discovered {len(all_job_payload)} unique eligible listings across the selected employer boards and returned the full filtered inventory to Explore.",
             entity_type="search",
             metadata={
                 "roles": role_values,
                 "country": country,
                 "city": effective_city,
                 "sources": sources or [],
+                "portal_ids": portal_ids or [],
                 "returned": len(normalized_jobs),
                 "saved_total": saved_total,
             },
         )
         return {
             "success": True,
-            **{key: value for key, value in result.items() if key != "jobs"},
+            **{key: value for key, value in result.items() if key not in {"jobs", "all_jobs"}},
             "saved_total": saved_total,
+            "discovered_this_search": len(all_job_payload),
+            "matching_jobs": response_matching_jobs,
+            "matching_jobs_count": len(response_matching_jobs),
+            "advanced_filtered_out": max(0, pre_advanced_filter_count - len(all_job_payload)),
             "jobs": normalized_jobs,
             "returned": len(normalized_jobs),
             "local_filters": {"min_salary": min_salary, "max_salary": max_salary, "salary_currency": salary_currency, "posted_within_days": posted_within_days, "excluded_companies": excluded_companies},

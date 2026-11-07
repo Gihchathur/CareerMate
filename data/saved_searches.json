@@ -1,0 +1,26 @@
+[
+  {
+    "name": "SE-STHLM",
+    "roles": [
+      "Software Engineer"
+    ],
+    "country": "Sweden",
+    "city": "Stockholm",
+    "work_mode": "any",
+    "sources": [
+      "greenhouse",
+      "lever",
+      "ashby"
+    ],
+    "portal_ids": [
+      "greenhouse:vercel",
+      "lever:spotify",
+      "ashby:lovable",
+      "ashby:legora",
+      "ashby:temporal"
+    ],
+    "frequency": "daily",
+    "id": "f8feae59-ed99-47ff-8eb0-ace7a8040116",
+    "created_at": "2026-11-07T22:33:58.421764+00:00"
+  }
+]

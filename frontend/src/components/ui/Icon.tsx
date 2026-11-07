@@ -2,7 +2,7 @@ import type { SVGProps } from "react";
 
 export type IconName =
   | "search" | "file" | "sparkles" | "briefcase" | "check" | "arrow"
-  | "grid" | "user" | "shield" | "target" | "chevron" | "sliders"
+  | "grid" | "house" | "user" | "shield" | "target" | "chevron" | "sliders"
   | "layers" | "plus" | "info" | "graduation" | "pin" | "clock"
   | "cpu" | "refresh" | "trash" | "filter" | "download" | "eye"
   | "chart" | "bolt" | "activity" | "calendar" | "database" | "command" | "bell" | "wand" | "arrow-up-right" | "menu"
@@ -16,6 +16,7 @@ const paths: Record<IconName, string> = {
   check: "m5 12 4 4L19 6",
   arrow: "M5 12h14m-6-6 6 6-6 6",
   grid: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z",
+  house: "m3 10 9-7 9 7M5 9v12h14V9M9 21v-7h6v7",
   user: "M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z",
   shield: "M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Zm-3-11 2 2 4-4",
   target: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0-5a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0-5h.01",

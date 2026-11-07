@@ -205,11 +205,13 @@ export async function searchJobs(options: JobSearchOptions): Promise<JobSearchRe
   const params = new URLSearchParams();
   options.roles.forEach((role) => params.append("roles", role));
   options.sources.forEach((source) => params.append("sources", source));
+  options.portal_ids.forEach((portalId) => params.append("portal_ids", portalId));
   params.set("country", options.country);
   params.set("city", options.city);
   params.set("work_mode", options.work_mode);
   params.set("limit", String(options.limit));
   params.set("offset", String(options.offset));
+  if (options.refresh_portals) params.set("refresh_portals", "true");
   if (options.min_salary !== undefined) params.set("min_salary", String(options.min_salary));
   if (options.max_salary !== undefined) params.set("max_salary", String(options.max_salary));
   if (options.posted_within_days !== undefined) params.set("posted_within_days", String(options.posted_within_days));
@@ -421,9 +423,9 @@ export async function tailorCvForJob(
 
 export const TAILORED_CV_DOWNLOAD_BASE = API_BASE;
 
-export type SavedSearch = { id: string; name: string; roles: string[]; country: string; city: string; work_mode: WorkMode; sources: JobSourceId[]; frequency: "manual" | "daily" | "weekly"; created_at: string };
+export type SavedSearch = { id: string; name: string; roles: string[]; country: string; city: string; work_mode: WorkMode; sources: JobSourceId[]; portal_ids?: string[]; frequency: "manual" | "daily" | "weekly"; created_at: string };
 export async function getSavedSearches(): Promise<{ success: boolean; searches: SavedSearch[] }> { return request("/api/searches"); }
-export async function createSavedSearch(search: Omit<SavedSearch, "id" | "created_at">): Promise<{ success: boolean; search: SavedSearch }> {
+export async function createSavedSearch(search: Omit<SavedSearch, "id" | "created_at" | "portal_ids"> & { portal_ids: string[] }): Promise<{ success: boolean; search: SavedSearch }> {
   return request("/api/searches", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(search) });
 }
 export async function deleteSavedSearch(id: string): Promise<void> { await request(`/api/searches/${encodeURIComponent(id)}`, {method:"DELETE"}); }

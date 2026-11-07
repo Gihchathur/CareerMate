@@ -156,6 +156,10 @@ export type JobResult = {
   id: string;
   source: string;
   source_id: string;
+  /** Exact provider:company board identity attached by the backend. */
+  portal_id?: string;
+  portal_name?: string;
+  source_fetched_at?: string;
   title: string;
   company: string;
   location: string;
@@ -166,6 +170,10 @@ export type JobResult = {
   city?: string;
   country?: string;
   work_mode?: DetectedWorkMode;
+  department?: string;
+  team?: string;
+  employment_type?: string;
+  role_metadata?: string[];
   search_roles?: string[];
   description_source?: "search_result" | "original_listing";
   description_fetch_status?: "not_attempted" | "success" | "failed";
@@ -182,6 +190,8 @@ export type JobSearchCriteria = {
   city: string;
   work_mode: WorkMode;
   sources: JobSourceId[];
+  /** Stable provider:company identifiers for the specific employer boards selected in Explore. */
+  portal_ids: string[];
   limit: number;
   min_salary?: number;
   max_salary?: number;
@@ -191,6 +201,21 @@ export type JobSearchCriteria = {
 
 export type JobSearchOptions = JobSearchCriteria & {
   offset: number;
+  refresh_portals?: boolean;
+};
+
+export type PortalSearchCoverage = {
+  portal_id: string;
+  provider: string;
+  company: string;
+  fetched_count: number;
+  role_matches: number;
+  eligible_matches: number;
+  returned_count: number;
+  last_fetched_at?: string;
+  age_seconds?: number | null;
+  status: "matched" | "partial" | "stale" | "error" | "empty" | "no_role_matches" | "filtered_by_location" | string;
+  warning: string;
 };
 
 export type JobSearchResponse = {
@@ -200,6 +225,7 @@ export type JobSearchResponse = {
   city: string;
   work_mode: WorkMode;
   sources: JobSourceId[];
+  portal_ids?: string[];
   configured_employer_boards: number;
   total_reported: number;
   total_is_approximate: boolean;
@@ -208,10 +234,19 @@ export type JobSearchResponse = {
   returned: number;
   has_more: boolean;
   filtered_out: number;
+  filtered_out_by?: { country: number; city: number; work_mode: number };
   role_searches: number;
   warnings: string[];
   filter_note: string;
   saved_total: number;
+  discovered_this_search?: number;
+  /** Complete unique inventory after role, location and advanced filters. */
+  matching_jobs?: JobResult[];
+  matching_jobs_count?: number;
+  /** Listings that passed role/location checks but were excluded by advanced filters. */
+  advanced_filtered_out?: number;
+  portal_results?: PortalSearchCoverage[];
+  /** Backwards-compatible page slice for older clients. */
   jobs: JobResult[];
 };
 

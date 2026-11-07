@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Icon, type IconName } from "../ui/Icon";
 
 export type WorkspaceView = "overview" | "discover" | "inbox" | "platforms" | "matches" | "applications" | "followups" | "profile" | "documents" | "ai" | "data" | "settings" | "analytics" | "automation";
@@ -10,10 +10,9 @@ type Props = {
   activity: string;
   status: string;
   avatar: string;
-  providerLabel: string;
+  candidateName: string;
+  profileProgress: number;
   hostedAi: boolean;
-  cvUploaded: boolean;
-  profileSaved: boolean;
   matchCount: number;
   jobCount: number;
   applicationCount: number;
@@ -27,10 +26,28 @@ type Props = {
 type NavLink = { id: WorkspaceView; label: string; icon: IconName; hint: string };
 type NavGroup = { label: string; links: NavLink[] };
 
+
+const PAGE_ICONS: Record<WorkspaceView, IconName> = {
+  overview: "house",
+  discover: "search",
+  inbox: "inbox",
+  platforms: "radar",
+  matches: "target",
+  applications: "kanban",
+  followups: "mail",
+  profile: "file",
+  documents: "files",
+  ai: "sparkles",
+  data: "database",
+  settings: "sliders",
+  analytics: "chart",
+  automation: "calendar-clock",
+};
+
 const NAV_GROUPS: NavGroup[] = [
-  { label: "WORKSPACE", links: [{ id: "overview", label: "Today", icon: "grid", hint: "Overview of your priorities, next actions and recent activity" }] },
+  { label: "WORKSPACE", links: [{ id: "overview", label: "Today", icon: "house", hint: "Overview of your priorities, next actions and recent activity" }] },
   { label: "DISCOVER", links: [
-    { id: "discover", label: "Explore", icon: "compass", hint: "Find opportunities across connected sources" },
+    { id: "discover", label: "Explore", icon: "search", hint: "Find opportunities across connected company portals" },
     { id: "inbox", label: "Inbox", icon: "inbox", hint: "Triage newly discovered jobs" },
     { id: "matches", label: "Match intelligence", icon: "target", hint: "Understand fit and evidence gaps" },
     { id: "automation", label: "Scheduled scans", icon: "calendar-clock", hint: "Manage recurring job searches" },
@@ -50,20 +67,19 @@ const NAV_GROUPS: NavGroup[] = [
 
 export function WorkspaceShell(props: Props) {
   const {
-    activeView, meta, activity, status, avatar, providerLabel, hostedAi,
-    cvUploaded, profileSaved, matchCount, jobCount, applicationCount,
+    activeView, meta, activity, status, avatar, candidateName, profileProgress, hostedAi,
+    matchCount, jobCount, applicationCount,
     inboxCount = 0, followupCount = 0,
     onNavigate, onGoHome, children,
   } = props;
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
-  const [railExpanded, setRailExpanded] = useState(false);
+  // Desktop navigation is a fixed, permanently expanded sidebar. Pointer
+  // position must never change the workspace geometry or navigation width.
+  const railExpanded = true;
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const railExpansionMode = useRef<"pointer" | "keyboard" | null>(null);
-  const pointerInsideRail = useRef(false);
   const commandInput = useRef<HTMLInputElement>(null);
-  const progress = Math.round(([cvUploaded, profileSaved, matchCount > 0].filter(Boolean).length / 3) * 100);
   const badgeFor = (id: WorkspaceView) => id === "discover" ? jobCount : id === "inbox" ? inboxCount : id === "matches" ? matchCount : id === "applications" ? applicationCount : id === "followups" ? followupCount : undefined;
   const commands = useMemo(
     () => NAV_GROUPS.flatMap((group) => group.links).filter((link) => `${link.label} ${link.hint}`.toLowerCase().includes(commandQuery.trim().toLowerCase())),
@@ -81,9 +97,6 @@ export function WorkspaceShell(props: Props) {
       if (event.key === "Escape") {
         setCommandOpen(false);
         setMobileNavOpen(false);
-        railExpansionMode.current = null;
-        pointerInsideRail.current = false;
-        setRailExpanded(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -135,51 +148,15 @@ export function WorkspaceShell(props: Props) {
     </div>
   );
 
-  const handleRailPointerEnter = (event: ReactPointerEvent<HTMLElement>) => {
-    if (event.pointerType === "touch") return;
-    pointerInsideRail.current = true;
-    railExpansionMode.current = "pointer";
-    setRailExpanded(true);
-  };
-  const handleRailPointerLeave = (event: ReactPointerEvent<HTMLElement>) => {
-    if (event.pointerType === "touch") return;
-    pointerInsideRail.current = false;
-    if (railExpansionMode.current !== "keyboard") {
-      railExpansionMode.current = null;
-      setRailExpanded(false);
-    }
-  };
-  const handleRailFocus = () => {
-    if (railExpansionMode.current === "pointer") return;
-    railExpansionMode.current = "keyboard";
-    setRailExpanded(true);
-  };
-  const handleRailBlur = (event: ReactFocusEvent<HTMLElement>) => {
-    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
-    if (!pointerInsideRail.current) {
-      railExpansionMode.current = null;
-      setRailExpanded(false);
-    }
-  };
-  const handleRailKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
-    if (["Tab", "ArrowDown", "ArrowUp", "Home", "End", "Enter", " "].includes(event.key)) {
-      railExpansionMode.current = "keyboard";
-      setRailExpanded(true);
-    }
-  };
 
   return (
     <div className="cm-app-shell">
       <header className="cm-topbar">
-        <button className="cm-brand" type="button" onClick={onGoHome} aria-label="CareerMate home">
-          <img className="cm-brand-symbol-image" src="/careermate-symbol.svg" alt="" />
-          <span className="cm-brand-name">career<span>mate</span><i>.</i></span>
-          <span className="cm-brand-edition">PERSONAL OS</span>
-        </button>
-        <div className="cm-topbar-context"><span className="cm-live-dot" /> <span>Your career workspace</span><span className="cm-context-divider">/</span><span>{meta.eyebrow.toLowerCase()}</span></div>
+        <div className="cm-topbar-context"><span className="cm-live-dot" /> <span>Your career workspace</span><span className="cm-context-divider">/</span><strong>{meta.title.toLowerCase()}</strong></div>
         <div className="cm-topbar-actions">
           <button className="cm-command-trigger" type="button" onClick={() => { setCommandOpen(true); setCommandQuery(""); }}><Icon name="search" /><span>Jump to anything</span><kbd>⌘ K</kbd></button>
           <span className="cm-privacy-indicator" title={hostedAi ? "Hosted AI is enabled" : "Local AI workspace"}><Icon name="shield" /><span>{hostedAi ? "Cloud AI" : "Local first"}</span></span>
+          <button className="cm-notification-button" type="button" onClick={() => navigate("automation")} aria-label="Open job alerts and scheduled scans" title="Job alerts and scheduled scans"><Icon name="bell" /><i /></button>
           <button className="cm-avatar" type="button" onClick={() => navigate("profile")} aria-label="Open candidate profile">{avatar}</button>
         </div>
       </header>
@@ -187,19 +164,14 @@ export function WorkspaceShell(props: Props) {
       <div className={`cm-workspace ${railExpanded ? "is-nav-expanded" : ""}`}>
         <aside
           className={`cm-icon-rail ${railExpanded ? "is-expanded" : ""}`}
-          aria-label="Primary navigation, expands on pointer hover or keyboard focus"
+          aria-label="Primary navigation"
           data-state={railExpanded ? "expanded" : "compact"}
-          onPointerEnter={handleRailPointerEnter}
-          onPointerLeave={handleRailPointerLeave}
-          onFocusCapture={handleRailFocus}
-          onBlurCapture={handleRailBlur}
-          onKeyDownCapture={handleRailKeyDown}
         >
           <div className="cm-rail-surface">
-            <div className="cm-rail-brand" aria-hidden="true">
+            <button className="cm-rail-brand" type="button" onClick={onGoHome} aria-label="CareerMate home">
               <img className="cm-brand-symbol-image cm-rail-brand-symbol" src="/careermate-symbol.svg" alt="" />
               <span className="cm-rail-brand-copy"><strong>CareerMate</strong><small>PERSONAL OS</small></span>
-            </div>
+            </button>
             <nav className="cm-rail-navigation" aria-label="Workspace sections">
               {NAV_GROUPS.map((group, groupIndex) => (
                 <div className="cm-rail-group" key={group.label}>
@@ -216,7 +188,7 @@ export function WorkspaceShell(props: Props) {
                         aria-label={link.label}
                         aria-current={active ? "page" : undefined}
                         data-tooltip={link.label}
-                        title={!railExpanded ? link.label : undefined}
+                        title={link.label}
                       >
                         <span className="cm-rail-icon-wrap"><Icon name={link.icon} /></span>
                         <span className="cm-rail-item-label">{link.label}</span>
@@ -230,18 +202,18 @@ export function WorkspaceShell(props: Props) {
               ))}
             </nav>
             <div className="cm-rail-bottom">
-              <button className="cm-rail-profile" type="button" onClick={() => navigate("profile")} aria-label={`Candidate profile, ${progress}% ready`} title={`Profile readiness ${progress}%`}>
-                <span className="cm-rail-profile-ring" style={{ "--progress": `${progress}%` } as CSSProperties}><Icon name="user" /></span>
-                <span className="cm-rail-profile-copy"><strong>Profile readiness</strong><small>{progress}% complete</small></span>
+              <button className="cm-rail-profile" type="button" onClick={() => navigate("profile")} aria-label={`Candidate profile, ${profileProgress}% ready`} title={`Profile readiness ${profileProgress}%`}>
+                <span className="cm-rail-profile-ring" style={{ "--progress": `${profileProgress}%` } as CSSProperties}>{avatar}</span>
+                <span className="cm-rail-profile-copy"><strong>{candidateName || "Your profile"}</strong><small>Profile {profileProgress}% complete</small><i className="cm-rail-profile-track"><b style={{ width: `${profileProgress}%` }} /></i></span>
                 <span className="cm-rail-profile-arrow"><Icon name="arrow-up-right" /></span>
               </button>
-              <div className="cm-rail-footer"><span className="cm-rail-footer-dot" />{providerLabel} <span>·</span> {hostedAi ? "Cloud AI" : "Local"}</div>
             </div>
           </div>
         </aside>
 
         <main className="cm-main" data-view={activeView}>
           <div className="cm-page-header">
+            <span className="cm-page-icon" aria-hidden="true"><Icon name={PAGE_ICONS[activeView]} /></span>
             <div className="cm-page-heading-copy"><span className="cm-kicker">{meta.eyebrow}</span><h1>{meta.title}</h1><p>{meta.description}</p></div>
             <div className="cm-page-header-actions">{activity ? <span className="cm-activity-pill"><i />{activity}</span> : <span className="cm-status-pill"><i />{status}</span>}{activeView !== "discover" && <button type="button" className="cm-button cm-button-primary" onClick={() => navigate("discover")}><Icon name="search" /> Discover jobs <span>↗</span></button>}</div>
           </div>
